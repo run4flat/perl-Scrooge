@@ -155,22 +155,52 @@ section does not discuss constructors; those are discussed below.
 =item apply ($data)
 
 This method applies the regular expression object on the given piddle. If
-the regular
-expression matches the data, you get two return values: a number indicating
-the number of values matched, and a number indicating the offset at which
-the match starts. If the regular expression fails to match the data, it will
-return an empty list, which evaluates to boolean false. As such,
-you can put the result of a regex return in a conditional like so:
+the regular expression matches the data, you get two return values: a number
+indicating the quantity of elements matched, and a number indicating the
+offset at which the match starts. However, there is a minor subtlety for a
+match with zero length. In that case, the number of matched elements will be
+the string '0 but true'. This way, the following three expressions all Do
+Something:
 
  if (my ($matched, $offset) = $regex->apply($data)) {
-     # do something with the matched data
+     # Do Something
  }
-
-or, even simpler,
-
+ 
+ if (my $matched = $regex->apply($data)) {
+     # Do Something 
+ }
+ 
  if ($regex->apply($data)) {
-     # do something
+     # Do Something
  }
+ 
+Perl lets you use the returned matched length---even the string---in
+arithmetic operations without issuing a warning. However, if you plan on
+printing the matched length, you should make assure a numeric value with
+something like this:
+
+ if (my $matched = $regex->apply($data)) {
+     $matched += 0; # ensure $matched is numeric
+     print "Matched $matched elements\n";
+ }
+
+On the other hand, if the match fails, C<apply> returns an empty list.
+Generaly, this means that if you do this:
+
+ my ($matched, $offset) = $regex->apply($data);
+
+both C<$matched> and C<$offset> will be the undefined value, and if you use
+the expression in the conditional as in the first example above, the
+condition will evaluate to boolean false. The only major gotcha in this
+regard is that this will B<NOT> do what you think it is supposed to do:
+
+ my ($first_matched, $first_off, $second_matched, $second_off)
+     = ($regex1->apply($data), $regex2->apply($data));
+
+If C<$regex1> fails to match and C<$regex2> succeeds, the values for the
+second regex will be stored in C<$first_matched> and C<$first_off>. So, do
+not use the return values from a regular expression in a large list
+assignment.
 
 You can retreive sub-matches of the regex by naming them and using the next
 two methods: C<get_offsets_for> and C<get_slice_for>.
@@ -200,16 +230,19 @@ method apply ($piddle) {
 		$r_off = $l_off + $max_diff;
 		$r_off = $N-1 if $r_off >= $N;
 		
-		# working here - check this logic:
 		STOP: while ($r_off >= $l_off + $min_diff) {
-			print "Trying from $l_off to $r_off\n";
 			$consumed = $self->_apply($l_off, $r_off);
-			croak('Internal error: regex cannot consume more than it was given')
-				unless $consumed <= $r_off - $l_off + 1;
+			if ($consumed > $r_off - $l_off + 1) {
+				my $class = ref($self);
+				croak("Internal error: regex of class <$class> consumed more than it was given");
+			}
 			# If they returned less than zero, adjust r_off and try again:
 			if ($consumed < 0) {
+				# At the moment, negative values of $consumed that are "too
+				# large" do not cause the engine to croak. Should this be
+				# changed? working here (add this to the to-do list)
 				$r_off += $consumed;
-				redo STOP;
+				next STOP;
 			}
 			# We're done if we got a successful match
 			last START if $consumed and $consumed >= 0;
@@ -223,7 +256,8 @@ method apply ($piddle) {
 	# If we were successful, store and return the details:
 	if ($consumed) {
 		$self->_store_match($l_off, $r_off);
-		return ($consumed, $l_off);
+		return $consumed unless wantarray;
+		return (0 + $consumed, $l_off);
 	}
 	# Otherwise return an empty list:
 	return;
@@ -249,7 +283,8 @@ the value of left.
 method get_offsets_for ($name) {
 	# Check if this regex is named and if its name matches the request:
 	return ($self->{matched_left}, $self->{matched_right})
-		if exists $self->{name} and $self->{name} eq $name;
+		if exists $self->{name} and $self->{name} eq $name
+			and exists $self->{matched_left};
 	# This regex doesn't have anything useful, so return nothing:
 	return;
 }
@@ -325,6 +360,15 @@ performance of your regex.
 Here is a rundown of what to return when:
 
 =over
+
+=item More than the Full Length
+
+You sould never return more than the full length, and if you do, the regex
+engine will croak saying
+
+ Internal error: regex of class <class> consumed more than it was given
+
+doc working here - add this to the list of errors reported.
 
 =item Full Length
 
