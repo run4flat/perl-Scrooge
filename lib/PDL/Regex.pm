@@ -4,24 +4,6 @@ use warnings;
 use Method::Signatures;
 use Carp;
 
-=head1 NEW IDEA
-
-Include some sort of OPTIMIZE grouping that attempts to partition the data
-in an optimal fashion using some sort of scoring mechanism?
-
- # Find the optimal division between an exponential drop
- # and a linear fit:
- my $regex = NRE::OPTIMIZE($exponential_drop, $linear)
-
-=head1 to do:
-
-Implement a stack system on _prep and _cleanup so that
-individual regexes (especially those built on Groups) don't blow up if they
-are used recursively. (As for being used multiple times in the same regex,
-that is a problem, too, and it also needs to be solved somehow. Perhaps I
-can create some sort of register function, called when the full regex adds
-a sub-regex, which allows the regex object to be aware of itself.
-
 =head1 NAME
 
 PDL::Regex - a numerical regular expression engine
@@ -202,21 +184,28 @@ second regex will be stored in C<$first_matched> and C<$first_off>. So, do
 not use the return values from a regular expression in a large list
 assignment.
 
-You can retreive sub-matches of the regex by naming them and using the next
-two methods: C<get_offsets_for> and C<get_slice_for>.
+You can retreive sub-matches of the regex by naming them and using
+C<get_offsets_for>.
 
 =cut
 
 # User-level method, not to be overridden.
 method apply ($piddle) {
+	# Make sure they send us a piddle (working here - document this)
+	croak('Numerical regular expressions can only be applied to piddles')
+		unless eval {$piddle->isa('PDL')};
+	
 	# Prepare the regex for execution. This may involve computing low and
 	# high quantifier limits, keeping track of $piddle, and other things.
 	# This can fail if $piddle does not have enough elements for the
 	# quantifier, for example.
 	unless ($self->_prep($piddle)) {
 		$self->_cleanup;
+		$self->_post_cleanup;
 		return;
 	}
+	$self->_post_prep;
+	
 	my $N = $piddle->dim(0);
 	my $min_diff = $self->_min_size - 1;
 	my $max_diff = $self->_max_size - 1;
@@ -245,17 +234,20 @@ method apply ($piddle) {
 				next STOP;
 			}
 			# We're done if we got a successful match
-			last START if $consumed and $consumed >= 0;
+			if ($consumed and $consumed >= 0) {
+				$self->_store_match($l_off, $r_off);
+				last START;
+			}
 			# Move to the next starting position if the match at this
 			# position failed:
 			last STOP if $consumed == 0;
 		}
 	}
 	$self->_cleanup;
+	$self->_post_cleanup;
 	
-	# If we were successful, store and return the details:
+	# If we were successful, return the details:
 	if ($consumed) {
-		$self->_store_match($l_off, $r_off);
 		return $consumed unless wantarray;
 		return (0 + $consumed, $l_off);
 	}
@@ -266,10 +258,10 @@ method apply ($piddle) {
 =item get_offsets_for ($name)
 
 After running a successful regex, you can use this method to query the
-offsets for named regexes. This method returns the left and right offsets
-from a successful named matched. If the named match failed, it returns an
-empty list, which evaluates to false in boolean context. That means you can
-do cool stuff like this:
+offsets for named regexes. This method returns a piddle containing the left
+and a piddle containing the right offsets. If the named match failed, it
+returns an empty list, which evaluates to false in boolean context. That
+means you can do cool stuff like this:
 
  if (my ($left, $right) = $regex->get_offsets_for('peak')) {
      # do something here with $left and $right
@@ -278,65 +270,18 @@ do cool stuff like this:
 Note that for zero-width matches, the value of right will be one less than
 the value of left. 
 
+It can happen that the B<same> named regex shows up multiple times in a
+larger regex. In that case, all such copies that succeed in a match will
+add entries to the resulting C<$left> and C<$right> piddles.
+
 =cut
 
 method get_offsets_for ($name) {
-	# Check if this regex is named and if its name matches the request:
-	return ($self->{matched_left}, $self->{matched_right})
-		if exists $self->{name} and $self->{name} eq $name
-			and exists $self->{matched_left};
-	# This regex doesn't have anything useful, so return nothing:
-	return;
-}
-
-=item get_slice_for ($name)
-
-Sometimes you just want to get your hands on the sub-piddle that matched
-the data rather than the indices. C<get_slice_for> is a convenience function
-for this purpose.
-
-Note that because the way that PDL handles boolean evaluations (namely, it
-croaks), it is possible to use this function is a boolean context, but only
-with care. For example, this will behave similarly to the example in
-C<get_offsets_for>:
-
- if (my ($piddle) = $regex->get_slice_for('peak')) {
-     # Do something with $piddle
- }
-
-This works because the boolean context thinks you're working with a list.
-Since C<get_slice_for> returns an empty list when it can't find the named
-regular expression, this evaluates to false. When you get a return value, it
-is seens as a single-element list, which is true.
-
-However, the following expression will croak because the $piddle is itself
-being evaluated in boolean context, and PDL doesn't like that:
-
- if (my $piddle = $regex->get_slice_for('peak')) {
-     # Do something (except this will croak when it should be 'true')
- }
-
-This will also croak:
-
- if ($regex->get_slice_for('peak')) {
-     # will croak before getting here
- }
-
-In other words, you can use this method from within an if statement only
-when you assign the result to a list with a variable in it.
-
-=cut
-
-method get_slice_for ($name) {
-	if (my ($left, $right) = $self->get_offsets_for($name)) {
-		# Can't return a slice if it has zero width:
-		return if $right < $left;
-		# Return the slice in list context:
-		return ($self->{piddle}->slice($left . ':' . $right));
-	}
+	# Croak unless this regex has this name:
+	croak("Unknown regex name $name")
+		unless defined $self->{name} and $self->{name} eq $name;
 	
-	# Otherwise return the undefined value:
-	return;
+	return $self->_get_offsets;
 }
 
 =back
@@ -450,48 +395,6 @@ range.
 
 =back
 
-=head1 NOTES
-
-Using this module will look a litte bit different from classic regular
-expressions for many reasons:
-
-=over
-
-=item Numerical arrays, not strings
-
-We are dealing with sequences of numbers, not sequences of characters. This
-leads to some significant differences. With character-based regular
-expressions, we are looking for specific characters or collections of
-characters. With numerical data, we will rarely look for specific values;
-instead we will look for sequences of data that have certain properties.
-
-=item Different kinds of clustering
-
-With string regular expressions, it is not very common to match a string
-against patternA *and* patternB. Usually one pattern is a strict subset of
-the other. This is not necessarily the case with numerical regular
-expressions. For example, you may want to match against data that is both
-positive and which has a negative slope. As such, this numerical regular
-expression library lets you specify how you want collections of regular
-expressions to be matched: A OR B OR C, A AND B AND C, A THEN B THEN C, etc.
-
-Perl gets around this by assuming A THEN B THEN C, and using the infix OR
-operator. I could do the same and supply an infix AND operator, but then I'd
-have to create a concise syntax... see the next point.
-
-=item No concise syntax
-
-In Perl, you construct your regular expressions with a very concise string.
-Perl then interprets the string and generates a regular expression object
-from that string. This module is the first of its kind, as far as the author
-is aware, so there is no clear idea of what would constitute a useful or
-smart notation. Furthermore, it is also clear that end users will have all
-sorts of matching criteria that I could never hope to anticipate. Rather
-than try to impose an untested regular expression notation, this module
-simply lets you construct the regular expression object directly.
-
-=back
-
 
 
 
@@ -564,11 +467,15 @@ must be capable of running its C<_prep> method.
 
 =cut
 
-# Keepin' it simple:
 func _new ($class, @args) {
 	croak("Internal Error: args to NRE::_new must have a class name and then key => value pairs")
 		unless @args % 2 == 0;
-	return bless {@args}, $class;
+	my $self = bless {@args}, $class;
+	
+	# Add a stack for everything that needs to be stashed:
+	$self->{"old_$_"} = [] foreach $self->_to_stash;
+	
+	return $self;
 }
 
 =item _prep ($piddle)
@@ -598,7 +505,7 @@ the parent regex to call C<_cleanup> for you. (working here - make sure the
 documentation for NRE::Grouped details what Grouped regexes are supposed to
 do with C<_prep> return values.)
 
-working here - have the containers call _store_match
+working here - have the *containers* call _store_match
 
 Your regex may still be querried afterwards for a match by
 C<get_offsets_for> or C<get_slice_for>, regardless of the return value of
@@ -609,19 +516,70 @@ The C<_prep> method is called as the very first step in C<apply>.
 
 =cut
 
+# Make sure this only gets run once per call to apply:
 method _prep ($piddle) {
-	$self->_clear_stored_match;
+	return 1 if $self->{is_prepping};
+	$self->{is_prepping} = 1;
+	
+	$self->_stash() if defined $self->{piddle};
+	
+	# Set defaults for all of the items in the stash except min_size and
+	# max_size, which must be set by the derived class's _prep
+	# working here - make sure that last requirement is documented
+	$self->{left_matches} = [];
+	$self->{right_matches} = [];
 	$self->{piddle} = $piddle;
 	return 1;
 }
 
+method _to_stash () {
+	return qw (piddle min_size max_size);
+}
+
+=item _stash
+
+working here - rewrite, this realy *is* an internal function
+
+This is what is called when you need to stash old copies of internal data.
+This happens when your regex is used as a smaller part of a regex, and also
+when it is called within the execution of a condition. Basically, if you 
+override C<_prep> to initialize any internal data during C<_prep>, you must
+override C<_stash> to back it up.
+
+When you override this method, you must call the parent with
+C<< $self->SUPER::_stash($piddle) >> in your overridden method. Otherwise,
+internal data needed by the base class will not be properly backed up.
+
+=cut
+
+method _stash () {
+	# Stash everything:
+	foreach ($self->_to_stash) {
+		push @{$self->{"old_$_"}}, $self->{$_};
+	}
+	
+	# Store the match stack, if appropriate:
+	if (defined $self->{name}) {
+		push @{$self->{old_left_matches}}, $self->{left_matches};
+		push @{$self->{old_right_matches}}, $self->{right_matches};
+	}
+}
+
+method _post_prep () {
+	delete $self->{is_prepping};
+}
+
 =item _min_size, _max_size
 
-These functions return lengths indicating the minimum and maximum number of
-elements that your regex is capable of matching. The default behavior is to
-consult whatever values are in C<< $self->{min_size} >> and
-C<< $self->{max_size} >>, respectively, so your best course of action is to
-save the min and max sizes in those internal keys.
+These are getters and setters for the current lengths that indicate the
+minimum and maximum number of elements that your regex is capable of
+matching. The base class expects these to be set during the C<_prep> phase
+after afterwards consults whatever was stored there. Because of the
+complicated stack management, you would be wise to stick with the base class
+implementations of these functions.
+
+working here - make sure grouped regexes properly set these during the
+_prep phase.
 
 Note that at the moment, C<_min_size> and C<_max_size> are not querried
 during the actual operation of the regex. In other words, there's little
@@ -629,15 +587,19 @@ point in overriding these methods at given the current architecture of the
 regex engine at the moment.
 
 You are guaranteed that C<_prep> will have been run before these methods are
-run, and they will not be run if C<_prep> returned a false value.
+run, and they will not be run if C<_prep> returned a false value. If you
+call the base class's prep, you are also guaranteed that if min_size or
+max_size are keys in the object, they will be the default values.
 
 =cut
 
-method _min_size () {
+method _min_size ($new_value?) {
+	$self->{min_size} = $new_value if defined $new_value;
 	return $self->{min_size};
 }
 
-method _max_size () {
+method _max_size ($new_value?) {
+	$self->{max_size} = $new_value if defined $new_value;
 	return $self->{max_size};
 }
 
@@ -651,9 +613,35 @@ without dying.
 
 =cut
 
+use PDL::Lite;
+
 method _cleanup () {
-	delete $self->{min_size};
-	delete $self->{max_size};
+	return if $self->{is_cleaning};
+	$self->{is_cleaning} = 1;
+
+	# finalize the match stack
+	$self->{final_left_matches} = PDL->pdl($self->{left_matches});
+	$self->{final_right_matches} = PDL->pdl($self->{right_matches});
+	
+	# Unstash everything:
+	$self->_unstash if defined $self->{old_piddles}->[0];
+}
+
+method _unstash () {
+	# Unstash everything:
+	foreach ($self->_to_stash) {
+		$self->{$_} = pop @{$self->{"old_$_"}};
+	}
+	
+	# Restore the previous match stack, if appropriate:
+	if (defined $self->{name}) {
+		$self->{left_matches} = pop @{$self->{old_left_matches}};
+		$self->{right_matches} = pop @{$self->{old_right_matches}};
+	}
+}
+
+method _post_cleanup () {
+	delete $self->{is_cleaning};
 }
 
 =back
@@ -677,8 +665,8 @@ respectively, but only if the regex is named.
 method _store_match ($left, $right) {
 	# Only store the match if this is named
 	return unless exists $self->{name};
-	$self->{matched_left} = $left;
-	$self->{matched_right} = $right;
+	push @{$self->{left_matches}}, $left;
+	push @{$self->{right_matches}}, $right;
 }
 
 =item _clear_stored_match
@@ -695,8 +683,8 @@ addition to clearing their own values.
 
 method _clear_stored_match () {
 	return 0 unless exists $self->{name};
-	delete $self->{matched_left};
-	delete $self->{matched_right};
+	pop @{$self->{left_matches}};
+	pop @{$self->{right_matches}};
 	return 0;
 }
 
@@ -711,6 +699,64 @@ If you override this
 Convenience wrapper around C<get_offsets_for> which returns a slice
 corresponding to the matched indices. This returns the undefined value (NOT
 a null piddle) if the match failed or if the match has zero width.
+
+=item _add_name ($hashref)
+
+This method adds this regex's name (along with a reference to itself) to the
+supplid hashref. This serves two purposes: first, it gives the owner a fast
+way to look up named references if either of the above accessors are called.
+Second, it provides a means at construction time (as opposed to evaluation
+time) to check that no two regexes share the same name. If you overload this
+method, you should be sure to add your name and reference to the list (if
+your regex is named) and if yours is a grouping regex, you should also check
+for and add all of your childrens' names. Note that if your regex's name is
+already taken, you should croak with a meaningful message, like
+
+ Found multiple regular expressions named $name.
+
+working here - discuss more in the group discussion
+
+=cut
+
+method _add_name_to ($hashref) {
+	return unless exists $self->{name};
+	
+	my $name = $self->{name};
+	# check if the name exists:
+	croak("Found multiple regular expressions named $name")
+		if exists $hashref->{$name} and $hashref->{$name} != $self;
+	# Add self to the hashref under $name:
+	$hashref->{$name} = $self;
+}
+
+=item _get_offsets
+
+This internal function returns two piddles of this object's left and right
+offsets, if the regex matched on the previous application, and an empty list
+if not. This function should only be called internally by get_offsets_for,
+which knows which object goes with which name.
+
+If you attempt to call this on an unnamed regex, this will throw an error
+saying:
+
+ Called _get_offsets on regex that has no name!
+
+You should only overload this function if you intend to alter how your
+class handles its offset memory management.
+
+=cut
+
+method _get_offsets () {
+	croak("Called _get_offsets on regex that has no name!")
+		unless defined $self->{name};
+	
+	# Return the stored results if this regex matched:
+	return ($self->{final_left_matches}, $self->{final_right_matches})
+		unless $self->{final_left_matches}->isempty;
+	
+	# This regex didn't match, so return nothing:
+	return;
+}
 
 =back
 
@@ -738,12 +784,6 @@ func _new ($class, @args) {
 	my $self = NRE::_new($class, @args);
 	
 	# Parse the quantifiers:
-	$self->_parse_quantifiers;
-	
-	return $self;
-}
-
-method _parse_quantifiers () {
 	my ($ref) = delete $self->{quantifiers};
 	# Make sure the caller supplied a quantifiers key and that it's correct:
 	croak("Quantifiers must be specified a defined value associated with key [quantifiers]")
@@ -774,11 +814,11 @@ method _parse_quantifiers () {
 		}
 	}
 	
-	print "Got quantifiers as $ref->[0] and $ref->[1]\n" if $NRE::Verbose;
-	
 	# Put the quantifiers in self:
 	$self->{min_quant} = $ref->[0];
 	$self->{max_quant} = $ref->[1];
+	
+	return $self;
 }
 
 # Prepare the current quantifiers:
@@ -786,51 +826,53 @@ method _prep ($piddle) {
 	# Call the base class's prep function:
 	NRE::_prep($self, $piddle);
 	
-	# Compute and store the low and high quantifiers:
+	# Compute and store the min and max quantifiers:
 	my $N = $piddle->dim(0);
-	foreach (qw(min max)) {
-		my $quantifier = $self->{$_ . "_quant"};
-		my $label = $_ . "_size";
-		
-		if ($quantifier =~ s/%$//) {
-			$self->{$label} = int(($N - 1) * ($quantifier / 100.0));
-		}
-		elsif ($quantifier < 0) {
-			$self->{$label} = int($N + $quantifier);
-		}
-		else {
-			$self->{$label} = int($quantifier);
-		}
+	my ($min_size, $max_size);
+	my $min_quant = $self->{min_quant};
+	my $max_quant = $self->{max_quant};
+	
+	if ($min_quant =~ s/%$//) {
+		$min_size = int(($N - 1) * ($min_quant / 100.0));
+	}
+	elsif ($min_quant < 0) {
+		$min_size = int($N + $min_quant);
+	}
+	else {
+		$min_size = int($min_quant);
+	}
+	if ($max_quant =~ s/%$//) {
+		$max_size = int(($N - 1) * ($max_quant / 100.0));
+	}
+	elsif ($max_quant < 0) {
+		$max_size = int($N + $max_quant);
+	}
+	else {
+		$max_size = int($max_quant);
 	}
 	
 	# We could have a number of issues with scalar quantifiers (as opposed
 	# to percentage quantifiers), that I need to check:
 	if (
-			   $N < $self->{min_size}		# base piddle is too small
-			or $self->{min_size} > $N		# min_size too large
-			or $self->{min_size} < 0		# min_quant was too negative
-			or $self->{max_size} > $N		# max_size too large
-			or $self->{max_size} < 0		# max_quant too negative
-			or $self->{max_size}			# invalid
-					< $self->{min_size}	#    range
+			   $N < $min_size			# base piddle is too small
+			or $min_size > $N			# min_size too large
+			or $min_size < 0			# min_quant was too negative
+			or $max_size > $N			# max_size too large
+			or $max_size < 0			# max_quant too negative
+			or $max_size < $min_size	# invalid range
 	) {
-		delete $self->{max_size};
-		delete $self->{min_size};
 		return 0;
 	}
 	
+	# If we're good, store the sizes:
+	$self->_min_size($min_size);
+	$self->_max_size($max_size);
 	return 1;
 }
 
-# No _apply, that must be supplied by the derived classes. The inheretted
-# cleanup needs to be ammended:
-method _cleanup () {
-	# Call the base class's cleanup function:
-	NRE::_cleanup($self);
-	# Remove the min and max sizes:
-	delete $self->{min_size};
-	delete $self->{max_size};
-}
+# I don't need to override _stash or _cleanup because they already handle
+# the size information. Also, I do not supply an _apply because that must be
+# provided by the derived classes.
 
 package NRE::Any;
 use parent -norequire, 'NRE::Quantified';
@@ -847,7 +889,7 @@ Creates a regex that matches any value.
 
 sub NRE::ANY {
 	croak("NRE::ANY takes one or two optional arguments: NRE::ANY([[name], quantifiers])")
-		if @_ == 0 or @_ > 2;
+		if @_ > 2;
 	
 	# Get the arguments:
 	my $name = shift if @_ == 2;
@@ -908,36 +950,17 @@ sub NRE::SUB {
 
 method _apply ($left, $right) {
 	# Get the current length that we are using:
-	my $size = $right - $left + 1;
+#	my $size = $right - $left + 1;
 	
-	# Fail if the current length is smaller than our minimum
-	return $self->_clear_stored_match if $size < $self->{min_size};
+#	# Fail if the current length is smaller than our minimum
+#	return 0 if $size < $self->_min_size;
 	
 	# Apply the rule and see what we get:
 	my $consumed = $self->{subref}->($self->{piddle}, $left, $right);
 	
-	croak("Subroutine regex consumed more than it was allowed to consume")
-		unless $consumed <= $size;
+#	croak("Subroutine regex consumed more than it was allowed to consume")
+#		unless $consumed <= $size;
 	
-	# Next check for negative return values as these mean "Try a length
-	# shorter than the current one."
-	if ($consumed < 0) {
-		# Make sure the shorter length would still fall within the
-		# acceptable bounds:
-		return $self->_clear_stored_match
-			if $size + $consumed < $self->{min_size};
-		
-		# Looks good, return the recommended shortening:
-		return $consumed;
-	}
-	
-	# A nonnegative return value may still be less than $size. If that is
-	# the case, or if the return value is a numeric zero, return a failure.
-	return $self->_clear_stored_match
-		if not $consumed or $consumed < $self->{min_size};
-	
-	# Looks like we have a bonefied match. Store and return it:
-	$self->_store_match($left, $left + $consumed - 1);
 	return $consumed;
 }
 
@@ -974,11 +997,11 @@ method _apply ($left, $right) {
 	croak("Zero-width assertions must consume zero elements")
 		unless $consumed == 0;
 	
-	# presently woring here
-	return $self->_clear_stored_match unless $consumed;
+#	# presently woring here
+#	return $self->_clear_stored_match unless $consumed;
 	
 	# here, $right should be $left - 1:
-	$self->_store_match($left, $right);
+#	$self->_store_match($left, $right);
 	
 	return $consumed;
 }
@@ -991,9 +1014,9 @@ use warnings;
 use Method::Signatures;
 use Carp;
 
-func _new ($class, %args) {
+func _new (@args) {
 	# Build the new object:
-	my $self = bless \%args, $class;
+	my $self = NRE::_new(@args);
 	
 	croak("Grouped regexes must supply a key [regexes]")
 		unless defined $self->{regexes};
@@ -1001,16 +1024,25 @@ func _new ($class, %args) {
 	croak("You must give me at least one regex in your group")
 		unless @{$self->{regexes}} > 0;
 	
-	# Check the regexes:
+	# Check the regexes and add their names:
+	$self->{names} = {};
 	foreach (@{$self->{regexes}}) {
-		my $good = eval {$_->isa('NRE')};
-		croak("Invalid regex") unless $good;
+		croak("Invalid regex") unless eval {$_->isa('NRE')};
+		$_->_add_name_to($self->{names});
 	}
+	
+	# Adding self to the list of names, if self is named, to simplify the
+	# logic later:
+	$self->{names}->{$self->{name}} = $self if defined $self->{name};
 	
 	return $self;
 }
 
 # Derivatives must supply their own _apply
+
+method _to_stash () {
+	return qw(regexes_to_apply positive_matches), $self->SUPER::_to_stash;
+}
 
 # _prep will call _prep on all its children and keep track of those that
 # return true values. Success or failure is based upon the inherited method
@@ -1019,30 +1051,29 @@ method _prep ($piddle) {
 	# Call the base class's prep function:
 	NRE::_prep($self, $piddle);
 	
-	# Call the prep function for each of them, keeping track of whether or
-	# not we fail.
+	# Call the prep function for each of them, keeping track of all those
+	# that succeed:
 	my @succeeded;
 	foreach (@{$self->{regexes}}) {
 		push @succeeded, $_ if $_->_prep($piddle);
 	}
 	
-	# Store the regexes to apply and trigger cleanup if it's no good:
+	# Store the regexes to apply. If _prep_success returns zero, we do not
+	# need to call cleanup: that will be called by our parent:
 	$self->{regexes_to_apply} = \@succeeded;
-	if (not $self->_prep_success) {
-		$self->_cleanup;
-		return 0;
-	}
+	return 0 unless $self->_prep_success;
 	
 	# Cache the minimum and maximum number of elements to match:
 	$self->_minmax;
-	$self->{max_size} = $piddle->dim(0)
-		if $self->{max_size} > $piddle->dim(0);
+	$self->_max_size($piddle->dim(0)) if $self->_max_size > $piddle->dim(0);
 	# Check those values for sanity:
-	if ($self->{max_size} < $self->{min_size}
-			or $self->{min_size} > $piddle->dim(0)) {
-		$self->_cleanup;
+	if ($self->_max_size < $self->_min_size
+			or $self->_min_size > $piddle->dim(0)) {
 		return 0;
 	}
+	
+	# working here - ensure to add to use this
+	$self->{positive_matches} = [];
 	
 	# If we're here, then all went well, so return as much:
 	return 1;
@@ -1054,45 +1085,75 @@ method _prep_success () {
 }
 
 method _cleanup () {
-	# Call the base class's cleanup function:
-	NRE::_cleanup($self);
+	return if $self->{is_cleaning};
 	
-	# Call the cleanup method for each child regex:
+	# Call the cleanup method for *all* child regexes:
 	foreach (@{$self->{regexes}}) {
 		$_->_cleanup;
 	}
-	# do *not* remove the regexes_to_apply since we'll use it in named
-	# retrieval:
-	# delete $self->{regexes_to_apply};
+	
+	# Call the base class's cleanup function:
+	NRE::_cleanup($self);
 }
 
+# Needs to call children's post_prep
+method _post_prep () {
+	$self->SUPER::_post_prep;
+	foreach my $regex (@{$self->{regexes_to_apply}}) {
+		$regex->_post_prep;
+	}
+}
+
+# Post cleanup is innocuous, so call it on all the regexes:
+method _post_cleanup () {
+	$self->SUPER::_post_cleanup;
+	foreach (@{$self->{regexes}}) {
+		$_->_post_cleanup;
+	}
+}
+
+# Clear stored match assumes that all the regexes matched, so this will
+# need to be overridden for OR:
 method _clear_stored_match() {
 	# Call the parent's method:
 	$self->SUPER::_clear_stored_match;
-	# Call all the grouped regexes' clear function:
-	foreach my $regex (@{$self->{regexes_to_apply}}) {
-		$regex->_clear_stored_match;
-	}
+	$self->_clear_matched_regexes;
 	# Always return zero:
 	return 0;
 }
 
-method get_offsets_for ($name) {
-	# Return this group's indices if it matches the request:
-	if (my ($left, $right) = $self->SUPER::get_offsets_for($name)) {
-		return ($left, $right);
-	}
-	
-	# Check every sub-regex.
-	foreach my $regex (@{$self->{regexes_to_apply}}) {
-		if (my ($left, $right) = $regex->get_offsets_for($name)) {
-			return ($left, $right);
-		}
-	}
-	
-	# Apparently we didn't find it:
-	return;
+method _save_as_matched ($left, $right, @regexes) {
+	push @{$self->{positive_matches}}, @regexes;
+	$_->_store_match($left, $right) foreach @regexes;
 }
+
+method _clear_matched_regexes () {
+	# Call all the positively matched regexes' clear function:
+	foreach my $regex (@{$self->{positive_matches}}) {
+		$regex->_clear_stored_match;
+	}
+}
+
+method get_offsets_for ($name) {
+	# This is a user-level function. Croak if the name does not exist.
+	croak("Unknown regex name $name") unless exists $self->{names}->{$name};
+	
+	return $self->{names}->{$name}->_get_offsets;
+}
+
+# This is only called by regexes that *hold* this one, in the process of
+# building their own name tables. Add this and all children to the hashref.
+method _add_name_to ($hashref) {
+	# Go through each named value in this group's collection of names:
+	while( my ($name, $ref) = each %{$self->{names}}) {
+		croak("Found multiple regular expressions named $name")
+			if defined $hashref->{$name} and $hashref->{$name} != $ref;
+		
+		$hashref->{$name} = $ref;
+	}
+}
+
+
 
 =head2 NRE::OR
 
@@ -1120,8 +1181,8 @@ method _minmax () {
 		$full_min = $min if not defined $full_min or $full_min > $min;
 		$full_max = $max if not defined $full_max or $full_max < $max;
 	}
-	$self->{min_size} = $full_min;
-	$self->{max_size} = $full_max;
+	$self->_min_size($full_min);
+	$self->_max_size($full_max);
 }
 
 # Must override the default _prep_success method. If we have *any* regexes
@@ -1134,21 +1195,21 @@ method _prep_success () {
 # success that we find:
 method _apply ($left, $right) {
 	my @regexes = @{$self->{regexes_to_apply}};
-	for (my $i = 0; $i < @regexes; $i++) {
-		my $consumed = $regexes[$i]->_apply($left, $right);
+	foreach my $regex (@regexes) {
+		my $consumed = $regex->_apply($left, $right);
 		
-		# If it matches, be sure to store the match and mark all the rest as
-		# non-matching:
+		# If it matches, be sure to clear out previous stored matches call
+		# the _store_match on this regex, and store it:
 		if ($consumed) {
-			$self->_store_match($left, $right);
-			for ($i++; $i < @regexes; $i++) {
-				$regexes[$i]->_clear_stored_match;
-			}
+			$self->_clear_matched_regexes;
+			$self->_save_as_matched($left, $right, $regex);
 			return $consumed;
 		}
 	}
 	return 0;
 }
+
+# working here - clear stored match
 
 func NRE::OR (@regexes) {
 	return NRE::Or->_new(regexes => \@regexes);
@@ -1207,7 +1268,7 @@ method _apply ($left, $right) {
 	for (my $i = 0; $i < @regexes; $i++) {
 		my $consumed = $regexes[$i]->_apply($left, $right);
 		# Return failure immediately:
-		return $self->_clear_stored_match unless $consumed;
+		return 0 unless $consumed;
 		
 		# If it didn't fail, see if we need to adjust the goal posts:
 		if ($consumed < $consumed_length) {
@@ -1224,9 +1285,7 @@ method _apply ($left, $right) {
 	# If we've reached here, we have a positive match. Have all the
 	# sub-sub-regexes store it. I do this outside the loop to avoid
 	# unnecessary storage and match operations.
-	foreach (@regexes) {
-		$_->_store_match($left, $consumed_length + $left - 1); 
-	}
+	$self->_save_as_matched($left, $consumed_length + $left - 1, @regexes);
 	return $consumed_length;
 }
 
@@ -1242,8 +1301,8 @@ method _minmax () {
 		$full_min = $min if not defined $full_min or $full_min < $min;
 		$full_max = $max if not defined $full_max or $full_max > $max;
 	}
-	$self->{min_size} = $full_min;
-	$self->{max_size} = $full_max;
+	$self->_min_size($full_min);
+	$self->_max_size($full_max);
 }
 
 sub NRE::AND {
@@ -1281,8 +1340,6 @@ use Carp;
 method _apply ($left, $right) {
 	my $consumed
 		= $self->_seq_apply($left, $right, @{$self->{regexes_to_apply}});
-	# Clear the stored matches if we failed:
-	$self->_clear_stored_match unless $consumed;
 	return $consumed;
 }
 
@@ -1293,7 +1350,8 @@ method _seq_apply ($left, $right, @regexes) {
 	# Handle edge case of this being the only regex:
 	if (@regexes == 0) {
 		my $consumed = $regex->_apply($left, $right);
-		$regex->_store_match($left, $left + $consumed - 1) if $consumed;
+		$self->_save_as_matched($left, $left + $consumed - 1, $regex)
+			if $consumed;
 		return $consumed;
 	}
 	
@@ -1350,7 +1408,7 @@ method _seq_apply ($left, $right, @regexes) {
 		
 		# If we are here, then it succeeded and we have our return values.
 		# Store the left match (the right one was already stored):
-		$regex->_store_match($left, $left + $size - 1);
+		$self->_save_as_matched($left, $left + $size - 1, $regex);
 		
 		# Be sure to return "0 but true" if that was what was returned:
 		return $left_consumed if $left_consumed + $right_consumed == 0;
@@ -1370,8 +1428,8 @@ method _minmax () {
 		$full_min += $regex->_min_size;
 		$full_max += $regex->_max_size;
 	}
-	$self->{min_size} = $full_min;
-	$self->{max_size} = $full_max;
+	$self->_min_size($full_min);
+	$self->_max_size($full_max);
 }
 
 sub NRE::SEQUENCE {
@@ -1382,93 +1440,260 @@ sub NRE::SEQUENCE {
 	return NRE::Sequence->_new(name => $name, regexes => \@_)
 }
 
+# THE magic value that indicates this module compiled correctly:
+1;
 
-# Unit tests to follow:
-return 1 if caller;
+=head1 NOTES
 
-package main;
-use PDL;
-$NRE::Verbose = 1;
- # Build the regular expression object first:
- my $positive_re = NRE::SUB(sub {
-     # Supplied args are the piddle, the left slice offset,
-     # and the right slice offset:
-     my ($piddle, $left, $right) = @_;
-     # A simple check for positivity:
-     return ($right - $left + 1)
-         if all $piddle->slice("$left:$right") > 0;
- });
- 
- # A faster check for positivity:
- my $positive_re_fast = NRE::SUB(sub {
-     # Supplied args are the piddle, the left slice offset,
-     # and the right slice offset:
-     my ($piddle, $left, $right) = @_;
-     
-     # This should not fail if called as a is *not* a zero-width assertion:
-     
-     
-     # Ensure that the first element is positive:
-     return 0 if $piddle->at($left) > 0;
-     
-     my $sub_piddle = $piddle->slice("$left:$right");
-     # See if there are any negative values at all:
-     if (any $sub_piddle <= 0) {
-         # Find the first zero crossing:
-         my $switch_offset = which($sub_piddle < 0)->min;
-         # The offset of the first zero crossing
-         # corresponds with the number of matched values
-         return $switch_offset;
-     }
-     # If no negative values, then the whole thing matches:
-     return $right - $left;
- });
- 
- # Find the number of (contiguous) elements that match the regex:
- my $data = sequence(20);
- my ($matched, $offset) = $positive_re->apply($data);
- print "Matched $matched elements, starting from $offset\n";
+Using this module will look a litte bit different from classic regular
+expressions for many reasons:
 
-=head1 Concise Syntax Ideas
+=over
+
+=item Numerical arrays, not strings
+
+We are dealing with sequences of numbers, not sequences of characters. This
+leads to some significant differences. With character-based regular
+expressions, we are looking for specific characters or collections of
+characters. With numerical data, we will rarely look for specific values;
+instead we will look for sequences of data that have certain properties.
+
+=item Different kinds of clustering
+
+With string regular expressions, it is not very common to match a string
+against patternA *and* patternB. Usually one pattern is a strict subset of
+the other. This is not necessarily the case with numerical regular
+expressions. For example, you may want to match against data that is both
+positive and which has a negative slope. As such, this numerical regular
+expression library lets you specify how you want collections of regular
+expressions to be matched: A OR B OR C, A AND B AND C, A THEN B THEN C, etc.
+
+Perl gets around this by assuming A THEN B THEN C, and using the infix OR
+operator. I could do the same and supply an infix AND operator, but then I'd
+have to create a concise syntax... see the next point.
+
+=item No concise syntax
+
+In Perl, you construct your regular expressions with a very concise string.
+Perl then interprets the string and generates a regular expression object
+from that string. This module is the first of its kind, as far as the author
+is aware, so there is no clear idea of what would constitute a useful or
+smart notation. Furthermore, it is also clear that end users will have all
+sorts of matching criteria that I could never hope to anticipate. Rather
+than try to impose an untested regular expression notation, this module
+simply lets you construct the regular expression object directly.
+
+=back
+
+=head1 TODO
+
+These are items that are very important or even critical to getting the
+regular expression engine to operate properly.
+
+It seems that the underlying issue is that a regex object 
+
+=over
+
+=item Multiple copies of the same regex
+
+It can easily happen that, while building a regex structure, I include a
+previously constructed regex object multiple times. This should work just
+fine as long as (1) the regex is not named and (2) the regex does not hold
+any critical information internally. It seems reasonable to assume that a
+complicated regex could use some sort of caching strategy, and if that's the
+case, how do we handle it? Or, do we simply leave it to the programmer of
+the complicated regex to watch out for such situations with some tricky code
+in the C<_prep> function?
+
+I believe that multiple copies of the same regex (and an implementation of
+grouping quantifiers that would depend upon this) can be solved by doing
+the following:
+
+First, keep a stack of matched offests. Matches should only be be run in
+sequence, so if a match fails, it should be able to pop off the last element
+of the stack.
+
+Second, keep the stack under a seperate key from the final output results.
+This way, C<_cleanup> can copy the current stack to the output results and
+clear off the stack, leaving any out scope ready to work.
+
+Third, when named matches are requested, return two arrays of left and right
+offsets rather than two integers. Actually, we can be a bit better here: if
+the stack has only a single entry, then return the integers. Otherwise
+return array refs. Or, even better: return piddles with the offsets!
+
+On the other hand, if slices are requested... let's just drop support for
+slices.
+
+=item Regexes within Rules
+
+Even more likely and problematic than the above problem is the possibility
+that a particular regex object is used within a regex as well as B<within
+the condition of neighboring regex>. This is very much a problem since a
+regex used within the condition of another will B<not> be name-clash
+detected and it will fiddle with internal data, including the current piddle
+of interest.
+
+Initially, I thought it would be adequate to implement a stack system on
+C<_prep> and C<_cleanup>. However, named regexes need to be able to return
+their offsets after C<_cleanup> is called, so these must B<not> be
+cleaned-up. To solve this problem, I need to determine some means for the
+regex to realize that it has switched contexts, and then stash or unstash
+the internal information like the match offsets and the piddle (and anything
+else that's important.)
+
+=item Concise Syntax Ideas
 
 A potential concise syntax might look like this:
 
  $regex = qnre{
-    Optional::Package::Name           # package name
-    reg1(args)[quantifiers]           # default cluster is a sequence
-    reg2:named(args)[quantifiers]     # naming (capturing) a regex
-    &<reg3(args)[quantifiers] reg4()> # AND group
-    |< whatever >                     # OR group
-    %< whatever >                     # XOR group
-    $< whatever >                     # SEQUENCE group
-    &to_retrieve< whatever >          # a named (captured) AND group
-    reg5:othername                    # another captured regex
-    $< New::Package                   # groups can specify their own scope
-       $reg1                          # these regexes are defined
-       $reg2                          #   in New::Package, not
-    >                                 #   Optional::Package::Name
+    # Comments and whitespace are allowed
+    
+    # If there is more than one regex in a row, the grouping
+    # is assumed to be a SEQUENCE group.
+    
+    # ---( Basics )---
+    # Perl scalars and lists are properly interpolated:
+    $my_regex_object
+    @my_regex_objects
+    
+    # barewords are assumed to be regex constructors
+    # and are called with the given args
+    reg1(args)
+    
+    # The interior of an argument list is pased *exactly* as is to the
+    # constructor:
+    reg2( value => $quantitiy, %other_args )
+    
+    # square bracket notation indicates the min
+    # and max length that a regex can match
+    reg1(args)[quantifiers]
+    
+    # ---( Prefixes )---
+    # Barewords are called as-is unless you specify an auto-prefix:
+    PDL::Regex::OneD::
+    
+    # Now these constructors have that prefix added so:
+    reg1(args)
+    # is interpreted as PDL::Regex::OneD::reg1(args)
+    
+    # You can explicitly resolve a constructor like so:
+    PDL::Regex::Extra::reg3(args)
+    
+    # To restore the original prefix, simply use two colons:
+    ::
+    
+    # ---( Quantifiers )---
+    # You can add square brackets immediately after a regex's args to
+    # indicate the min and max length. This set's reg2 to match between
+    # 1 and 50 elements:
+    reg2(args)[1, 50]
+    # This matches betwen 1% and 50% of the data set's length:
+    reg2(args)[1%, 50%]
+    # If the dataset is N elements long, this matches between 0.5 * N
+    # and N - 10 elements:
+    reg3(args)[50%, -10]
+    # Args are not required:
+    reg3[20%, -4]
+    # These two statements are equivalent:
+    reg3[50%, 100%]
+    reg3[50%, -0]
+    
+    # ---( Grouping )---
+    # Grouping is designated with a symbol and angle brackets:
+    &< ... regexes ... >       # AND group
+    |< ... >                   # OR group
+    %< ... >                   # XOR group
+    $< ... >                   # SEQUENCE group
+    
+    # Prefixing is lexically scoped and inherets from outside prefix
+    My::Prefix::      # Set the current prefix
+    reg1              # this is My::Prefix::reg1
+    $<
+       reg4           # this is My::Prefix::reg4
+       ::             # set no-prefix
+       reg1           # this is just reg1
+       reg2           # this is just reg2
+    >
+    reg3              # this is My::Prefix::reg3
+    
+    
+    # ---( Repeat counts )---
+    # In addition to setting quantifiers, you can also set repeat counts.
+    # Repeat count comes before a regex:
+    *reg1(args)             # zero-or-more copies of reg1
+    ?reg2                   # zero-or-one copies of reg2
+    +reg3[10%, 50%]         # one-or-more copies of reg3, each of which
+                            #   should consume between 10% and 50% of the
+                            #   length of the dataset
+    5:reg1(args)          # repeat exactly 5 times
+    [4, 6]:reg4           # repeat reg4 between 4 and 6 times
+    [4, ]:reg4            # repeat reg4 4 or more times
+    [, 4]:reg4            # repeat reg4 zero to 4 times
+    
+    
+    # ---( Naming and Capturing )---
+    # You can name any normal regex by adding .name immediately after the
+    # constructor name, before any arguments or quantifiers:
+    reg2.name
+    reg4.name(args)
+    reg5.name[5, 20%]
+    
+    # You can name any grouped regex by inserting the name between the
+    # symbol and the angle brackets:
+    $.my_sequence< ... >
+    |.my_or< ... >
+    # Spaces are allowed:
+    & . named < ... >
+    
+    # You can name a repetition by putting the name before the colon:
+    5.name:reg2
+    
+    # You can name both the repetition and the regex, but they must have
+    # different names:
+    [4,8].name:reg2.name2
+    
+    # Once named, you can insert a previous named regex like so:
+    \name
+    
+    
+    # ---( Clarifications )---
+    # Note, this statement is not formatted clearly:
+    regex(args)[repeat, count] 
+        :regex2(args)
+    # It means this:
+    regex(args)
+    [repeat, count]:regex2(args)
+    
  };
 
-If the first token looks like a package, then it is assumed to be the
-package in which all the regex constructors are defined. If no package is
-specified, the current package is assumed. After that, all tokens that look
-like standard identifiers are assumed to be constructors (in the specified
-package) that take the optional specified arguments and optional
-quantifiers. Angle brackets denote clusters of one sort or another, and the
-default clustering is a SEQUENCE cluster.
+I would use Devel::Declare to convert this into a set of nested
+constructors.
 
-Anything can be captured by preceeding it with @name. If the eventual match
-includes the capture, it can be retrieved with
+=head1 IDEAS
 
- my ($left, $right) = $regex->get_capture('name');
+This is the place where I put my ideas that I would like to implement, but
+which are not yet implemented and which are not critical to the sensible
+operation of the regular expression engine.
 
-which returns the left and right offsets of the captured region, or the
-undefined values if the capture's regex did not succeed. To check if a
-capture succeeded, simply use
+=over
 
- if ($regex->captured('name')) {
-     # do somethingd
- }
+=item Grouping quantifiers
+
+It would be nice to be able to combine quantifiers and groups. A major issue
+in this would be figuring out how to handle named captures for such a
+situation.
+
+=item OPTIMIZE Grouping
+
+Include some sort of OPTIMIZE grouping that attempts to partition the data
+in an optimal fashion using some sort of scoring mechanism?
+
+ # Find the optimal division between an exponential drop
+ # and a linear fit:
+ my $regex = NRE::OPTIMIZE($exponential_drop, $linear)
+
+=back
 
 =head1 SEE ALSO
 
@@ -1476,4 +1701,6 @@ Interesting article on finding time series that "look like" other time
 series:
 
 http://citeseerx.ist.psu.edu/viewdoc/download?doi=10.1.1.133.6186&rep=rep1&type=pdf
+
+
 

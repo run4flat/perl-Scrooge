@@ -3,12 +3,10 @@
 # _prep returns zero. This checks those guarantees by creating test regex
 # classes that track the behavior.
 
-use blib;
 use PDL;
 use strict;
 use warnings;
 use Test::More tests => 24;
-use blib;
 use PDL::Regex;
 
 ######################
