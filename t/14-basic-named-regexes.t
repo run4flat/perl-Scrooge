@@ -7,17 +7,17 @@ use PDL::Regex;
 use PDL;
 
 #############
-# NRE::Test #
+# PDL::Regex::Test #
 #############
 
 # A simple base class for testing that always matches $N_to_match with
 # offset $offset
 
-package NRE::Test;
-our @ISA = qw(NRE);
+package PDL::Regex::Test;
+our @ISA = qw(PDL::Regex);
 my ($N_to_match, $test_offset) = (10, 5);
-sub _min_size { $N_to_match }
-sub _max_size { $N_to_match }
+sub min_size { $N_to_match }
+sub max_size { $N_to_match }
 sub _apply {
 	my (undef, $left, $right) = @_;
 	return 0 if $left < $test_offset;
@@ -28,15 +28,15 @@ sub _apply {
 package main;
 
 ############################################
-# Test the basic operation of NRE::Test, 3 #
+# Test the basic operation of PDL::Regex::Test, 3 #
 ############################################
 
-my $test_regex = NRE::Test->_new;
+my $test_regex = PDL::Regex::Test->new;
 my $data = sequence(15);
 
 my ($matched, $offset) = $test_regex->apply($data);
-is($matched, $N_to_match, 'NRE::Test gives correct match');
-is($offset, $test_offset, 'NRE::Test gives correct offset');
+is($matched, $N_to_match, 'PDL::Regex::Test gives correct match');
+is($offset, $test_offset, 'PDL::Regex::Test gives correct offset');
 $test_offset++;
 $matched = $test_regex->apply($data);
 is($matched, undef, 'L = 10, Off = 6 fails for N = 15');
@@ -45,7 +45,7 @@ is($matched, undef, 'L = 10, Off = 6 fails for N = 15');
 # Test a named regex, 5 #
 #########################
 
-my $regex = NRE::Test->_new(name => 'test');
+my $regex = PDL::Regex::Test->new(name => 'test');
 $test_offset = 2;
 if ($regex->apply($data)) {
 	pass('regex matched where it should have matched');

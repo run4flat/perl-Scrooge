@@ -6,35 +6,36 @@ use Test::More tests => 36;
 use PDL::Regex;
 use PDL;
 
-#############
-# NRE::Test #
-#############
+####################
+# PDL::Regex::Test #
+####################
 
 # A simple base class for testing purposes. This makes it easy to adjust
 # the number of elements to match by simply changing the lexical variable
-# $N_to_match:
+# $N_to_match. It doesn't play well with the stash management, but I won't
+# be exercising that in this set of tests.
 
-package NRE::Test;
-our @ISA = qw(NRE);
+package PDL::Regex::Test;
+our @ISA = qw(PDL::Regex);
 my $N_to_match = 1;
-sub _min_size { $N_to_match }
-sub _max_size { $N_to_match }
+sub min_size { $N_to_match }
+sub max_size { $N_to_match }
 
 #############################################################
 #      Guaranteed single- and multi-valued matches - 11     #
 #############################################################
 
-package NRE::Test::SingleMatch;
-our @ISA = qw(NRE::Test);
+package PDL::Regex::Test::SingleMatch;
+our @ISA = qw(PDL::Regex::Test);
 sub _apply { $N_to_match }     # Always match specified number of elements
 
 package main;
 
 # ---( N = 1 )---
 
-my $single_value_regex = eval {NRE::Test::SingleMatch->_new};
+my $single_value_regex = eval {PDL::Regex::Test::SingleMatch->new};
 # Make sure the object was properly blessed:
-isa_ok($single_value_regex, 'NRE::Test::SingleMatch');
+isa_ok($single_value_regex, 'PDL::Regex::Test::SingleMatch');
 # Generate some data and run the regex:
 my $data = sequence(10);
 my ($matched, $offset) = $single_value_regex->apply($data);
@@ -83,8 +84,8 @@ my $N_offset_tries = 0;
 # Finally, note that, as with the previous class, the number of elements
 # to match is set by the lexical variable $N_to_match.
 
-package NRE::Test::Offset;
-our @ISA = qw(NRE::Test);
+package PDL::Regex::Test::Offset;
+our @ISA = qw(PDL::Regex::Test);
 # This is the function that does all the work; see above notes:
 sub _apply {
 	$N_offset_tries++;
@@ -94,8 +95,8 @@ sub _apply {
 }
 
 package main;
-my $offset_regex = eval {NRE::Test::Offset->_new};
-isa_ok($offset_regex, 'NRE::Test::Offset');
+my $offset_regex = eval {PDL::Regex::Test::Offset->new};
+isa_ok($offset_regex, 'PDL::Regex::Test::Offset');
 
 # ---( N_to_match = 1 )---
 
@@ -124,15 +125,15 @@ is($N_offset_tries, $first_good_offset + 1, 'Should succeed on N + 1th attempt')
 # length exceeds the number of elements given to it to match. Let's test
 # that behavior here:
 
-package NRE::Test::Croak;
-our @ISA = qw(NRE::Test);
+package PDL::Regex::Test::Croak;
+our @ISA = qw(PDL::Regex::Test);
 my $croak_apply_returns = $N_to_match;
 sub _apply { $croak_apply_returns };
 
 package main;
 # Create the new regex and make sure it's what we think it is:
-my $croak_regex = eval {NRE::Test::Croak->_new};
-isa_ok($croak_regex, 'NRE::Test::Croak');
+my $croak_regex = eval {PDL::Regex::Test::Croak->new};
+isa_ok($croak_regex, 'PDL::Regex::Test::Croak');
 
 # ---( croak_apply_returns = N_to_match )---
 
@@ -159,16 +160,16 @@ ok($@, 'Regex should croak when _apply returns too many elements');
 ############################################################
 
 # A failing regex:
-package NRE::Test::Fail;
+package PDL::Regex::Test::Fail;
 my $ran_failed = 0;
-our @ISA = qw(NRE);
-sub _min_size { 1 }
-sub _max_size { 1 }
+our @ISA = qw(PDL::Regex);
+sub min_size { 1 }
+sub max_size { 1 }
 sub _apply { $ran_failed++; 0 }
 
 package main;
-my $failing_regex = eval {NRE::Test::Fail->_new};
-isa_ok($failing_regex, 'NRE::Test::Fail');
+my $failing_regex = eval {PDL::Regex::Test::Fail->new};
+isa_ok($failing_regex, 'PDL::Regex::Test::Fail');
 
 # We have a failing regex, set $single_value_regex to succeed:
 $N_to_match = 3;
@@ -221,15 +222,15 @@ else {
 ############################################################
 
 # This makes sure that zero-but-true returns true:
-package NRE::Test::ZWA;
-our @ISA = qw(NRE);
-sub _min_size { 0 }
-sub _max_size { 0 }
+package PDL::Regex::Test::ZWA;
+our @ISA = qw(PDL::Regex);
+sub min_size { 0 }
+sub max_size { 0 }
 sub _apply { '0 but true' }
 
 package main;
-my $zwa_regex = eval {NRE::Test::ZWA->_new};
-isa_ok($zwa_regex, 'NRE::Test::ZWA');
+my $zwa_regex = eval {PDL::Regex::Test::ZWA->new};
+isa_ok($zwa_regex, 'PDL::Regex::Test::ZWA');
 
 my $success = $zwa_regex->apply($data) ? 1 : 0;
 ok($success, 'Zero-width matches return boolean true in scalar context');

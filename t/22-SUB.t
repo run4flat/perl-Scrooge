@@ -17,7 +17,7 @@ my $match_all_subref = sub {
 	return $right - $left + 1;
 };
 
-my $match_positive = NRE::SUB(sub {
+my $match_positive = SUB(sub {
 	# Supplied args are the piddle, the left slice offset,
 	# and the right slice offset:
 	my ($piddle, $left, $right) = @_;
@@ -46,9 +46,9 @@ my $match_positive = NRE::SUB(sub {
 
 # Check that the explicit constructor works:
 $@ = '';
-my $explicit = eval {NRE::Sub->_new(quantifiers => [1,1], subref => $match_all_subref)};
-is ($@, '', 'NRE::Sub::->_new does not croak');
-isa_ok($explicit, 'NRE::Sub');
+my $explicit = eval {PDL::Regex::Sub->new(quantifiers => [1,1], subref => $match_all_subref)};
+is ($@, '', 'PDL::Regex::Sub::->new does not croak');
+isa_ok($explicit, 'PDL::Regex::Sub');
 my ($matched, $offset) = $explicit->apply($data);
 is($matched, 1, 'Properly interprets single-element quantifier and runs subref');
 is($offset, 0, 'Correctly identified first element as matching');
@@ -57,9 +57,9 @@ is($offset, 0, 'Correctly identified first element as matching');
 
 # Make sure the simple constructor works and uses quantifiers [1,1]
 $@ = '';
-my $simple = eval {NRE::SUB($match_all_subref)};
-is($@, '', 'NRE::SUB does not croak');
-isa_ok($simple, 'NRE::Sub');
+my $simple = eval {SUB($match_all_subref)};
+is($@, '', 'SUB does not croak');
+isa_ok($simple, 'PDL::Regex::Sub');
 ($matched, $offset) = $simple->apply($data);
 is($matched, 1, 'Simple constructor defaults to a single-element match');
 is($offset, 0, 'Simple constructor correctly identified first element as matching');

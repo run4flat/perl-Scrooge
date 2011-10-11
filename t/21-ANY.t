@@ -11,9 +11,9 @@ my $data = sequence(20);
 
 # Check that the explicit constructor works:
 $@ = '';
-my $explicit = eval {NRE::Any->_new(quantifiers => [1,1])};
-is($@, '', 'NRE::Any->_new does not croak');
-isa_ok($explicit, 'NRE::Any') or diag($@);
+my $explicit = eval {PDL::Regex::Any->new(quantifiers => [1,1])};
+is($@, '', 'PDL::Regex::Any->new does not croak');
+isa_ok($explicit, 'PDL::Regex::Any') or diag($@);
 my ($matched, $offset) = $explicit->apply($data);
 is($matched, 1, 'Properly interprets single-element quantifier');
 is($offset, 0, 'Correctly identified first element as matching');
@@ -22,9 +22,9 @@ is($offset, 0, 'Correctly identified first element as matching');
 
 # Make sure the simple constructor works and uses quantifiers [1,1]
 $@ = '';
-my $simple = eval {NRE::ANY()};
-is($@, '', 'NRE::ANY does not croak');
-isa_ok($simple, 'NRE::Any');
+my $simple = eval {ANY()};
+is($@, '', 'ANY does not croak');
+isa_ok($simple, 'PDL::Regex::Any');
 ($matched, $offset) = $simple->apply($data);
 is($matched, 1, 'Simple constructor defaults to a single-element match');
 is($offset, 0, 'Simple constructor correctly identified first element as matching');

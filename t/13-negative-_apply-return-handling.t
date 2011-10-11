@@ -9,13 +9,14 @@ use Test::More tests => 23;
 use PDL::Regex;
 use PDL;
 
-#############
-# NRE::Test #
-#############
+####################
+# PDL::Regex::Test #
+####################
+
 # A simple, lexically tweakable regex class that tracks the number of times
 # _apply is called.
-package NRE::Test;
-our @ISA = qw(NRE);
+package PDL::Regex::Test;
+our @ISA = qw(PDL::Regex);
 my ($apply_returns, $data, $min_size, $max_size);
 my @got;
 sub _prep {
@@ -27,8 +28,8 @@ sub _apply {
 	push @got, [@_];
 	return $apply_returns;
 }
-sub _min_size { $min_size }
-sub _max_size { $max_size }
+sub min_size { $min_size }
+sub max_size { $max_size }
 
 package main;
 
@@ -49,7 +50,7 @@ sub build_expected {
 	return \@to_return;
 }
 
-my $regex = NRE::Test->_new();
+my $regex = PDL::Regex::Test->new();
 
 ######################################
 # Check that build_expected works: 3 #
