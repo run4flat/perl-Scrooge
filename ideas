@@ -1,0 +1,137 @@
+Just had an idea about MSER and the regular expression engine
+
+MSER provides a wonderful means for choosing where a fit should stop
+consuming points. It would be best if I could come up with methods that
+compute the consumption length in linear time. Obviously assuming constant
+data is easy: it requires one pass as shown below. Can I achieve the same
+thing for other types of fits? In other words, can I come up with ways of
+computing the necessary sample statistics for every point of various curves
+in linear time?
+
+
+Constant data
+=============
+
+Constant data requires the calculation of the sample variance:
+
+ < (x - <x>)^2 > = < x^2 - 2*x*<x> + <x>^2 >
+                 = <x^2> - <x>^2.
+
+To perform this calculation in one pass, I keep a running total of x and
+of x^2 and add to it with each point. I then compute
+
+ var/n = (x_sq_sum(n) / n - x_sum(n) / n) / n
+
+for all n > 0. I also keep a running track of the minimum var/n, as well
+as the n at which it occurred, and that is the n at which MSER says constant
+data has is most likely to stop. I can also easily store the sample variance
+and mean as an internal variable for later retrieval.
+
+
+Linear data
+===========
+
+Suppose I have linear data. What is the slope and intercept? It is the slope
+and intercept that minimizes the sum of the squared difference between the
+fit and the data:
+
+ sum( (y_i - Y(x_i))^2 ).
+
+In this case, Y(x) is the value of y based on the fit:
+
+ Y(x) = y0 + s * x.
+
+To compute the value of y0 and s, I need to take the derivative of the
+squared sum with respect to the parameters y0 and s:
+
+ partial(sum)       /                                 \
+ ------------ = sum | 2 * (y_i - y0 - s * x_i) * (-1) | .
+ partial(y0)        \                                 /
+
+This needs to be set to zero, which means
+
+ sum(y_i) - n * y0 - s * sum(x_i) = 0.
+
+Taking the derivative with respect to s leads to this:
+
+ partial(sum)       /                                   \
+ ------------ = sum | 2 * (y_i - y0 - s * x_i) * (-x_i) |
+ partial(s)         \                                   /
+
+which is again set to zero to obtain
+
+ sum(y_i * x_i) - y0 * sum(x_i) - s * sum(x_i^2) = 0.
+
+Both this and the previous minimization condition can be rewritten more
+simply by denoting S(x), S(y), S(xy), and S(x^2) as the sums of the first
+n copies of x_i, y_i, x_i * y_i, and x_i^2. These values can be computed as
+we go along, so we have hope of finding an algorithm that computes in linear
+time:
+
+ S(y) - n * y0 - s * S(x)       = 0,
+ S(xy) - y0 * S(x) - s * S(x^2) = 0.
+
+Two equations in two unknowns means that I can easily compute y0 and s for
+each value of n in linear time. Furthermore, the variance of the noise is
+related to the quantity that I just worked to minimize and once I have the
+various sums (which I can compute as I iterate through the data) I can
+compute the variance in O(1) time:
+
+ var/n = sum( (y_i - Y(x_i))^2 ) / n^2
+       = sum( y_i^2 - y0 * y_i - s * x_i * y_i + y0^2 + y0 * s * x_i
+              + s^2 * x_i^2) / n^2
+     --------------------------------------------------------------------------
+    |    S(y^2) - y0 * S(y) - s * S(xy) + y0^2 + y0 * s * S(x) + s^2 * S(x^2)  |
+    |  = --------------------------------------------------------------------  |
+    |                                   n^2                                    |
+     --------------------------------------------------------------------------
+
+But I have yet to compute the expressions for y0 and s. If I were doing this
+with some sort of automated system, I'd solve for it using matrices:
+
+ [  n    S(x)  ] [ y0 ]  -  [ S(y)  ]
+ [ S(x) S(x^2) ] [ s  ]  -  [ S(xy) ]
+
+(In other words, I should be able to program an algebraic system that would
+be able to compute the expression for the variance as above for any
+potential polynomial, and then have that same system solve for the
+polynomial coefficients using matrix algebra. But that will have to wait for
+now.)
+
+Let's first eliminate s from these equations:
+
+ S(y)/S(x) - n/S(x) * y0         - s  = 0,
+ S(xy)/S(x^2) - y0 * S(x)/S(x^2) - s  = 0;
+
+Subtracting the second from the first leads to:
+
+ S(y)/S(x) - S(xy)/S(x^2) + ( S(x)/S(x^2) - n/S(x) ) * y0 = 0
+
+which I can solve for y0 as
+
+  ---------------------------------
+ |       S(y)/S(x) - S(xy)/S(x^2)  |
+ | y0 = -------------------------- |
+ |        S(x)/S(x^2) - n/S(x)     |
+  ---------------------------------
+
+With y0 in hand, I can then easily compute s:
+
+  -----------------------------
+ | s = S(y)/S(x) - n/S(x) * y0 |
+  -----------------------------
+
+
+So it is possible to compute each point's MSER for a linear fit to the data
+in O(N) time, and in a single pass. I simply need to keep track of a
+collection of sums, along with the minimum var/n and its corresponding index
+n.
+
+
+Exponential Curves
+==================
+
+Now things get interesting. Suppose that I have data that I believe to be
+linear. Can I compute its MSER-based optimal fitting point in linear time?
+If so, can I do it in one pass, or do I need to perform multiple passes?
+
