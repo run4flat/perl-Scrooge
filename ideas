@@ -20,12 +20,12 @@ Constant data requires the calculation of the sample variance:
 To perform this calculation in one pass, I keep a running total of x and
 of x^2 and add to it with each point. I then compute
 
- var/n = (x_sq_sum(n) / n - x_sum(n) / n) / n
+ score(n) = (x_sq_sum(n) / n - x_sum(n) * x_sum(n) / n / n) / (n - 1)
 
-for all n > 0. I also keep a running track of the minimum var/n, as well
-as the n at which it occurred, and that is the n at which MSER says constant
-data has is most likely to stop. I can also easily store the sample variance
-and mean as an internal variable for later retrieval.
+for all n > 0. I also keep a running track of the minimum score and the n at
+which it occurred, and that is the n at which MSER says constant data is
+most likely to have stopped. I can also easily store the sample variance and
+mean as an internal variable for later retrieval.
 
 
 Linear data
@@ -77,13 +77,13 @@ related to the quantity that I just worked to minimize and once I have the
 various sums (which I can compute as I iterate through the data) I can
 compute the variance in O(1) time:
 
- var/n = sum( (y_i - Y(x_i))^2 ) / n^2
-       = sum( y_i^2 - y0 * y_i - s * x_i * y_i + y0^2 + y0 * s * x_i
-              + s^2 * x_i^2) / n^2
+ var/(n - 2) = sum( (y_i - Y(x_i))^2 ) / n / (n - 2)
+             = sum( y_i^2 - y0 * y_i - s * x_i * y_i + y0^2 + y0 * s * x_i
+                  + s^2 * x_i^2) / n / (n - 2)
      --------------------------------------------------------------------------
     |    S(y^2) - y0 * S(y) - s * S(xy) + y0^2 + y0 * s * S(x) + s^2 * S(x^2)  |
     |  = --------------------------------------------------------------------  |
-    |                                   n^2                                    |
+    |                                n (n - 2)                                 |
      --------------------------------------------------------------------------
 
 But I have yet to compute the expressions for y0 and s. If I were doing this
@@ -128,10 +128,216 @@ collection of sums, along with the minimum var/n and its corresponding index
 n.
 
 
-Exponential Curves
-==================
+Exponential Curves - naive
+==========================
 
-Now things get interesting. Suppose that I have data that I believe to be
-linear. Can I compute its MSER-based optimal fitting point in linear time?
-If so, can I do it in one pass, or do I need to perform multiple passes?
+Now things get interesting. Suppose that I have data that I believe is
+described by an exponential curve. Can I compute its MSER-based optimal
+fitting point in linear time? If so, can I do it in one pass, or do I need
+to perform multiple passes?
 
+My first thought is to find the coefficients that minimize this quantity:
+
+ sum( (y_i - Y(x_i))^2 ),
+ Y(x) = A + B * exp(x * lambda).
+
+However, it should be much easier and faster to minimize on the numerical
+derivative of x vs y, which would get rid of the A term in the exponential
+fit but which would still be exponential. The fit function would be
+
+ dY(x) = B * lambda * exp(x * lambda).
+
+By considering the natural logarithm of dY and dy, I end up minimizing this
+system:
+
+ sum( (ln dy_i - ln dY(x_i))^2 ),
+ ln dY(x) = ln B + ln lambda + x * lambda.
+
+Can I perform enough calculations on this system analytically to find a way
+calculate the MSER index in O(N)? Without loss of generality, but with a
+great impact on the complexity of later work, I will create a new parameter:
+
+ C := ln B + ln lambda
+ => ln dY(x) = C + x * lambda.
+
+Having done that, I now take a derivative with respect to C and lambda,
+finding where that derivative is zero:
+
+ partial(sum)
+ ------------ = sum (2 * (ln dy_i - C - x_i * lambda) ) = 0
+  partial(C)
+ 
+ => sum (ln dy_i) - n * C - lambda * sum(x_i) = 0.
+
+Similarly,
+
+  partial(sum)
+ --------------- =  sum ( 2 * (ln dy_i - C - x_i * lambda) * x_i ) = 0.
+ partial(lambda)
+ 
+ => sum (x_i * ln dy_i) - C * sum (x_i) - lambda * sum (x_i^2) = 0.
+
+Assuming the dy_i are strictly positive (or strictly negative), we can use
+the same technique as for the linear MSER to calculate C and lambda. Once I
+have those, I can compute B from C and lambda. All of the calcultions can be
+handled in linear time.
+
+This looks quite promising but for one problem: dy_i could change sign. I
+have left it undefined but it is proportional to (y_i+1 - y_i), which has
+no guarantee of having the same sign for every y_i and y_i+1. Two potenial
+solutions come to mind. First, I could try to smooth the data, which also
+takes linear time but introduces an arbitrary length scale. I do not want to
+introduce an arbitrary length scale (yet), so I will not work with that idea
+yeat. Second, I could try a fitting technique that works directly with the
+curve instead of a transform of it. That approach almost certainly will
+exhibit computational complexity that scales super-linearly with the size of
+the data.  I'll explore that shortly.
+
+
+Exponential Curves - envelope method
+====================================
+
+However, a third method also came to me. From the single series, I could
+build two series which are guaranteed to be monotonically increasing or
+decreasing. The first would throw out any data that leads to a 'negative
+then positive' sequence; the second would throw out any data that leads to a
+'positive then negative' sequence. This would give me two curves from the
+same data, both of which exhibit different biases. I can examine the
+logarithm of the numerical derivatives of these two time series using the
+linear MSER technique and compare the result. If they roughly agree on the
+break point as well as their resulting coefficients then I have a successful
+match.
+
+Let's figure out what kind of data I'll need for each point in the series.
+First, both maximal and minimal curves will need to keep track of what is in
+each, not so that I can resum them, but so that I can pop them off when they
+become invalid. I will run through an example with the following sequence of
+data:
+
+1 3 2 4 6 3.5 4.5 5 7 8
+
+I need three differences to find a variance on the first linear fit, which
+means I need to start with four points. The minimal and maximal sets will
+differ already since they will begin with (1 2 4 6) and (1 3 4 6),
+respectively. These will lead to differences of (1 2 2) and (2 1 2),
+respectively. I can take the log of those numbers and compute a linear fit,
+followed by a computation of the variance. Dividing the variance by 1 gives
+me my first point in the MSER tabulation. I store the MSER scores and the
+respective indices (5th element).
+
+I then move to the next possible point. For the minimal data that would be
+3.5, which knocks out the 6 and the 4, leaving me with only three data. I
+need at least four, so I move on to 4.5, giving finally (1 2 3.5 4.5). I
+need to go back to the differences starting at 2 and add the 3.5 and 4.5
+data. I compute the fit, the variance, and again divide by 1 to get the MSER
+tablation. If this MSER tabulation is less than the previous one, I store
+both the MSER value and the index (7th element).
+
+For the maximal data, I end up jumping over 3.5, 4.5, and 5 to land on
+(1 3 4 6 7). I already computed the differences leading up to the 6, so I
+simply need to add to those differences using the new datum of 7. I compute
+the fit, the variance, and divide by 2 to get the MSER tablation. If this
+MSER score is less than the previous one, I store both the new MSER score
+and the new index (9th element).
+
+As devised, each point needs to track its copy of S(x), S(y), S(xy), and
+S(x^2). As such, I could imagine a linked list structure like this:
+
+struct exp_MSER_point {
+	exp_MSER_point * prev; /* previous point */
+	exp_MSER_point * next; /* next point (needed for memory management */
+	double y;     /* value of y at given index */
+	double S_x;   /* sum of x up to this point */
+	double S_y;   /* sum of ln dy up to here   */
+	double S_xy;  /* sum of x * ln dy to here  */
+	double S_xx;  /* sum of x*x up to here     */
+};
+
+The head of the list would need some extra data and would look like this:
+
+struct exp_MSER_head {
+	exp_MSER_point * prev;
+	exp_MSER_point * next;
+	double y;
+	double S_x;
+	double S_y;
+	double S_xy;
+	double S_xx;
+	double y_3;
+	double y_2;
+	double y_1;
+};
+
+You know which one is the head because the value of prev is zero, so you can
+safely cast it to the head type in that case. Notice that I do not need to
+store the index or the number of elements.
+
+The first step would be to create one of these. Then 
+
+
+Exponential Curves - nontrivial
+===============================
+
+The first approach above suffers from the possibility that it could break
+down when the noise leads to oscillatory behavior around the expected
+exponential curve. However, a direct computation is not feasible. Here is
+why. My goal now is to minimize this sum directly:
+
+ sum( (y_i - Y(x_i))^2 ),
+ Y(x) = A + B * exp(x * l).
+
+Taking derivatives, as before, leads to an expression that cannot decouple
+x_i from the parameter l, and therefore cannot be minimized in linear time.
+However, it should be possible to rescale the x-coordinate to find sums that
+can be 
+
+As before, I take derivatives with respect to the parameters and try to
+find where those derivatives cross zero:
+
+ partial(sum)
+ ------------ = sum ( y_i - A - B * exp(x_i * l) ) * (-1) = 0
+  partial(A)
+
+ => S(y) - n * A - B sum ( exp(x_i * l) ) = 0.
+
+Turning now to B leads to this:
+
+ partial(sum)
+ ------------ = sum ( y_i - A - B * exp(x_i * l) ) * (-exp(x_i * l)) = 0
+  partial(B)
+
+ => 0 = sum ( y_i * exp(x_i * l) ) - A * sum ( exp(x_i * l) )
+        - B * sum ( exp(2 * x_i * l) )
+
+Finally, focusing on the wave number l (and noting that B should not be
+zero) gives me this:
+
+ partial(sum)
+ ------------ = sum ( (y_i - A - B * exp(x_i * l))
+  partial(l) 
+                       * (-B * x_i * exp(x_i * l)) )
+
+ => 0 = sum ( y_i * x_i * exp(x_i * l) ) - A * sum ( x_i * exp(x_i * l) )
+        - B * sum ( x_i * exp(2 * x_i * l) )
+
+As written, I cannot decouple l from the sums. I would have to seek a
+solution iteratively, one for each point along the curve. This is
+problematic because each iteration takes O(n) calculations. Fortunately, it
+should not take too many iterations since the parameter values from the
+previous n should suffice as good starting estimaes for the parameters of
+the new data (with one additonal element).
+
+An alternative approach could invlve rescaling the x_i thus:
+
+ w_i = x_i * l
+ => x_i = w_i / l
+
+Then the three equations become:
+
+ S(y) - n * A - B * S(exp_w) = 0,
+ S(y*exp_w) - A * S(exp_w) - B * S(exp_2w) = 0
+ S(y*x*exp_w) / l - A / l * S(w*exp_w) - B / l * S(x*exp_2w) = 0
+
+The l parameter mutliplies every term in the last equation so it can be
+removed. However, this leads to an overdetermined system for A and B, and
+no clear means for choosing values for w_i.

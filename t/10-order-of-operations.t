@@ -47,12 +47,11 @@ isa_ok($regex, 'PDL::Regex::Test::Tracker::New')
 # The call order for new should look like this:
 my $expected = [
 	new => [
-		_to_stash => [],
 		_init => [],
 	],
 ];
 our @call_structure;
-is_deeply(\@call_structure, $expected, 'New calls _to_stash then _init');
+is_deeply(\@call_structure, $expected, 'New calls _init');
 
 #######################################################################
 #                         Successful Prep - 4                         #

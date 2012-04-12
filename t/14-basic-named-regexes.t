@@ -49,14 +49,14 @@ my $regex = PDL::Regex::Test->new(name => 'test');
 $test_offset = 2;
 if ($regex->apply($data)) {
 	pass('regex matched where it should have matched');
-	if (my ($left, $right) = $regex->get_offsets_for('test')) {
-		pass('Retrieval of offsets for successfully matched named regex returns true in boolean context');
-		is($left, $test_offset, 'Left should match offset');
-		is($right, $left + $N_to_match - 1
+	if (my $details = $regex->get_details_for('test')) {
+		pass('Retrieval of details for successfully matched named regex returns true in boolean context');
+		is($details->{left}, $test_offset, 'Left should match offset');
+		is($details->{right}, $details->{left} + $N_to_match - 1
 			, 'Right should agree with left and N_to_match');
 	}
 	else {
-		fail('Did not get the offsets for the named regex');
+		fail('Did not get the details for the named regex');
 		fail('Cannot test left offset for accuracy');
 		fail('Cannot test right offset for accuracy');
 	}
