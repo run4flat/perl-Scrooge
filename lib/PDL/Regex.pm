@@ -148,13 +148,19 @@ section does not discuss constructors; those are discussed below.
 
 =item apply ($data)
 
-This method applies the regular expression object on the given piddle. If
-the regular expression matches the data, you get two return values: a number
-indicating the quantity of elements matched, and a number indicating the
-offset at which the match starts. However, there is a minor subtlety for a
-match with zero length. In that case, the number of matched elements will be
-the string '0 but true'. This way, the following three expressions all Do
-Something:
+This method applies the regular expression object on the given piddle. The
+return value is a bit complicated to explain, but in general it Does What You
+Mean. In boolean context, it returns a truth value indicating whether the regex
+matched or not. In scalar context, it returns a scalar indicating the number of
+elements that matched if something matched, and undef otherwise. In particular,
+if the regex matched zero elements, it returns the string "0 but true", which
+evaluates to zero in numeric context, but true in boolean context. Finally, in
+list context, if the regex fails you get an empty list, and if it succeeds you
+get two numbers indicating the number of matched elements and the offset
+(without any of that zero-but-true business to worry about).
+
+To put it all together, the following three expressions all Do Something when
+your regex mathces:
 
  if (my ($matched, $offset) = $regex->apply($data)) {
      # Do Something
@@ -172,23 +178,29 @@ Perl lets you use the returned matched length---even the string---in
 arithmetic operations without issuing a warning. (Perl normally issues a
 warning when you try to do arithmetic with a string, but it grants an
 exception for the string "0 but true".) However, if you plan on
-printing the matched length, you should assure a numeric value with
-something like this:
+printing the matched length, you should assure a numeric value with either of
+these two approaches:
 
  if (my $matched = $regex->apply($data)) {
      $matched += 0; # ensure $matched is numeric
      print "Matched $matched elements\n";
  }
 
-On the other hand, if the match fails, C<apply> returns an empty list.
-Generaly, this means that if you do this:
+or
+
+ if (my ($matched) = $regex->apply($data)) {
+     print "Matched $matched elements\n";
+ }
+
+Note that if your regex matches, you will get the empty list, so, if this fails:
 
  my ($matched, $offset) = $regex->apply($data);
 
 both C<$matched> and C<$offset> will be the undefined value, and if you use
 the expression in the conditional as in the first example above, the
 condition will evaluate to boolean false. The only major gotcha in this
-regard is that this will B<NOT> do what you think it is supposed to do:
+regard is that Perl's list flatting means this will B<NOT> do what you think it
+is supposed to do:
 
  my ($first_matched, $first_off, $second_matched, $second_off)
      = ($regex1->apply($data), $regex2->apply($data));
@@ -196,10 +208,10 @@ regard is that this will B<NOT> do what you think it is supposed to do:
 If C<$regex1> fails to match and C<$regex2> succeeds, the values for the
 second regex will be stored in C<$first_matched> and C<$first_off>. So, do
 not use the return values from a regular expression in a large list
-assignment.
+assignment like this.
 
-You can retreive sub-matches of the regex by naming them and using
-C<get_offsets_for>.
+If you only want to know where a sub-regex matches, you can name that sub-regex
+and retreive sub-match results using C<get_offsets_for>, as discussed below.
 
 =cut
 
@@ -318,14 +330,18 @@ each of which contains the pertinent details. So if this named regex appears
 five times but only matches twice, you will get a list of two hashes with
 the details.
 
-The returned results also depends upon the calling context. If you ask for
+The returned results also depend upon the calling context. If you ask for
 the match details in scalar context, only the first such hash will be
 returned, or undef if there were no matches. In list context, you get a list
 of all the hashes, or an empty list of there were not matches. As such, the
 following expressions Do What You Mean:
 
  if (my @details = $regex->get_details_for('constant')) {
-     # do something here with $left and $right
+     for my $match_details (@details) {
+         # unpack the left and right boundaries of the match:
+         my ($left, $right) = $match_details->{'left', 'right'};
+         # ...
+     }
  }
  
  for my $details ($regex->get_details_for('constant')) {
@@ -339,8 +355,8 @@ following expressions Do What You Mean:
 		. "$details->{average}\n";
  }
 
-Note that for zero-width matches, the value of right will be one less than
-the value of left. 
+Note that for zero-width matches that succeed, the value of right will be one
+less than the value of left.
 
 =cut
 
@@ -378,10 +394,6 @@ method get_details {
 =back
 
 =head1 Return Values
-
-working here - this needs to be cleaned up
-
-=head2 When calling apply
 
 =head2 When writing a condition
 
