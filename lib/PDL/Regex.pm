@@ -365,12 +365,13 @@ method get_details_for ($name) {
 # croak as it assumes you know what you're doing calling this method
 # directly.
 method get_details {
-	# This returns an empty list if no items matched:
-	if (wantarray) {
-		return () unless defined $self->{final_details};
-		return @{$self->{final_details}};
-	}
-	# Note, this returns undef if no items matched:
+	# Return undef or the empty list if nothing matched
+	return unless defined $self->{final_details};
+	
+	# Return the collection of match details in list context
+	return @{$self->{final_details}} if wantarray;
+	
+	# Return the first match details in scalar context
 	return $self->{final_details}->[0];
 }
 
@@ -668,9 +669,16 @@ method prep ($piddle) {
 	return 1 if $self->{state};
 	$self->{state} = 'prepping';
 	
-	# Stash everything:
+	# Stash everything. Note that under repeated invocations of a regex, there
+	# may be values that we traditionally stash that have lingered from the
+	# previous invocation.
+	# I would like to remove those values, but that causes troubles. :-(
+#	my @to_stash = $self->_to_stash;
 	if (defined $self->{piddle}) {
 		push @{$self->{"old_$_"}}, $self->{$_} foreach $self->_to_stash;
+	}
+	else {
+		#delete $self->{$_} foreach @to_stash;
 	}
 	
 	# working here - make sure to document that min_size and max_size must
@@ -749,7 +757,7 @@ without dying.
 
 =cut
 
-use PDL::Lite;
+#use PDL::Lite;
 
 method cleanup () {
 	# self's state is *always* deleted just before cleanup is called, so if
@@ -759,9 +767,7 @@ method cleanup () {
 	$self->{state} = 'cleaning';
 
 	# finalize the match stack
-	$self->{final_details} = $self->{match_details};
-#	$self->{final_left_matches} = PDL->pdl($self->{left_matches});
-#	$self->{final_right_matches} = PDL->pdl($self->{right_matches});
+	$self->{final_details} = delete $self->{match_details};
 	
 #	# We're about to call the sub-class's cleanup method. If, for some
 #	# stupid reason, the sub-class's cleanup uses a regex, then we have

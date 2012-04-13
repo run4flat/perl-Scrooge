@@ -2,7 +2,7 @@
 
 use strict;
 use warnings;
-use Test::More tests => 8;
+use Test::More tests => 10;
 use PDL::Regex;
 use PDL;
 
@@ -70,5 +70,23 @@ else {
 
 # Make sure non-existent names fail:
 $@ = '';
-eval{$regex->get_offsets_for('foobar')};
+eval{$regex->get_details_for('foobar')};
 isnt($@, '', 'Requesting an offset for a nonexistent name croaks');
+
+#############################################################
+# Test failed application after a successful application, 2 #
+#############################################################
+
+# Set the offset to a large value so that the match will fail. $data contains
+# 15 elements and we want to match exactly 10 of them, starting at the 12th
+# element:
+$test_offset = 12;
+if ($regex->apply($data)) {
+	fail('Regex was not supposed to match here');
+	fail('Cannot test retrieval after pass-then-fail if it does not fail');
+}
+else {
+	pass('Regex failed where it was *supposed* to fail');
+	my $details = $regex->get_details_for('test');
+	is ($details, undef, 'Failed regex returns undef, even after a previous apply that passed');
+}

@@ -83,7 +83,8 @@ else {
 	pass('Failing regex failed as expected');
 }
 is_deeply([$fail_re->get_details], [], '    Fail regex does not have match info');
-is_deeply([$exact_re->get_details], [], '    Exact regex does not have match info');
+is_deeply([$exact_re->get_details], [], '    Exact regex does not have match info')
+	or do{ require Data::Dumper; print Data::Dumper::Dumper($exact_re->get_details)};
 is_deeply([$offset_re->get_details], [], '    Offset regex does not have match info');
 
 #######################
@@ -96,25 +97,26 @@ my @results = OR($fail_re, $exact_re, $offset_re)->apply($data);
 is_deeply(\@results, [8, 4], 'First complex regex should match against the offset regex');
 is_deeply([$fail_re->get_details], [], '    Fail does not match');
 is_deeply([$exact_re->get_details], [], '    Exact does not have any match');
-is_deeply([$offset_re->get_details], [pdl(4), pdl(11)], '    Offset does have match info');
+is_deeply($offset_re->get_details, {left => 4, right => 11}, '    Offset does have match info');
 
 $exact_re->set_N(15);
 @results = OR($fail_re, $exact_re, $even_re, $range_re)->apply($data);
 is_deeply(\@results, [15, 0], 'Second complex regex should match against the exact regex');
+# working here
 my ($left, $right) = $exact_re->get_details->{'left', 'right'};
 isnt($left, undef, '    Exact has match info');
-is($left->at(0), 0, '    Exact has proper left offset');
-is($right->at(0), 14, '    Exact has proper right offset');
+is($left, 0, '    Exact has proper left offset');
+is($right, 14, '    Exact has proper right offset');
 is_deeply([$fail_re->get_details], [], '    Fail does not have match info');
 is_deeply([$even_re->get_details], [], '    Even does not have match info');
 is_deeply([$range_re->get_details], [], '    Range does not have match info');
 
 @results = OR($even_re, $exact_re, $range_re)->apply($data);
 is_deeply(\@results, [20, 0], 'Third complex regex should match against the even regex');
-($left, $right) = $even_re->get_offsets->{'left', 'right'};
+($left, $right) = $even_re->get_details->{'left', 'right'};
 isnt($left, undef, '    Even has match info');
-is($left->at(0), 0, '    Even has proper left offset');
-is($right->at(0), 19, '    Even has proper right offset');
+is($left, 0, '    Even has proper left offset');
+is($right, 19, '    Even has proper right offset');
 is_deeply([$exact_re->get_details], [], '    Exact does not have match info');
 is_deeply([$range_re->get_details], [], '    Range does not have match info');
 
@@ -124,8 +126,8 @@ $range_re->max_size(18);
 is_deeply(\@results, [18, 0], 'Fourth complex regex should match against the range regex');
 ($left, $right) = $range_re->get_details->{'left', 'right'};
 isnt($left, undef, '    Range has match info');
-is($left->at(0), 0, '    Range has proper left offset');
-is($right->at(0), 17, '    Range has proper right offset');
+is($left, 0, '    Range has proper left offset');
+is($right, 17, '    Range has proper right offset');
 is_deeply([$fail_re->get_details], [], '    Fail does not have match info');
 is_deeply([$even_re->get_details], [], '    Even does not have match info');
 is_deeply([$exact_re->get_details], [], '    Exact does not have match info');
