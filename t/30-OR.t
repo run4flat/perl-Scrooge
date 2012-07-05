@@ -102,8 +102,9 @@ is_deeply($offset_re->get_details, {left => 4, right => 11}, '    Offset does ha
 $exact_re->set_N(15);
 @results = OR($fail_re, $exact_re, $even_re, $range_re)->apply($data);
 is_deeply(\@results, [15, 0], 'Second complex regex should match against the exact regex');
-# working here
-my ($left, $right) = $exact_re->get_details->{'left', 'right'};
+my $first_result_ref = $exact_re->get_details;
+my %first_result_hash = %$first_result_ref;
+my ($left, $right) = @first_result_hash{'left', 'right'};
 isnt($left, undef, '    Exact has match info');
 is($left, 0, '    Exact has proper left offset');
 is($right, 14, '    Exact has proper right offset');
@@ -113,7 +114,8 @@ is_deeply([$range_re->get_details], [], '    Range does not have match info');
 
 @results = OR($even_re, $exact_re, $range_re)->apply($data);
 is_deeply(\@results, [20, 0], 'Third complex regex should match against the even regex');
-($left, $right) = $even_re->get_details->{'left', 'right'};
+my %even_results_hash = %{ $even_re->get_details };
+($left, $right) = @even_results_hash{'left', 'right'};
 isnt($left, undef, '    Even has match info');
 is($left, 0, '    Even has proper left offset');
 is($right, 19, '    Even has proper right offset');
@@ -124,7 +126,8 @@ $range_re->min_size(10);
 $range_re->max_size(18);
 @results = OR($fail_re, $range_re, $even_re, $exact_re)->apply($data);
 is_deeply(\@results, [18, 0], 'Fourth complex regex should match against the range regex');
-($left, $right) = $range_re->get_details->{'left', 'right'};
+my %range_results_hash = %{ $range_re->get_details };
+($left, $right) = @range_results_hash{'left', 'right'};
 isnt($left, undef, '    Range has match info');
 is($left, 0, '    Range has proper left offset');
 is($right, 17, '    Range has proper right offset');

@@ -339,7 +339,8 @@ following expressions Do What You Mean:
  if (my @details = $regex->get_details_for('constant')) {
      for my $match_details (@details) {
          # unpack the left and right boundaries of the match:
-         my ($left, $right) = $match_details->{'left', 'right'};
+         my %match_hash = %$match_details;
+         my ($left, $right) = @match_details{'left', 'right'};
          # ...
      }
  }
