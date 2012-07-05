@@ -26,9 +26,7 @@ our $VERSION = 0.01;
 
 =head1 VERSION
 
-This documentation is supposed to be for version 0.01 of PDL::Regex, but
-it is woefully out of date as of yet and probably won't catch up to the
-module's behavior for another few versions.
+This documentation is supposed to be for version 0.01 of PDL::Regex.
 
 =head1 SYNOPSIS
 
@@ -589,12 +587,6 @@ func new ($class, @args) {
 	croak("Internal Error: args to PDL::Regex::new must have a class name and then key => value pairs")
 		unless @args % 2 == 0;
 	my $self = bless {@args}, $class;
-	
-#	working here - I believe Perl will autovivify these if I push to them,
-#	so I can remove these lines:
-#	# Add a stack for everything that needs to be stashed:
-#	$self->{"old_$_"} = [] foreach $self->_to_stash;
-#	$self->{old_state} = [];
 	
 	# Set the default state so that stashing works correctly:
 	$self->{state} = 'not running';
