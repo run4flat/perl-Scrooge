@@ -3,15 +3,12 @@ use strict;
 use warnings;
 use PDL::Core::Dev;
 
-# These are lifted from PDL::Core::Dev, but use a less redundant style:
-#my @inc = (PDL_INCLUDE, ($PDL::Config{MALLOCDBG}->{include} || ()) );
-
 my $inc = PDL_INCLUDE;
 # Strip off the leading -I:
 $inc =~ s/^-I//;
 
 my $build = Module::Build->new(
-	module_name => 'PDL::Regex',
+	module_name => 'Regex::Engine',
 	license  => 'perl',
 	requires => {
 		perl					=> '5.6.1',
@@ -19,12 +16,10 @@ my $build = Module::Build->new(
 	},
 	needs_compiler => 1,
 	PL_files => {
-		'lib/PDL/Regex/MSER.pm.PL'
-			=> ['lib/PDL/Regex/MSER.xs', 'lib/PDL/Regex/MSER.pm'],
+		'lib/Regex/Engine/MSER.pm.PL'
+			=> ['lib/Regex/Engine/MSER.xs', 'lib/Regex/Engine/MSER.pm'],
 	},
-#	include_dirs => \@inc,
 	include_dirs => $inc,
-#	extra_linker_flags => $PDL::Config{MALLOCDBG}->{libs},
 	
 );
 

@@ -1,6 +1,6 @@
 # A set of conditions that use MSER-inspired methods.
 
-use PDL::PP qw(PDL::Regex::MSER PDL::Regex::MSER lib/PDL/Regex/MSER);
+use PDL::PP qw(Regex::Engine::MSER Regex::Engine::MSER lib/PDL/Regex/MSER);
 use strict;
 use warnings;
 
@@ -11,16 +11,16 @@ use warnings;
 pp_addpm '# line ' . (__LINE__ + 2) . <<'FOR_MODULE';
  "MSER.pm.PL"
 use PDL;
-use PDL::Regex;
+use Regex::Engine;
 use Method::Signatures;
 
-package PDL::Regex::MSER;
+package Regex::Engine::MSER;
 # An MSER condition base class:
 use strict;
 use warnings;
 
 use Exporter;
-our @ISA = qw(Exporter PDL::Regex::Quantified);
+our @ISA = qw(Exporter Regex::Engine::Quantified);
 
 # Add functions to export
 our @EXPORT = qw(MSER_const MSER_linear);
@@ -135,10 +135,10 @@ sub _mser_new {
 
 use PDL::NiceSlice;
 
-package PDL::Regex::MSER::Const;
+package Regex::Engine::MSER::Const;
 use strict;
 use warnings;
-our @ISA = qw(PDL::Regex::MSER);
+our @ISA = qw(Regex::Engine::MSER);
 use Method::Signatures;
 use PDL::NiceSlice;
 
@@ -152,8 +152,8 @@ method _to_stash () {
 	return qw(average), $self->SUPER::_to_stash;
 }
 
-sub PDL::Regex::MSER::MSER_const {
-	PDL::Regex::MSER::Const->_mser_new('MSER_const', @_);
+sub Regex::Engine::MSER::MSER_const {
+	Regex::Engine::MSER::Const->_mser_new('MSER_const', @_);
 }
 
 method _apply ($left, $right) {
@@ -173,17 +173,17 @@ method _apply ($left, $right) {
 	return ($length->at(0), average => $average->at(0), variance => $variance->at(0));
 }
 
-package PDL::Regex::MSER::Linear;
+package Regex::Engine::MSER::Linear;
 use strict;
 use warnings;
-our @ISA = qw(PDL::Regex::MSER);
+our @ISA = qw(Regex::Engine::MSER);
 use Method::Signatures;
 
 # we need at least three points for the MSER Linear:
 sub _min_length { 3 }
 
-sub PDL::Regex::MSER::MSER_linear {
-	PDL::Regex::MSER::Linear->_mser_new('MSER_linear', @_);
+sub Regex::Engine::MSER::MSER_linear {
+	Regex::Engine::MSER::Linear->_mser_new('MSER_linear', @_);
 }
 
 method _apply ($left, $right)

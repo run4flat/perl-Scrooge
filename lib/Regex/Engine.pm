@@ -1,4 +1,4 @@
-package PDL::Regex;
+package Regex::Engine;
 use strict;
 use warnings;
 use Method::Signatures;
@@ -18,7 +18,7 @@ our @EXPORT = qw(OR AND SEQ SUB ANY ZWA);
 
 =head1 NAME
 
-PDL::Regex - a numerical regular expression engine
+Regex::Engine - a numerical regular expression engine
 
 =cut
 
@@ -26,11 +26,11 @@ our $VERSION = 0.01;
 
 =head1 VERSION
 
-This documentation is supposed to be for version 0.01 of PDL::Regex.
+This documentation is supposed to be for version 0.01 of Regex::Engine.
 
 =head1 SYNOPSIS
 
- use PDL::Regex;
+ use Regex::Engine;
  
  # Build the regular expression object first:
  my $positive_re = SUB(sub {
@@ -53,7 +53,7 @@ This documentation is supposed to be for version 0.01 of PDL::Regex.
 
 =head1 DESCRIPTION
 
-PDL::Regex creates a set of classes that let you construct numerical regular
+Regex::Engine creates a set of classes that let you construct numerical regular
 expression objects that you can apply to a piddle. Because the patterns
 against which you might match are limitless, this module provides a means
 for easily creating your own conditions and the glue necessary to put them
@@ -73,7 +73,7 @@ digits. The second regular expression differs from the first because it
 makes use of quantifiers and because it uses a character class (the C<\d>
 matches many characters).
 
-The PDL::Regex equivalents of these take up quite a bit more space to
+The Regex::Engine equivalents of these take up quite a bit more space to
 construct. Here is how to build a numerical regular expression that checks
 for a positive number followed by a local maximum, or a negative number
 followed by a local minimum. I'll assume that the regular expression
@@ -512,21 +512,21 @@ trying to write a rule to apply to data, you are almost certainly interested
 in creating a new Quantified regular expression. That's also the easier one
 of the two to create, so I'll discuss subclassing that first.
 
-To subclass C<PDL::Regex::Quantified>, 
+To subclass C<Regex::Engine::Quantified>, 
 
 
 
 =head1 Internals
 
-All regex classes must inheret from C<PDL::Regex> or a class derived from
+All regex classes must inheret from C<Regex::Engine> or a class derived from
 it. This section of documentation discusses how you might go about doing
-that. You are encouraged to override any of the methods of C<PDL::Regex> or
+that. You are encouraged to override any of the methods of C<Regex::Engine> or
 its derivatives, except for the C<apply> method.
 
 =head2 Required Methods
 
-If your class derives directly from PDL::Regex, PDL::Regex::Quantified, or
-PDL::Regex::Grouped, you must supply the C<_apply> internal method. However,
+If your class derives directly from Regex::Engine, Regex::Engine::Quantified, or
+Regex::Engine::Grouped, you must supply the C<_apply> internal method. However,
 you can override other methods as you see fit. The only methods you should
 not override are the Internal methods documented at the end of this section.
 
@@ -584,7 +584,7 @@ comes out must be capable of running its C<prep> method.
 =cut
 
 func new ($class, @args) {
-	croak("Internal Error: args to PDL::Regex::new must have a class name and then key => value pairs")
+	croak("Internal Error: args to Regex::Engine::new must have a class name and then key => value pairs")
 		unless @args % 2 == 0;
 	my $self = bless {@args}, $class;
 	
@@ -613,9 +613,9 @@ piddle. If you have any piddle-specific setup to do, do it in this function.
 
 From the standpoint of internals, you need to know two things: what this
 function should prepare and what this function should return. (For a
-discussion on intepreting return values from C<_prep>, see PDL::Regex::Grouped.)
+discussion on intepreting return values from C<_prep>, see Regex::Engine::Grouped.)
 
-If you are not deriving your class from PDL::Regex::Quantified or PDL::Regex::Grouped and
+If you are not deriving your class from Regex::Engine::Quantified or Regex::Engine::Grouped and
 you intend for your regex to run, you must either set C<< $self->{min_size} >>
 and C<< $self->{max_size} >> at this point or you must override the
 related internal functions so that they operate correctly without having
@@ -630,7 +630,7 @@ has been called and was able to set up internal data that might be required
 for their operation. Furthermore, if you realize in the middle of C<_prep>
 that your regex cannot run, it is safe to return 0 immediately and expect
 the parent regex to call C<_cleanup> for you. (working here - make sure the
-documentation for PDL::Regex::Grouped details what Grouped regexes are supposed to
+documentation for Regex::Engine::Grouped details what Grouped regexes are supposed to
 do with C<_prep> return values.)
 
 Your regex may still be querried afterwards for a match by
@@ -915,16 +915,16 @@ method get_bracketed_name_string () {
 
 =cut
 
-package PDL::Regex::Quantified;
-use parent -norequire, 'PDL::Regex';
+package Regex::Engine::Quantified;
+use parent -norequire, 'Regex::Engine';
 use strict;
 use warnings;
 use Method::Signatures;
 use Carp;
 
-=head1 PDL::Regex::Quantified
+=head1 Regex::Engine::Quantified
 
-The Quantified abstract base class inherets from the PDL::Regex abstract base class
+The Quantified abstract base class inherets from the Regex::Engine abstract base class
 and provides functionality for handling quantifiers, including parsing the
 quantifier argument. If you need a regex object that handles quantifiers but
 you do not care how it works, you should inheret from this base class and
@@ -1022,8 +1022,8 @@ method _prep ($piddle) {
 # the size information. Also, I do not supply an _apply because that must be
 # provided by the derived classes.
 
-package PDL::Regex::Any;
-use parent -norequire, 'PDL::Regex::Quantified';
+package Regex::Engine::Any;
+use parent -norequire, 'Regex::Engine::Quantified';
 use strict;
 use warnings;
 use Method::Signatures;
@@ -1035,8 +1035,8 @@ Creates a regex that matches any value.
 
 =cut
 
-sub PDL::Regex::ANY {
-	croak("PDL::Regex::ANY takes one or two optional arguments: ANY([[name], quantifiers])")
+sub Regex::Engine::ANY {
+	croak("Regex::Engine::ANY takes one or two optional arguments: ANY([[name], quantifiers])")
 		if @_ > 2;
 	
 	# Get the arguments:
@@ -1045,7 +1045,7 @@ sub PDL::Regex::ANY {
 	$quantifiers = [1,1] unless defined $quantifiers;
 	
 	# Create the subroutine regexp:
-	return PDL::Regex::Any->new(quantifiers => $quantifiers
+	return Regex::Engine::Any->new(quantifiers => $quantifiers
 		, defined $name ? (name => $name) : ());
 }
 
@@ -1054,8 +1054,8 @@ method _apply ($left, $right) {
 	return $right - $left + 1;
 }
 
-package PDL::Regex::Sub;
-use parent -norequire, 'PDL::Regex::Quantified';
+package Regex::Engine::Sub;
+use parent -norequire, 'Regex::Engine::Quantified';
 use strict;
 use warnings;
 use Method::Signatures;
@@ -1077,7 +1077,7 @@ to a numeric value, even when you've activated warnings.
 
 
 # This builds a subroutine regexp object:
-sub PDL::Regex::SUB {
+sub Regex::Engine::SUB {
 	croak("SUB takes one, two, or three arguments: SUB([[name], quantifiers], subref)")
 		if @_ == 0 or @_ > 3;
 	
@@ -1093,7 +1093,7 @@ sub PDL::Regex::SUB {
 	$quantifiers = [1,1] unless defined $quantifiers;
 	
 	# Create the subroutine regexp:
-	return PDL::Regex::Sub->new(quantifiers => $quantifiers, subref => $subref
+	return Regex::Engine::Sub->new(quantifiers => $quantifiers, subref => $subref
 		, defined $name ? (name => $name) : ());
 }
 
@@ -1117,14 +1117,14 @@ method _apply ($left, $right) {
 	return ($consumed, %details);
 }
 
-package PDL::Regex::ZeroWidthAssertion;
-use parent -norequire, 'PDL::Regex::Quantified';
+package Regex::Engine::ZeroWidthAssertion;
+use parent -norequire, 'Regex::Engine::Quantified';
 use strict;
 use warnings;
 use Method::Signatures;
 use Carp;
 
-sub PDL::Regex::ZWA {
+sub Regex::Engine::ZWA {
 	# If two arguments, assume the first is a name and the second is a
 	# subroutine reference:
 	croak("ZWA takes one or two arguments: ZWA([name], subref)")
@@ -1137,7 +1137,7 @@ sub PDL::Regex::ZWA {
 		unless ref($subref) eq ref(sub{});
 	
 	# Return the constructed zero-width assertion:
-	my $self = PDL::Regex::ZeroWidthAssertion->new(quantifiers => [0,0],
+	my $self = Regex::Engine::ZeroWidthAssertion->new(quantifiers => [0,0],
 		subref => $subref, defined $name ? (name => $name) : ());
 	
 }
@@ -1169,9 +1169,9 @@ method _apply ($left, $right) {
 	return ($consumed, %details);
 }
 
-package PDL::Regex::Grouped;
+package Regex::Engine::Grouped;
 # Defines grouped regexes, like OR, AND, and SEQUENCE
-use parent -norequire, 'PDL::Regex';
+use parent -norequire, 'Regex::Engine';
 use strict;
 use warnings;
 use Method::Signatures;
@@ -1191,7 +1191,7 @@ method _init () {
 	
 	# Check each of the child regexes and add their names:
 	foreach (@{$self->{regexes}}) {
-		croak("Invalid regex") unless eval {$_->isa('PDL::Regex')};
+		croak("Invalid regex") unless eval {$_->isa('Regex::Engine')};
 		$_->add_name_to($self->{names});
 	}
 	
@@ -1361,8 +1361,8 @@ them until it finds one that succeeds. This does not take any quantifiers.
 
 =cut
 
-package PDL::Regex::Or;
-use parent -norequire, 'PDL::Regex::Grouped';
+package Regex::Engine::Or;
+use parent -norequire, 'Regex::Engine::Grouped';
 use strict;
 use warnings;
 use Method::Signatures;
@@ -1394,8 +1394,8 @@ method _prep_success () {
 # This only needs to clear out the current matching regex:
 # recursive check this
 method clear_stored_match() {
-	# Call the PDL::Regex's method:
-	PDL::Regex::clear_stored_match($self);
+	# Call the Regex::Engine's method:
+	Regex::Engine::clear_stored_match($self);
 	
 	# Only pop off the latest match:
 	$self->pop_match;
@@ -1467,12 +1467,12 @@ method _apply ($left, $right) {
 	return 0;
 }
 
-sub PDL::Regex::OR {
+sub Regex::Engine::OR {
 	# If the first argument is an object, assume no name:
-	return PDL::Regex::Or->new(regexes => \@_) if ref $_[0];
+	return Regex::Engine::Or->new(regexes => \@_) if ref $_[0];
 	# Otherwise assume that the first argument is a name:
 	my $name = shift;
-	return PDL::Regex::Or->new(name => $name, regexes => \@_);
+	return Regex::Engine::Or->new(name => $name, regexes => \@_);
 }
 
 =head2 AND
@@ -1482,8 +1482,8 @@ them, returning true if all succeed. This does not take any quantifiers.
 
 =cut
 
-package PDL::Regex::And;
-use parent -norequire, 'PDL::Regex::Grouped';
+package Regex::Engine::And;
+use parent -norequire, 'Regex::Engine::Grouped';
 use strict;
 use warnings;
 use Method::Signatures;
@@ -1572,12 +1572,12 @@ method _minmax () {
 	$self->max_size($full_max);
 }
 
-sub PDL::Regex::AND {
+sub Regex::Engine::AND {
 	# If the first argument is an object, assume no name:
-	return PDL::Regex::And->new(regexes => \@_) if ref $_[0];
+	return Regex::Engine::And->new(regexes => \@_) if ref $_[0];
 	# Otherwise assume that the first argument is a name:
 	my $name = shift;
-	return PDL::Regex::And->new(name => $name, regexes => \@_);
+	return Regex::Engine::And->new(name => $name, regexes => \@_);
 }
 
 =head2 SEQ
@@ -1596,8 +1596,8 @@ This operates recursively thu:
 
 =cut
 
-package PDL::Regex::Sequence;
-use parent -norequire, 'PDL::Regex::Grouped';
+package Regex::Engine::Sequence;
+use parent -norequire, 'Regex::Engine::Grouped';
 use strict;
 use warnings;
 use Method::Signatures;
@@ -1837,12 +1837,12 @@ method _minmax () {
 	$self->max_size($full_max);
 }
 
-sub PDL::Regex::SEQ {
+sub Regex::Engine::SEQ {
 	# If the first argument is an object, assume no name:
-	return PDL::Regex::Sequence->new(regexes => \@_) if ref $_[0];
+	return Regex::Engine::Sequence->new(regexes => \@_) if ref $_[0];
 	# Otherwise assume that the first argument is a name:
 	my $name = shift;
-	return PDL::Regex::Sequence->new(name => $name, regexes => \@_)
+	return Regex::Engine::Sequence->new(name => $name, regexes => \@_)
 }
 
 # THE magic value that indicates this module compiled correctly:
@@ -2001,14 +2001,14 @@ A potential concise syntax might look like this:
     
     # ---( Prefixes )---
     # Barewords are called as-is unless you specify an auto-prefix:
-    PDL::Regex::OneD::
+    Regex::Engine::OneD::
     
     # Now these constructors have that prefix added so:
     reg1(args)
-    # is interpreted as PDL::Regex::OneD::reg1(args)
+    # is interpreted as Regex::Engine::OneD::reg1(args)
     
     # You can explicitly resolve a constructor like so:
-    PDL::Regex::Extra::reg3(args)
+    Regex::Engine::Extra::reg3(args)
     
     # To restore the original prefix, simply use two colons:
     ::
