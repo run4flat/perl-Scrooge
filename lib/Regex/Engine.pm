@@ -71,11 +71,12 @@ This documentation is supposed to be for version 0.01 of Regex::Engine.
 =head1 DESCRIPTION
 
 Regex::Engine creates a set of classes that let you construct numerical regular
-expression objects that you can apply to a piddle. Because the patterns
-against which you might match are limitless, this module provides a means
-for easily creating your own conditions and the glue necessary to put them
-together in complex ways. It does not offer a concise syntax, but that is on
-the way, no doubt.
+expression objects that you can apply to a container object such as an anonymous
+array, or a piddle. Because the patterns against which you might match are
+limitless, this module provides a means for easily creating your own conditions
+and the glue necessary to put them together in complex ways. It does not offer a
+concise syntax, but it provides the back-end machinery to support such a concise
+syntax for various data containers and applications.
 
 Let's begin by considering a couple of regular expressions in Perl.
 
@@ -93,20 +94,19 @@ matches many characters).
 The Regex::Engine equivalents of these take up quite a bit more space to
 construct. Here is how to build a numerical regular expression that checks
 for a positive number followed by a local maximum, or a negative number
-followed by a local minimum. I'll assume that the regular expression
-constructors for each condition already exist (I'll discuss those in a bit)
+followed by a local minimum. I'll assume that the individual regular expression
+pieces (i.e. C<$positive_re>) already exist.
 
  my $regex = re_or(
-     re_seq( positive_re(), $local_max_re() ),
-     re_seq( negative_re(), $local_min_re() )
+     re_seq( $positive_re, $local_max_re ),
+     re_seq( $negative_re, $local_min_re )
  );
-
 
 =head1 Examples
 
 Here is a regular expression that checks for a value that is positive and
 which is a local maximum, but which is flanked by at least one negative
-number on both sides:
+number on both sides. All of these assume that the data container is a piddle.
 
  my $is_local_max = re_sub( [1,1],  # quantifiers, exactly one
      sub {
@@ -158,13 +158,15 @@ number on both sides:
 =head1 METHODS
 
 These are the user-level methods that each regex provides. Note that this
-section does not discuss constructors; those are discussed below.
+section does not discuss subclassing or constructors; those are discussed below.
+In other words, if you have regex objects and you want to use them this is the
+public API that you can use.
 
 =over
 
 =item apply ($data)
 
-This method applies the regular expression object on the given piddle. The
+This method applies the regular expression object on the given container. The
 return value is a bit complicated to explain, but in general it Does What You
 Mean. In boolean context, it returns a truth value indicating whether the regex
 matched or not. In scalar context, it returns a scalar indicating the number of
@@ -227,22 +229,19 @@ not use the return values from a regular expression in a large list
 assignment like this.
 
 If you only want to know where a sub-regex matches, you can name that sub-regex
-and retreive sub-match results using C<get_offsets_for>, as discussed below.
+and retrieve sub-match results using C<get_offsets_for>, as discussed below.
 
 =cut
 
 # User-level method, not to be overridden.
-method apply ($piddle) {
-	# Make sure they send us a piddle (working here - document this)
-	croak('Numerical regular expressions can only be applied to piddles')
-		unless eval {$piddle->isa('PDL')};
-	
+our %method_table;
+method apply ($data) {
 	# Prepare the regex for execution. This may involve computing low and
-	# high quantifier limits, keeping track of $piddle, stashing
+	# high quantifier limits, keeping track of $data, stashing
 	# intermediate data if this is a nested regex, and many other things.
 	# The actual prep method can fail, so look out for that.
 	$self->is_prepping;
-	my $prep_results = eval{$self->prep($piddle)};
+	my $prep_results = eval{$self->prep($data)};
 	my @croak_messages;
 	push @croak_messages, $@ if $@ ne '';
 	unless ($prep_results) {
@@ -264,7 +263,7 @@ method apply ($piddle) {
 	# Note change in local state:
 	$self->is_applying;
 	
-	my $N = $piddle->dim(0);
+	my $N = data_length($data);
 	my $min_diff = $self->min_size - 1;
 	my $max_diff = $self->max_size - 1;
 
@@ -330,6 +329,79 @@ method apply ($piddle) {
 	# Otherwise return an empty list:
 	return;
 }
+
+=item data_length, data_at, data_slice
+
+These are generic data-container-agnostic wrappers to get the data's length,
+to get an element at a given offset, or to take a slice from a data container.
+They delegate to the methods in C<%method_table>, as discussed next.
+
+working here - decide how I want to export these. They should probably export
+under the tab C<:container-wrappers> or some such.
+
+=cut
+
+sub data_length {
+	my $data = shift;
+	return $method_table{ref $data}->{length}->($data)
+		if exists $method_table{ref $data};
+	# working here - consider adding some useful error messages.
+}
+
+sub data_at {
+	my ($data, $offset) = @_;
+	return $method_table{ref $data}->{at}->($data, $offset);
+	# working here - consider adding some useful error messages.
+}
+
+sub data_slice {
+	my ($data, $left, $right) = @_;
+	return $method_table{ref $data}->{slice}->($data, $left, $right);
+	# working here - consider adding some useful error messages.
+}
+
+=item %method_table
+
+This needs to be more fully documented. Bascially, it holds subroutine
+references that handle various operations that are meant to work cross-container. 
+
+If you want Regex::Engine to work with your data container class, you need to
+add the following method callbacks with code that looks like this:
+
+ $PDL::Regex::method_table{'My::Class::Name'} = {
+     # Required for your container to work with Regex::Engine
+     length => sub {
+         # Returns the length of its first argument.
+         return $_[0]->length;
+     },
+     # Optional
+     at => sub {
+         # Returns the value at the given location
+         my ($container, $offset) = @_;
+         return $container->at($offset);
+     },
+     # Optional
+     slide => sub {
+         # Returns a class-equivalent slice:
+         my ($container, $left, $right) = @_;
+         return $container->subset($left => $right);
+     },
+ };
+
+=cut
+
+%method_table = (
+	(ref [])  => {
+		length => sub { return scalar(@$_[0]) },
+		at     => sub { return $_[0]->[$_[1]] },
+		slice  => sub { return [ @{$_[0]}[$_[1] .. $_[2]] ] },
+	},
+	PDL => {
+		length => sub { return $_[0]->dim(0) },
+		at     => sub { return $_[0]->sclr($_[0]) },
+		slice  => sub { return $_[0]->slice("$_[1]:$_[2]") },
+	},
+);
 
 =item get_details_for ($name)
 
@@ -500,7 +572,7 @@ smaller value for C<$right>, you should return a negative value instead of zero.
 =item Negative Values
 
 As I have already discussed, your condition may involve expensive
-calculations, so rather than check each sub-piddle starting from C<$left>
+calculations, so rather than check each sub-slice starting from C<$left>
 and reducing C<$right> until you find a match, you can simply return -1.
 That tells the regex engine that the current values of C<$left> and
 C<$right> do not match the condition, but smaller values of C<$right> might
@@ -561,8 +633,8 @@ not override are the Internal methods documented at the end of this section.
 
 This function is called when it comes time to apply the regex to see if it
 matches the current range. That arguments to the apply function are the left
-and right offsets, respectively. (The piddle is not included, and you should
-make sure that you've cached a reference to the piddle during the C<_prep>
+and right offsets, respectively. (The data is not included, and you should
+make sure that you've cached a reference to the container during the C<_prep>
 phase.)
 
 If your regex encloses another, it should call the enclosed regex's C<_apply>
@@ -631,10 +703,10 @@ working here - document this method
 # Default init does nothing:
 method _init () {}
 
-=item prep ($piddle)
+=item prep ($data)
 
 This function is called before the regular expression hammers on the supplied
-piddle. If you have any piddle-specific setup to do, do it in this function.
+data. If you have any data-specific setup to do, do it in this function.
 
 From the standpoint of internals, you need to know two things: what this
 function should prepare and what this function should return. (For a
@@ -646,7 +718,7 @@ and C<< $self->{max_size} >> at this point or you must override the
 related internal functions so that they operate correctly without having
 values associated with those keys.
 
-If, having examined the piddle, you know that this regex will not match, 
+If, having examined the data, you know that this regex will not match, 
 you should return zero. This guarantees that the following functions
 will not be called on your regex during this run: C<_apply>, C<_min_size>,
 C<_max_size>, and C<_store_match>. Put a little bit
@@ -695,7 +767,7 @@ method is_cleaning () {
 }
 
 # Make sure this only gets run once per call to apply:
-method prep ($piddle) {
+method prep ($data) {
 	return 1 if $self->{state};
 	$self->{state} = 'prepping';
 	
@@ -704,7 +776,7 @@ method prep ($piddle) {
 	# previous invocation.
 	# I would like to remove those values, but that causes troubles. :-(
 #	my @to_stash = $self->_to_stash;
-	if (defined $self->{piddle}) {
+	if (defined $self->{data}) {
 		push @{$self->{"old_$_"}}, $self->{$_} foreach $self->_to_stash;
 	}
 	else {
@@ -713,18 +785,18 @@ method prep ($piddle) {
 	
 	# working here - make sure to document that min_size and max_size must
 	# be set by the derived class's _prep method
-	$self->{piddle} = $piddle;
+	$self->{data} = $data;
 	
-	return $self->_prep($piddle);
+	return $self->_prep($data);
 }
 
 # Default _prep simply returns true, meaning a successful prep:
-method _prep ($piddle) { return 1 }
+method _prep ($data) { return 1 }
 
 # The internal keys with values that we want to protect in case of
 # recursive usage:
 method _to_stash () {
-	return qw (piddle min_size max_size match_details);
+	return qw (data min_size max_size match_details);
 }
 
 =item _stash
@@ -738,7 +810,7 @@ override C<_prep> to initialize any internal data during C<_prep>, you must
 override C<_stash> to back it up.
 
 When you override this method, you must call the parent with
-C<< $self->SUPER::_stash($piddle) >> in your overridden method. Otherwise,
+C<< $self->SUPER::_stash($data) >> in your overridden method. Otherwise,
 internal data needed by the base class will not be properly backed up.
 
 =cut
@@ -819,12 +891,12 @@ method cleanup () {
 #			unless $old_state eq 'is_cleaning';
 #	}
 	
-	# Remove this copy of the $piddle since its presence is used in prep
+	# Remove this copy of the $data since its presence is used in prep
 	# to know if needs to stash or not.
-	delete $self->{piddle};
+	delete $self->{data};
 	
 	# Unstash everything:
-	if (defined $self->{old_piddle}->[0]) {
+	if (defined $self->{old_data}->[0]) {
 		$self->{$_} = pop @{$self->{"old_$_"}} foreach $self->_to_stash;
 		
 #		# Restore the previous match stack, if appropriate:
@@ -1000,9 +1072,9 @@ method _init () {
 method _min_length () { 0 }
 
 # Prepare the current quantifiers:
-method _prep ($piddle) {
+method _prep ($data) {
 	# Compute and store the numeric values for the min and max quantifiers:
-	my $N = $piddle->dim(0);
+	my $N = Regex::Engine::data_length($data);
 	my ($min_size, $max_size);
 	my $min_quant = $self->{min_quant};
 	my $max_quant = $self->{max_quant};
@@ -1089,7 +1161,7 @@ use Carp;
 =head2 re_sub
 
 This evaluates the supplied subroutine on the current subset of data. The
-three arguments supplied to the function are (1) the full piddle under
+three arguments supplied to the function are (1) original data container under
 consideration, (2) the left index offset under consideration, and (3) the
 right index offset. If the match succeeds, return the number of matched
 values. If the match succeeds but it consumed zero values (i.e. a zero-width
@@ -1124,7 +1196,7 @@ sub Regex::Engine::re_sub {
 
 method _apply ($left, $right) {
 	# Apply the rule and see what we get:
-	my ($consumed, %details) = eval{$self->{subref}->($self->{piddle}, $left, $right)};
+	my ($consumed, %details) = eval{$self->{subref}->($self->{data}, $left, $right)};
 	
 	# handle any exceptions:
 	unless ($@ eq '') {
@@ -1176,7 +1248,7 @@ method _apply ($left, $right) {
 	
 	# Evaluate their subroutine:
 	my ($consumed, %details)
-		= eval{$self->{subref}->($self->{piddle}, $left, $right)};
+		= eval{$self->{subref}->($self->{data}, $left, $right)};
 	
 	# Handle any exceptions
 	if ($@ ne '') {
@@ -1233,7 +1305,7 @@ method _to_stash () {
 # _prep will call _prep on all its children and keep track of those that
 # return true values. Success or failure is based upon the inherited method
 # _prep_success.
-method _prep ($piddle) {
+method _prep ($data) {
 	# Call the prep function for each of them, keeping track of all those
 	# that succeed. Notice that I capture errors and continue because every
 	# single regex needs to run its prep method in order for it to be 
@@ -1241,11 +1313,12 @@ method _prep ($piddle) {
 	my @succeeded;
 	my @errors;
 	foreach (@{$self->{regexes}}) {
-		my $successful_prep = eval { $_->prep($piddle) };
+		my $successful_prep = eval { $_->prep($data) };
 		push @errors, $@ if $@ ne '';
 		if ($successful_prep) {
 			# Make sure the min size is not too large:
-			push (@succeeded, $_) unless $_->min_size > $piddle->dim(0);
+			push (@succeeded, $_)
+				unless $_->min_size > Regex::Engine::data_length($data);
 		}
 	}
 	
@@ -1264,10 +1337,10 @@ method _prep ($piddle) {
 	
 	# Cache the minimum and maximum number of elements to match:
 	$self->_minmax;
-	$self->max_size($piddle->dim(0)) if $self->max_size > $piddle->dim(0);
+	my $data_size = Regex::Engine::data_length($data);
+	$self->max_size($data_size) if $self->max_size > $data_size;
 	# Check those values for sanity:
-	if ($self->max_size < $self->min_size
-			or $self->min_size > $piddle->dim(0)) {
+	if ($self->max_size < $self->min_size or $self->min_size > $data_size) {
 		return 0;
 	}
 
@@ -1708,7 +1781,7 @@ method _apply ($left, $right) {
 
 method seq_apply ($left, $right, @regexes) {
 	my $regex = shift @regexes;
-	my $piddle = $self->{piddle};
+	my $data = $self->{data};
 	
 	# Handle edge case of this being the only regex:
 	if (@regexes == 0) {
@@ -1942,9 +2015,6 @@ Third, when named matches are requested, return two arrays of left and right
 offsets rather than two integers. Actually, we can be a bit better here: if
 the stack has only a single entry, then return the integers. Otherwise
 return array refs. Or, even better: return piddles with the offsets!
-
-On the other hand, if slices are requested... let's just drop support for
-slices.
 
 =item Regexes within Rules
 

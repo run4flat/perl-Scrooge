@@ -84,7 +84,7 @@ is($@, '', 'Regex does not croak on simple regex');
 is($length, 1, 'Matched length should be 1');
 is($offset, 0, 'Matched offset should be 0');
 
-# For the basic application ($regex->{piddle} not defined), the call order
+# For the basic application ($regex->{data} not defined), the call order
 # should look like this:
 $expected = [
 	apply => [

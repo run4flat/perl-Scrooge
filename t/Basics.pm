@@ -79,7 +79,7 @@ our @ISA = qw(Regex::Engine);
 sub _prep {
 	my $self = shift;
 	$self->{min_size} = 0;
-	$self->{max_size} = $self->{piddle}->nelem;
+	$self->{max_size} = Regex::Engine::data_length($self->{data});
 }
 
 sub _apply {

@@ -173,7 +173,7 @@ sub Regex::Engine::MSER::MSER_const {
 }
 
 method _apply ($left, $right) {
-	my $piddle = $self->{piddle};
+	my $piddle = $self->{data};
 	
 	my $to_apply;
 	if ($piddle->ndims == 1) {
@@ -203,7 +203,7 @@ sub Regex::Engine::MSER::MSER_linear {
 }
 
 method _apply ($left, $right)
-	my $piddle = $self->{piddle};
+	my $piddle = $self->{data};
 	
 	my ($x, $y);
 	my ($length, $intercept, $slope, $variance);
