@@ -1344,10 +1344,6 @@ method _prep ($data) {
 		return 0;
 	}
 
-#	working here - I believe Perl's autovivification makes this unnecessary:	
-#	# We need to initialize the stack of positive matches:
-#	$self->{positive_matches} = [];
-	
 	# If we're here, then all went well, so return as much:
 	return 1;
 }
