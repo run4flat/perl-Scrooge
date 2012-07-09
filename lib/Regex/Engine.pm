@@ -115,16 +115,17 @@ number on both sides:
          # This cannot match if the first value is positive:
          return 0 if $piddle->at($left) >= 0;
          
+         my $sub_piddle = $piddle->slice("$left:$right");
+         
          # Is the whole range negative?
-         return $right - $left + 1
-             if all ($piddle->slice("$left:$right") < 0);
+         return $right - $left + 1 if all ($sub_piddle < 0);
          
          # At this point, we know that the first element
          # is negative, but part of the range is positive.
          # Find the first non-negative value and return its
          # offset, which is identical to the number of negative
          # elements to the left of it:
-         return which($piddle >= 0)->at(0);
+         return which($sub_piddle >= 0)->at(0);
  });
  
  # Build up the sequence:
