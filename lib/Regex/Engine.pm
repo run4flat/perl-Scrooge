@@ -330,79 +330,6 @@ method apply ($data) {
 	return;
 }
 
-=item data_length, data_at, data_slice
-
-These are generic data-container-agnostic wrappers to get the data's length,
-to get an element at a given offset, or to take a slice from a data container.
-They delegate to the methods in C<%method_table>, as discussed next.
-
-working here - decide how I want to export these. They should probably export
-under the tab C<:container-wrappers> or some such.
-
-=cut
-
-sub data_length {
-	my $data = shift;
-	return $method_table{ref $data}->{length}->($data)
-		if exists $method_table{ref $data};
-	# working here - consider adding some useful error messages.
-}
-
-sub data_at {
-	my ($data, $offset) = @_;
-	return $method_table{ref $data}->{at}->($data, $offset);
-	# working here - consider adding some useful error messages.
-}
-
-sub data_slice {
-	my ($data, $left, $right) = @_;
-	return $method_table{ref $data}->{slice}->($data, $left, $right);
-	# working here - consider adding some useful error messages.
-}
-
-=item %method_table
-
-This needs to be more fully documented. Bascially, it holds subroutine
-references that handle various operations that are meant to work cross-container. 
-
-If you want Regex::Engine to work with your data container class, you need to
-add the following method callbacks with code that looks like this:
-
- $PDL::Regex::method_table{'My::Class::Name'} = {
-     # Required for your container to work with Regex::Engine
-     length => sub {
-         # Returns the length of its first argument.
-         return $_[0]->length;
-     },
-     # Optional
-     at => sub {
-         # Returns the value at the given location
-         my ($container, $offset) = @_;
-         return $container->at($offset);
-     },
-     # Optional
-     slide => sub {
-         # Returns a class-equivalent slice:
-         my ($container, $left, $right) = @_;
-         return $container->subset($left => $right);
-     },
- };
-
-=cut
-
-%method_table = (
-	(ref [])  => {
-		length => sub { return scalar(@$_[0]) },
-		at     => sub { return $_[0]->[$_[1]] },
-		slice  => sub { return [ @{$_[0]}[$_[1] .. $_[2]] ] },
-	},
-	PDL => {
-		length => sub { return $_[0]->dim(0) },
-		at     => sub { return $_[0]->sclr($_[0]) },
-		slice  => sub { return $_[0]->slice("$_[1]:$_[2]") },
-	},
-);
-
 =item get_details_for ($name)
 
 After running a successful regex, you can use this method to query the match
@@ -859,8 +786,6 @@ without dying.
 
 =cut
 
-#use PDL::Lite;
-
 method cleanup () {
 	# self's state is *always* deleted just before cleanup is called, so if
 	# it has any true value, then the cleanup phase for this object has
@@ -1006,6 +931,103 @@ method get_bracketed_name_string () {
 		return ' [' . $self->{name} . ']';
 	}
 	return '';
+}
+
+=back
+
+=head2 Cross-Container Accessors
+
+Regex::Engine is designed to operate on any data container you wish to throw at
+it. However, it needs to know how to get certain information about your
+container. At the moment, at least, it needs to know how to get your container's
+length.
+
+However, the current API also provides hooks for getting an element at
+a given offset and for taking a slice of the current data's contents. I hope
+that such a general set of functions will make it easier to write
+container-agnostic regular expression objects, though the jury is still out on
+whether or not this is a good way of doing it. Part of me suspects that this is
+not really a generically good idea...
+
+=item %Regex::Engine::method_table
+
+This holds subroutine references that handle various operations that
+are meant to work cross-container. You should add specially named methods to
+this table for your container so that calls to C<Regex::Engine::data_length>,
+C<Regex::Engine::data_at>, and C<Regex::Engine::data_slice> all work for your
+container.
+
+For example, after doing this:
+
+ $Regex::Engine::method_table{'My::Class::Name'} = {
+     # Required for your container to work with Regex::Engine
+     length => sub {
+         # Returns the length of its first argument.
+         return $_[0]->length;
+     },
+     # Optional
+     at => sub {
+         # Returns the value at the given location
+         my ($container, $offset) = @_;
+         return $container->at($offset);
+     },
+     # Optional
+     slide => sub {
+         # Returns a class-equivalent slice:
+         my ($container, $left, $right) = @_;
+         return $container->subset($left => $right);
+     },
+ };
+
+Then, if C<$object> is an object or C<My::Class::Name>, you can simply use
+C<Regex::Engine::length($object)> to get the length of your class's container.
+See the next item for more details.
+
+=cut
+
+%method_table = (
+	(ref [])  => {
+		length => sub { return scalar(@$_[0]) },
+		at     => sub { return $_[0]->[$_[1]] },
+		slice  => sub { return [ @{$_[0]}[$_[1] .. $_[2]] ] },
+	},
+	PDL => {
+		length => sub { return $_[0]->dim(0) },
+		at     => sub { return $_[0]->sclr($_[0]) },
+		slice  => sub { return $_[0]->slice("$_[1]:$_[2]") },
+	},
+);
+
+=item data_length, data_at, data_slice
+
+These are generic data-container-agnostic wrappers to get the data's length,
+to get an element at a given offset, or to take a slice from a data container.
+They delegate to the methods in C<%method_table>, as discussed next.
+
+working here - decide how I want to export these. They should probably export
+under the tab C<:container-wrappers> or some such. And, they should definitely
+not be documented here but somewhere further down, or even in a separate
+document geared towards data container authors.
+
+=cut
+
+sub data_length {
+	my $data = shift;
+	return $method_table{ref $data}->{length}->($data)
+		if exists $method_table{ref $data};
+	# working here - consider adding some useful error messages.
+}
+
+sub data_at {
+	my ($data, $offset) = @_;
+	return $method_table{ref $data}->{at}->($data, $offset);
+	# working here - consider adding some useful error messages.
+}
+
+sub data_slice {
+	my ($data, $left, $right) = @_;
+	return $method_table{ref $data}->{slice}->($data, $left, $right);
+	# working here - consider adding some useful error messages.
 }
 
 =back
