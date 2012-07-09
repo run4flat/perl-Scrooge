@@ -32,10 +32,13 @@ This documentation is supposed to be for version 0.01 of Regex::Engine.
 
  use Regex::Engine;
  
- # Build the regular expression object first:
+ # Build the regular expression object first. This one
+ # matches positive values and assumes it is working with
+ # piddles.
  my $positive_re = re_sub(sub {
-     # Supplied args are the piddle, the left slice offset,
-     # and the right slice offset:
+     # Supplied args (for re_sub, specifically) are the
+     # object (in this case assumed to be a piddle), the
+     # left slice offset, and the right slice offset:
      my ($piddle, $left, $right) = @_;
      
      # A simple check for positivity. Notice that
@@ -415,7 +418,7 @@ In short, if the condition matches for the given length, you should return
 the number of elements matched, which is C<$right - $left + 1>. If it
 does not match for this range but B<might> match for a shorter range (if
 C<$right> were moved a little bit to the left), return -1. If it cannot
-match starting at C<$left>, return undef. Those are the basics. However,
+match starting at C<$left>, return numeric zero. Those are the basics. However,
 other return values are allowed and using them can significantly improve the
 performance of your regex.
 
@@ -439,15 +442,19 @@ against the full length.
 
 =item Less than the Full Length
 
-If your condition does not match against C<< $piddle->slice("$left:$right") >>
-but it is easy to check against shorter lengths, i.e. 
-C<< $piddle->slice("$left:$less_than_right") >>, you can return the number
-of elements that it matches. In this case, the amount consumed would be
-C<< $less_than_right - $left + 1 >>.
+If your condition does not match against the entire object range but it is easy
+to check against shorter lengths, you can return the number of elements that it
+matches. In terms of Perl arrays, if the match fails against the slice
+C<@data[$left .. $right]> but it's easy to find some C<$less_than_right> for
+which the match succeeds (against C<@data[$left .. $less_than_right]>), then
+you can return the legnth of that match, which would be
+C<$less_than_right - $left + 1>.
 
 Note that you should only do this if it is easy to check shorter lengths.
-If examining every possible value of C<$right> is expensive, then consider
-returning a negative value, discussed below.
+Some algorithms require that you evaluate every value of C<$less_than_right>, in
+which case it costs nothing to simply return the longest C<$less_than_right>
+that matches. If examining every possible value of C<$less_than_right> is
+expensive, then consider returning a negative value, discussed below.
 
 =item Zero But True
 
@@ -457,7 +464,7 @@ zero-width assertion. In that case, you must return the string "0 but true",
 which is a special string in Perl.
 
 For example, if your condition looks for sequences that are
-less than 5 and C<< $piddle->at($left) >> is 7, it is not possible for this
+less than 5 and C<$data[$left]> is 7, it is not possible for this
 condition to match. However, if your quantifiers allow for zero or more
 matching elements, you can legitimately say that the match was successful
 and it matched zero elements. Note that if your quantifiers do not allow
@@ -465,31 +472,30 @@ a match of zero length, you should probably return the numeric value of 0,
 instead.
 
 Zero-width assertions are a different sort of match of zero elements. In
-numerical regular expressions, this could
-be a condition on the slope between two values, for instance. In that case,
-your regex does not match either of the values, but it matche in-between
+numerical regular expressions, this could be a condition on the slope between
+two values, or a threshold crossing between two values, for instance. In those
+cases, your regex does not match either of the values, but it matches in-between
 them. Look-ahead or look-behind assertions are also zero-width assertions
 with which you may be familiar from standard Perl regular expressions.
 
 =item Zero, i.e. failed match
 
-Return the numeric value of 0 when you know that your condition cannot match for this or any
-shorter range, B<including a zero-length match>. If you have concluded that
-the condition cannot match the current length, but it may be able to match a
-shorter length, you should return a negative value instead of zero. Also, if
-your match is allowed to have a length of zero, you should return the string
-"0 but true" instead.
+Return the numeric value of 0 when you know that your condition cannot match for
+this or any shorter range, B<including a zero-length match>. If you have
+concluded that the condition cannot match the current length, but it may be able
+to match a shorter length, you should return a negative value instead of zero.
+Also, if your match is allowed to have a length of zero, you should return the
+string "0 but true" instead.
 
 Let's consider the condition from the paragraph on Zero But True. If your
-condition looks for sequences that are less than 5 and
-C<< $piddle->at($left) >> is 7, and if you know that your quantifiers will
-not allow a match of zero length, you should return a numeric 0 to indicate
-that it is not possible for this condition to match.
+condition looks for sequences that are less than 5 and C<$data[$left]> is 7, and
+if you know that your quantifiers will not allow a match of zero length, you
+should return a numeric 0 to indicate that it is not possible for this condition
+to match.
 
-Remember: if all you can say is
-that the condition does not match for the range C<$left:$right>, but it
-might match for the same value for C<$left> and a smaller value for
-C<$right>, you should return a negative value instead of zero.
+Remember: if all you can say is that the condition does not match for the range
+C<$left. to C<$right>, but it might match for the same value for C<$left> and a
+smaller value for C<$right>, you should return a negative value instead of zero.
 
 =item Negative Values
 
@@ -510,11 +516,15 @@ engine to try a shorter range starting from left, and in particular that the
 shorter range should be at least two elements shorter than the current
 range.
 
+You might ask, why not just B<evaluate> the condition at the lesser value? The
+reason to avoid this is because this regex may be part of a combined C<re_or>
+regex, for example. You might have a regex such as C<re_or ($first, $second)>.
+Suppose C<$first> fails at C<$right> but will succeed at C<$right - 1>, and
+C<$second> fails at C<$right> but will succeed at C<$right - 2>. It would be
+inefficient for C<$second> to evaluate its truth condition at C<$right - 2>
+since the result will never be used.
+
 =back
-
-
-
-
 
 
 
