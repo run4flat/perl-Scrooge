@@ -13,12 +13,14 @@ my ($mean , $std_dev) = $data->stats;
     my (undef, $left, $right) = @_;
         # Return undefined so we don't have to deal
     # with zero width assertions
-    return undef if ($left > $right);
+    return 0 if ($left > $right);
+    # Should be able to return undef
     
-    my $sub_piddle = $piddle->slice("$left:$right");
+    my $sub_piddle = $data->slice("$left:$right");
     # Return undefined if the match doesn't occur
     # at the given left offset 
-    return undef if ($data->at($left) <= $mean + 2 * $std_dev);    # Return the length of the whole segment if
+    return 0 if ($data->at($left) <= $mean + 2 * $std_dev);
+    # Return the length of the whole segment if
     # all of data is outside 2 std. deviations
     # of the mean.
     return ($right - $left +1) 
@@ -27,7 +29,7 @@ my ($mean , $std_dev) = $data->stats;
    # Returns the indices of all values that are
    # greater than 2 std. deviations away from mean
    return which($sub_piddle <= $mean + 2 * $std_dev)->at(0);
-})
+});
 
 my ($matched, $offset) = $regex->apply($data);
 print "not" if $offset != 37;
