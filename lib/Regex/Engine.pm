@@ -335,9 +335,9 @@ method apply ($data) {
 After running a successful regex, you can use this method to query the match
 details for named regexes. This method returns an anonymous hash containing
 the left and right offsets along with any other details that the regex
-decided to return to you. (For example, some regexes return the average
+decided to return to you. (For example, a regex could return the average
 value of the matched data since that information might be useful, and it
-was part of their calculation.)
+was part of the calculation.)
 
 Actually, you can have the same regex appear multiple times within a larger
 regular expression. In that case, the return value will be a list of hashes,
@@ -374,6 +374,10 @@ following expressions Do What You Mean:
 Note that for zero-width matches that succeed, the value of right will be one
 less than the value of left.
 
+Finally, note that you can call this method on container regexes such as
+C<re_and>, C<re_or>, and C<re_seq> to get the information for named sub-regexes
+within the containers.
+
 =cut
 
 method get_details_for ($name) {
@@ -393,6 +397,17 @@ method get_details_for ($name) {
 	return $self->get_details;					# scalar context
 }
 
+=item get_details
+
+Returns the match details for the current regex, as described under
+C<get_details_for>. The difference between this method and the previous one is
+that (1) if this regex was not named, it simply returns the undefined value
+rather than croaking and (2) this method will not search sub-regexes for
+container regexes such as C<re_and>, C<re_or>, and C<re_seq> since it has no
+name with which to search.
+
+=cut
+
 # This returns the details stored by this regex. Note that this does not
 # croak as it assumes you know what you're doing calling this method
 # directly.
@@ -410,6 +425,11 @@ method get_details {
 =back
 
 =head1 Return Values
+
+This needs to be moved down below the sections that describe specific classes
+(like C<re_any>). Ah well, must be fixed later.
+
+working here
 
 =head2 When writing a condition
 
@@ -536,8 +556,8 @@ trying to write a rule to apply to data, you are almost certainly interested
 in creating a new Quantified regular expression. That's also the easier one
 of the two to create, so I'll discuss subclassing that first.
 
-To subclass C<Regex::Engine::Quantified>, 
-
+To subclass C<Regex::Engine::Quantified> (argh... not finished, but see the
+next section as it discusses most of this anyway).
 
 
 =head1 Internals
