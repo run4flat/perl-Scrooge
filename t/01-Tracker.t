@@ -19,8 +19,8 @@ use strict;
 use warnings;
 use Test::More tests => 18;
 
-# Create a mock PDL::Regex class for testing the Tracker:
-package PDL::Regex;
+# Create a mock Regex::Engine class for testing the Tracker:
+package Regex::Engine;
 
 my $hello_is_run = 0;
 sub hello {
@@ -42,11 +42,11 @@ sub untracked {
 }
 
 ###########################################################################
-#                 PDL::Regex::Test::Tracker::Basic - 8                    #
+#                 Regex::Engine::Test::Tracker::Basic - 8                    #
 ###########################################################################
 
-package PDL::Regex::Test::Tracker::Basic;
-our @ISA = 'PDL::Regex';
+package Regex::Engine::Test::Tracker::Basic;
+our @ISA = 'Regex::Engine';
 Tracker::track(qw(run_hello hello call_many));
 my $self = bless [], __PACKAGE__;
 
@@ -95,11 +95,11 @@ is($hello_is_run, 6, 'Everything is properly executed');
 
 
 ##########################################################################
-#                PDL::Regex::Test::Tracker::Subref - 3                   #
+#                Regex::Engine::Test::Tracker::Subref - 3                   #
 ##########################################################################
 
-package PDL::Regex::Test::Tracker::Subref;
-our @ISA = 'PDL::Regex';
+package Regex::Engine::Test::Tracker::Subref;
+our @ISA = 'Regex::Engine';
 Tracker::track({hello => 'our $test_val++'}, qw(run_hello call_many));
 $self = bless [], __PACKAGE__;
 
@@ -118,11 +118,11 @@ is(our $test_val, 3, 'Override code is run');
 is($hello_is_run, 6, 'Overriding hello means original function is not actually called');
 
 ###########################################################################
-#                 PDL::Regex::Test::Tracker::Croak - 4                    #
+#                 Regex::Engine::Test::Tracker::Croak - 4                    #
 ###########################################################################
 
-package PDL::Regex::Test::Tracker::Croak;
-our @ISA = 'PDL::Regex';
+package Regex::Engine::Test::Tracker::Croak;
+our @ISA = 'Regex::Engine';
 Tracker::track({hello => 'die "test"'}, qw(run_hello call_many));
 $self = bless [], __PACKAGE__;
 
@@ -146,11 +146,11 @@ is_deeply(\@call_structure, $expected, 'Embedded croaks are properly tracked')
 
 
 ###########################################################################
-#                PDL::Regex::Test::Tracker::Context - 3                   #
+#                Regex::Engine::Test::Tracker::Context - 3                   #
 ###########################################################################
 
 my $context;
-sub PDL::Regex::context {
+sub Regex::Engine::context {
 	if(wantarray) {
 		$context = 'list';
 	}
@@ -162,8 +162,8 @@ sub PDL::Regex::context {
 	}
 }
 
-package PDL::Regex::Test::Tracker::Context;
-our @ISA = 'PDL::Regex';
+package Regex::Engine::Test::Tracker::Context;
+our @ISA = 'Regex::Engine';
 Tracker::track(qw(context));
 $self = bless [], __PACKAGE__;
 

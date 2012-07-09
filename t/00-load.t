@@ -4,9 +4,9 @@ use strict;
 use warnings;
 use Test::More tests => 2;
 
-use_ok('PDL::Regex');
+use_ok('Regex::Engine');
 
 # make sure that new croaks if called with a bad number of arguments
 $@ = '';
-eval {PDL::Regex->new('only one argument')};
+eval {Regex::Engine->new('only one argument')};
 ok($@, 'Croaks on bad invocation of new');

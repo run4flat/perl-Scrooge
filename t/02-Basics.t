@@ -14,7 +14,7 @@ elsif (-f "t\\$module_name") {
 
 use strict;
 use warnings;
-use PDL::Regex;
+use Regex::Engine;
 use Test::More tests => 68;
 use PDL;
 
@@ -23,13 +23,13 @@ my $data = sequence(10);
 
 
 ###########################################################################
-#                        PDL::Regex::Test::Fail - 4                       #
+#                        Regex::Engine::Test::Fail - 4                       #
 ###########################################################################
 
 # ---( Build and make sure it builds properly, 2 )---
-$regex = eval { PDL::Regex::Test::Fail->new };
+$regex = eval { Regex::Engine::Test::Fail->new };
 is($@, '', 'Test::Fail constructor does not croak');
-isa_ok($regex, 'PDL::Regex::Test::Fail');
+isa_ok($regex, 'Regex::Engine::Test::Fail');
 
 # ---( Basic application, 2 )---
 ($length, $offset) = $regex->apply($data);
@@ -38,13 +38,13 @@ is($offset, undef, 'Test::Fail always fails, returning undef for offset');
 
 
 ###########################################################################
-#                     PDL::Regex::Test::Fail::Prep - 4                    #
+#                     Regex::Engine::Test::Fail::Prep - 4                    #
 ###########################################################################
 
 # ---( Build and make sure it builds properly, 2 )---
-$regex = eval { PDL::Regex::Test::Fail::Prep->new };
+$regex = eval { Regex::Engine::Test::Fail::Prep->new };
 is($@, '', 'Test::Fail::Prep constructor does not croak');
-isa_ok($regex, 'PDL::Regex::Test::Fail::Prep');
+isa_ok($regex, 'Regex::Engine::Test::Fail::Prep');
 
 # ---( Basic application, 2 )---
 ($length, $offset) = $regex->apply($data);
@@ -53,13 +53,13 @@ is($offset, undef, 'Test::Fail::Prep always fails, returning undef for offset');
 
 
 ###########################################################################
-#                        PDL::Regex::Test::All - 4                        #
+#                        Regex::Engine::Test::All - 4                        #
 ###########################################################################
 
 # ---( Build and make sure it builds properly, 2 )---
-$regex = eval { PDL::Regex::Test::All->new };
+$regex = eval { Regex::Engine::Test::All->new };
 is($@, '', 'Test::All constructor does not croak');
-isa_ok($regex, 'PDL::Regex::Test::All');
+isa_ok($regex, 'Regex::Engine::Test::All');
 
 # ---( Basic regex application, 2 )---
 ($length, $offset) = $regex->apply($data);
@@ -68,37 +68,37 @@ is($offset, 0, 'Test::All always matches at the start of what it is given');
 
 
 ###########################################################################
-#                       PDL::Regex::Test::Croak - 3                       #
+#                       Regex::Engine::Test::Croak - 3                       #
 ###########################################################################
 
 # ---( Build and make sure it runs properly, 3 )---
-$regex = eval { PDL::Regex::Test::Croak->new };
+$regex = eval { Regex::Engine::Test::Croak->new };
 is($@, '', 'Test::Croak constructor does not croak (that comes during apply)');
-isa_ok($regex, 'PDL::Regex::Test::Croak');
+isa_ok($regex, 'Regex::Engine::Test::Croak');
 eval{$regex->apply($data)};
 isnt($@, '', 'Engine croaks when its regex croaks');
 
 
 ###########################################################################
-#                    PDL::Regex::Test::ShouldCroak - 3                    #
+#                    Regex::Engine::Test::ShouldCroak - 3                    #
 ###########################################################################
 
 # ---( Build and make sure it runs properly, 3 )---
-$regex = eval { PDL::Regex::Test::ShouldCroak->new };
+$regex = eval { Regex::Engine::Test::ShouldCroak->new };
 is($@, '', 'Test::ShouldCroak constructor does not croak (that comes during apply)');
-isa_ok($regex, 'PDL::Regex::Test::ShouldCroak');
+isa_ok($regex, 'Regex::Engine::Test::ShouldCroak');
 eval{$regex->apply($data)};
 isnt($@, '', 'Engine croaks when regex consumes more than it was given');
 
 
 ###########################################################################
-#                       PDL::Regex::Test::Even - 10                       #
+#                       Regex::Engine::Test::Even - 10                       #
 ###########################################################################
 
 # ---( Build and make sure it builds properly, 2 )---
-$regex = eval { PDL::Regex::Test::Even->new };
+$regex = eval { Regex::Engine::Test::Even->new };
 is($@, '', 'Test::Even constructor does not croak');
-isa_ok($regex, 'PDL::Regex::Test::Even');
+isa_ok($regex, 'Regex::Engine::Test::Even');
 
 # ---( Basic regex application, 8 )---
 ($length, $offset) = $regex->apply($data);
@@ -116,13 +116,13 @@ is($offset, 0, 'Test::Even always matches at the start of what it is given');
 
 
 ###########################################################################
-#                      PDL::Regex::Test::Exactly - 12                     #
+#                      Regex::Engine::Test::Exactly - 12                     #
 ###########################################################################
 
 # ---( Build and make sure it builds ok, 4 )---
-$regex = eval{ PDL::Regex::Test::Exactly->new(N => 5) };
+$regex = eval{ Regex::Engine::Test::Exactly->new(N => 5) };
 is($@, '', 'Test::Exactly constructor does not croak');
-isa_ok($regex, 'PDL::Regex::Test::Exactly');
+isa_ok($regex, 'Regex::Engine::Test::Exactly');
 # Test that it matches 5 elements:
 ($length, $offset) = $regex->apply($data);
 is($length, 5, 'Test::Exactly should match the exact specified number of elements');
@@ -150,13 +150,13 @@ is($offset, undef, 'Test::Exactly does not match when data is too short');
 
 
 ###########################################################################
-#                       PDL::Regex::Test::Range - 15                      #
+#                       Regex::Engine::Test::Range - 15                      #
 ###########################################################################
 
 # ---( Build and make sure it builds properly, 4 )---
-$regex = eval { PDL::Regex::Test::Range->new };
+$regex = eval { Regex::Engine::Test::Range->new };
 is($@, '', 'Test::Range constructor does not croak');
-isa_ok($regex, 'PDL::Regex::Test::Range');
+isa_ok($regex, 'Regex::Engine::Test::Range');
 is($regex->{min_size}, 1, 'Default min_size is 1');
 is($regex->{max_size}, 1, 'Default max_size is 1');
 
@@ -186,20 +186,20 @@ is($offset, undef, 'Test::Range should not match if data is smaller than min');
 
 
 ###########################################################################
-#                  PDL::Regex::Test::Exactly::Offset - 13                 #
+#                  Regex::Engine::Test::Exactly::Offset - 13                 #
 ###########################################################################
 
 # ---( Build and make sure it builds properly, 5 )---
-$regex = eval { PDL::Regex::Test::Exactly::Offset->new };
+$regex = eval { Regex::Engine::Test::Exactly::Offset->new };
 is($@, '', 'Test::Exactly::Offset constructor does not croak');
-isa_ok($regex, 'PDL::Regex::Test::Exactly::Offset');
+isa_ok($regex, 'Regex::Engine::Test::Exactly::Offset');
 is($regex->{min_size}, 1, 'Default min_size is 1');
 is($regex->{max_size}, 1, 'Default max_size is 1');
 is($regex->{offset}, 0, 'Default offset is 0');
 
 # ---( Compare with Test::Exactly, 1 )---
-my $exact_regex = PDL::Regex::Test::Exactly->new(N => 5);
-$regex = PDL::Regex::Test::Exactly::Offset->new(N => 5);
+my $exact_regex = Regex::Engine::Test::Exactly->new(N => 5);
+$regex = Regex::Engine::Test::Exactly::Offset->new(N => 5);
 is_deeply([$exact_regex->apply($data)], [$regex->apply($data)],
 	, 'Test::Exactly::Offset agrees with basic Test::Exactly');
 

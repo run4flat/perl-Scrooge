@@ -9,7 +9,7 @@ $data->slice('37') .= 100;
 
 my ($mean , $std_dev) = $data->stats;
 
-my $regex = SUB( sub {
+my $regex = re_sub( sub {
     my (undef, $left, $right) = @_;
         # Return undefined so we don't have to deal
     # with zero width assertions

@@ -2,7 +2,7 @@ use strict;
 use warnings;
 use Test::More tests => 29;
 use PDL;
-use PDL::Regex;
+use Regex::Engine;
 
 # Load the basics module:
 my $module_name = 'Basics.pm';
@@ -18,22 +18,22 @@ elsif (-f "t\\$module_name") {
 
 # Assemble the data and a collection of regexes:
 my $data = sequence(20);
-my $fail_re = PDL::Regex::Test::Fail->new(name => 'fail');
-my $should_croak_re = PDL::Regex::Test::ShouldCroak->new(name => 'should_croak');
-my $croak_re = PDL::Regex::Test::Croak->new(name => 'croak');
-my $all_re = PDL::Regex::Test::All->new(name => 'all');
-my $even_re = PDL::Regex::Test::Even->new(name => 'even');
-my $exact_re = PDL::Regex::Test::Exactly->new(name => 'exact');
-my $range_re = PDL::Regex::Test::Range->new(name => 'range');
-my $offset_re = PDL::Regex::Test::Exactly::Offset->new(name => 'offset');
+my $fail_re = Regex::Engine::Test::Fail->new(name => 'fail');
+my $should_croak_re = Regex::Engine::Test::ShouldCroak->new(name => 'should_croak');
+my $croak_re = Regex::Engine::Test::Croak->new(name => 'croak');
+my $all_re = Regex::Engine::Test::All->new(name => 'all');
+my $even_re = Regex::Engine::Test::Even->new(name => 'even');
+my $exact_re = Regex::Engine::Test::Exactly->new(name => 'exact');
+my $range_re = Regex::Engine::Test::Range->new(name => 'range');
+my $offset_re = Regex::Engine::Test::Exactly::Offset->new(name => 'offset');
 
 ########################
 # Constructor tests: 6 #
 ########################
 
-my $regex = eval{SEQ('test regex', $all_re, $even_re)};
+my $regex = eval{re_seq('test regex', $all_re, $even_re)};
 is($@, '', 'Basic constructor does not croak');
-isa_ok($regex, 'PDL::Regex::Sequence');
+isa_ok($regex, 'Regex::Engine::Sequence');
 is($regex->{name}, 'test regex', 'Constructor correctly interprets name');
 
 my ($length, $offset) = eval{$regex->apply($data)};
@@ -46,19 +46,19 @@ is($offset, 0, '    Matched offset is correct');
 # Croaking regex: 7 #
 #####################
 
-$regex = eval{SEQ($should_croak_re)};
+$regex = eval{re_seq($should_croak_re)};
 is($@, '', 'Constructor without name does not croak');
-isa_ok($regex, 'PDL::Regex::Sequence');
+isa_ok($regex, 'Regex::Engine::Sequence');
 eval{$regex->apply($data)};
-isnt($@, '', 'SEQ croaks when the last regex consumes too much');
-eval{SEQ($should_croak_re, $all_re)->apply($data)};
-isnt($@, '', 'SEQ croaks when one of the not-last regexes consumes too much');
-eval{SEQ($croak_re, $fail_re)->apply($data)};
-isnt($@, '', 'SEQ croaks when one of its constituents croaks');
-eval{SEQ($all_re, $croak_re)->apply($data)};
-isnt($@, '', 'SEQ only short-circuits on failure');
-eval{SEQ($fail_re, $croak_re, $all_re)->apply($data)};
-is($@, '', 'SEQ short-circuits at the first failed constituent');
+isnt($@, '', 're_seq croaks when the last regex consumes too much');
+eval{re_seq($should_croak_re, $all_re)->apply($data)};
+isnt($@, '', 're_seq croaks when one of the not-last regexes consumes too much');
+eval{re_seq($croak_re, $fail_re)->apply($data)};
+isnt($@, '', 're_seq croaks when one of its constituents croaks');
+eval{re_seq($all_re, $croak_re)->apply($data)};
+isnt($@, '', 're_seq only short-circuits on failure');
+eval{re_seq($fail_re, $croak_re, $all_re)->apply($data)};
+is($@, '', 're_seq short-circuits at the first failed constituent');
 
 
 #####################
@@ -66,9 +66,9 @@ is($@, '', 'SEQ short-circuits at the first failed constituent');
 #####################
 
 for $regex ($fail_re, $all_re, $even_re, $exact_re, $range_re, $offset_re) {
-	my (@results) = SEQ($regex)->apply($data);
+	my (@results) = re_seq($regex)->apply($data);
 	my (@expected) = $regex->apply($data);
-	is_deeply(\@results, \@expected, 'Wrapping SEQ does not alter behavior of ' . $regex->{name} . ' regex');
+	is_deeply(\@results, \@expected, 'Wrapping re_seq does not alter behavior of ' . $regex->{name} . ' regex');
 }
 
 
@@ -79,8 +79,8 @@ for $regex ($fail_re, $all_re, $even_re, $exact_re, $range_re, $offset_re) {
 # Create two zero-width assertion regexes:
 $offset_re->set_N('0 but true');
 $offset_re->set_offset(4);
-my $at_ten = PDL::Regex::Test::Exactly::Offset->new(N => '0 but true', offset => 10);
-($length, $offset) = SEQ($offset_re, $all_re, $at_ten)->apply($data);
+my $at_ten = Regex::Engine::Test::Exactly::Offset->new(N => '0 but true', offset => 10);
+($length, $offset) = re_seq($offset_re, $all_re, $at_ten)->apply($data);
 ok($length, 'First complex regex matches');
 is($length, 6, '    Length was correctly determined to be 6');
 is($offset, 4, '    Offset was correctly determined to be 4');
@@ -90,7 +90,7 @@ is_deeply([$offset_re->get_offsets], [pdl(4), pdl(3)], '    Offset has correct o
 
 # Perform a match at three different segments with the same regex and make
 # sure it stores all three:
-($length, $offset) = SEQ($all_re, $offset_re, $all_re, $at_ten, $all_re)->apply($data);
+($length, $offset) = re_seq($all_re, $offset_re, $all_re, $at_ten, $all_re)->apply($data);
 ok($length, 'Second complex regex matches');
 is($length, 20, '    Length was correctly determined to be 20');
 is($offset, 0, '    Offset was correctly determined to be 0');

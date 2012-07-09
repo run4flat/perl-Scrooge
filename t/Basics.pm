@@ -10,7 +10,7 @@ expression classes that do not depend upon the Quantified class.
 # Basics.pm
 #
 # A collection of basic classes for testing purposes. These classes let you
-# test the base class, PDL::Regex, with no dependence on the derived classes
+# test the base class, Regex::Engine, with no dependence on the derived classes
 # in Regex.pm. This is good because it allows you to test the engine and the
 # Grouping regexes without depending on the operation of the Quantitative
 # regexes.
@@ -18,22 +18,22 @@ expression classes that do not depend upon the Quantified class.
 # Tests for *these* classes (which ensure that they work as advertised)
 # can be found in -Basics.t
 
-use PDL::Regex;
+use Regex::Engine;
 
 ##########################################################################
-#                         PDL::Regex::Test::Fail                         #
+#                         Regex::Engine::Test::Fail                         #
 ##########################################################################
 
 # A class that always fails during the apply stage. To create an object of
 # this class, you simply use:
 #
-#     my $regex = PDL::Regex::Test::Fail->new;
+#     my $regex = Regex::Engine::Test::Fail->new;
 #
 
-package PDL::Regex::Test::Fail;
+package Regex::Engine::Test::Fail;
 use strict;
 use warnings;
-our @ISA = qw(PDL::Regex);
+our @ISA = qw(Regex::Engine);
 
 sub _init {
 	my $self = shift;
@@ -44,37 +44,37 @@ sub _init {
 sub _apply { 0 }
 
 ##########################################################################
-#                      PDL::Regex::Test::Fail::Prep                      #
+#                      Regex::Engine::Test::Fail::Prep                      #
 ##########################################################################
 
 # A class that always fails during the prep stage. To create an object of
 # this class, use this:
 #
-#     my $regex = PDL::Regex::Test::Fail::Prep->new;
+#     my $regex = Regex::Engine::Test::Fail::Prep->new;
 #
 
-package PDL::Regex::Test::Fail::Prep;
+package Regex::Engine::Test::Fail::Prep;
 use strict;
 use warnings;
-our @ISA = qw(PDL::Regex);
+our @ISA = qw(Regex::Engine);
 
 sub _prep { 0 }
 sub _apply { 0 }
 
 ###########################################################################
-#                          PDL::Regex::Test::All                          #
+#                          Regex::Engine::Test::All                          #
 ###########################################################################
 
 # A class that always matches everything that it is given. To create an
 # object of this class, use this:
 #
-#     my $regex = PDL::Regex::Test::All->new;
+#     my $regex = Regex::Engine::Test::All->new;
 #
 
-package PDL::Regex::Test::All;
+package Regex::Engine::Test::All;
 use strict;
 use warnings;
-our @ISA = qw(PDL::Regex);
+our @ISA = qw(Regex::Engine);
 
 sub _prep {
 	my $self = shift;
@@ -90,15 +90,15 @@ sub _apply {
 
 
 ###########################################################################
-#                      PDL::Regex::Test::ShouldCroak                      #
+#                      Regex::Engine::Test::ShouldCroak                      #
 ###########################################################################
 
 # This creates a class that always returns more than it is given, so it
 # should always elicit a croak from the engine:
-package PDL::Regex::Test::ShouldCroak;
+package Regex::Engine::Test::ShouldCroak;
 use strict;
 use warnings;
-our @ISA = qw(PDL::Regex::Test::All);
+our @ISA = qw(Regex::Engine::Test::All);
 
 sub _apply {
 	my (undef, $left, $right) = @_;
@@ -107,14 +107,14 @@ sub _apply {
 
 
 ###########################################################################
-#                         PDL::Regex::Test::Croak                         #
+#                         Regex::Engine::Test::Croak                         #
 ###########################################################################
 
 # This creates a class that always croaks during the apply phase:
-package PDL::Regex::Test::Croak;
+package Regex::Engine::Test::Croak;
 use strict;
 use warnings;
-our @ISA = qw(PDL::Regex::Test::All);
+our @ISA = qw(Regex::Engine::Test::All);
 
 sub _apply {
 	die "This regex always croaks\n";
@@ -122,14 +122,14 @@ sub _apply {
 
 
 ############################################################################
-#                          PDL::Regex::Test::Even                          #
+#                          Regex::Engine::Test::Even                          #
 ############################################################################
 
 # A subclass of Test::All that matches only even lengths:
-package PDL::Regex::Test::Even;
+package Regex::Engine::Test::Even;
 use strict;
 use warnings;
-our @ISA = (qw(PDL::Regex::Test::All));
+our @ISA = (qw(Regex::Engine::Test::All));
 
 sub _apply {
 	my (undef, $left, $right) = @_;
@@ -143,23 +143,23 @@ sub _apply {
 
 
 ###########################################################################
-#                        PDL::Regex::Test::Exactly                        #
+#                        Regex::Engine::Test::Exactly                        #
 ###########################################################################
 
 # Successfully matches exactly the number of elements that you specify
 
-package PDL::Regex::Test::Exactly;
+package Regex::Engine::Test::Exactly;
 use strict;
 use warnings;
-our @ISA = qw(PDL::Regex);
+our @ISA = qw(Regex::Engine);
 
 # To create an object of this class, you can call it as:
 #
-#     my $regex = PDL::Regex::Test::Exactly->new(N => 5);
+#     my $regex = Regex::Engine::Test::Exactly->new(N => 5);
 #
 # You can also call it without specifying N (defaults to 1):
 # 
-#     my $regex = PDL::Regex::Test::Exactly->new();
+#     my $regex = Regex::Engine::Test::Exactly->new();
 #
 # You can change the number of items to exactly match:
 #
@@ -185,13 +185,13 @@ sub _apply {
 }
 
 ###########################################################################
-#                         PDL::Regex::Test::Range                         #
+#                         Regex::Engine::Test::Range                         #
 ###########################################################################
 
 # Successfully matches anything within a range of lengths.
 # To use, specify min_size and max_size in the constructor:
 # 
-#     my $regex = PDL::Regex::Test::Range->new(min_size => 1, max_size => 5);
+#     my $regex = Regex::Engine::Test::Range->new(min_size => 1, max_size => 5);
 # 
 # You can also call it without specifying any sizes, in which case it
 # defaults to 1, 1. You can change the size by calling min_size and max_size
@@ -202,10 +202,10 @@ sub _apply {
 #     $regex->max_size(15);
 # 
 
-package PDL::Regex::Test::Range;
+package Regex::Engine::Test::Range;
 use strict;
 use warnings;
-our @ISA = qw(PDL::Regex);
+our @ISA = qw(Regex::Engine);
 
 sub _init {
 	my $self = shift;
@@ -219,15 +219,15 @@ sub _apply {
 }
 
 ###########################################################################
-#                    PDL::Regex::Test::Exactly::Offset                    #
+#                    Regex::Engine::Test::Exactly::Offset                    #
 ###########################################################################
 
 # Subclass of Test::Exactly that matches only when left is at a specified
 # offset.
-package PDL::Regex::Test::Exactly::Offset;
+package Regex::Engine::Test::Exactly::Offset;
 use strict;
 use warnings;
-our @ISA = (qw(PDL::Regex::Test::Exactly));
+our @ISA = (qw(Regex::Engine::Test::Exactly));
 
 sub _init {
 	my $self = shift;

@@ -14,11 +14,11 @@ use PDL;
 
 our @ISA = qw(Exporter);
 
-our @EXPORT = qw(OR AND SEQ SUB ANY ZWA);
+our @EXPORT = qw(re_or re_and re_seq re_sub re_any re_zwa);
 
 =head1 NAME
 
-Regex::Engine - a numerical regular expression engine
+Regex::Engine - a regular expression engine for arbitrary objects, like PDLs
 
 =cut
 
@@ -33,7 +33,7 @@ This documentation is supposed to be for version 0.01 of Regex::Engine.
  use Regex::Engine;
  
  # Build the regular expression object first:
- my $positive_re = SUB(sub {
+ my $positive_re = re_sub(sub {
      # Supplied args are the piddle, the left slice offset,
      # and the right slice offset:
      my ($piddle, $left, $right) = @_;
@@ -50,6 +50,20 @@ This documentation is supposed to be for version 0.01 of Regex::Engine.
  my $data = sequence(20);
  my ($matched, $offset) = $re->apply($data);
  print "Matched $matched elements, starting from $offset\n";
+ 
+ # ... after you've built a few regexes ...
+ 
+ # Matches regex a, b, or c:
+ my ($matched, $offset)
+     = re_or( $re_a, $re_b, $re_c )->apply($data);
+ 
+ # Matches regex a, b, and c:
+ my ($matched, $offset)
+     = re_and ( $re_a, $re_b, $re_c )->apply($data);
+ 
+ # Matches first, then second, then anything, then third
+ my ($matched, $offset)
+     = re_seq ( $re_first, $re_second, re_any, $re_third);
 
 =head1 DESCRIPTION
 
@@ -79,9 +93,9 @@ for a positive number followed by a local maximum, or a negative number
 followed by a local minimum. I'll assume that the regular expression
 constructors for each condition already exist (I'll discuss those in a bit)
 
- my $regex = OR(
-     SEQ( positive_re(), $local_max_re() ),
-     SEQ( negative_re(), $local_min_re() )
+ my $regex = re_or(
+     re_seq( positive_re(), $local_max_re() ),
+     re_seq( negative_re(), $local_min_re() )
  );
 
 
@@ -91,7 +105,7 @@ Here is a regular expression that checks for a value that is positive and
 which is a local maximum, but which is flanked by at least one negative
 number on both sides:
 
- my $is_local_max = SUB( [1,1],  # quantifiers, exactly one
+ my $is_local_max = re_sub( [1,1],  # quantifiers, exactly one
      sub {
          my ($piddle, $left, $right) = @_;
          
@@ -108,7 +122,7 @@ number on both sides:
          return 0;
   });
  
- my $is_negative = SUB( [1,'100%'],
+ my $is_negative = re_sub( [1,'100%'],
      sub {
          my ($piddle, $left, $right) = @_;
          
@@ -129,7 +143,7 @@ number on both sides:
  });
  
  # Build up the sequence:
- my $regex = SEQ(
+ my $regex = re_seq(
      $is_negative, $is_local_max, $is_negative
  );
  
@@ -853,7 +867,7 @@ method store_match ($details) {
 
 =item clear_stored_match
 
-Grouping regexes like AND and SEQUENCE need to have some way of
+Grouping regexes like re_and and re_seq need to have some way of
 clearing a stored match when something goes wrong, and they do this by
 calling C<clear_stored_match>. In the base class's behavior, this function
 only runs when there is a name associated with the regex. Grouping regex
@@ -1030,14 +1044,14 @@ use warnings;
 use Method::Signatures;
 use Carp;
 
-=head2 ANY
+=head2 re_any
 
 Creates a regex that matches any value.
 
 =cut
 
-sub Regex::Engine::ANY {
-	croak("Regex::Engine::ANY takes one or two optional arguments: ANY([[name], quantifiers])")
+sub Regex::Engine::re_any {
+	croak("Regex::Engine::re_any takes one or two optional arguments: re_any([[name], quantifiers])")
 		if @_ > 2;
 	
 	# Get the arguments:
@@ -1062,7 +1076,7 @@ use warnings;
 use Method::Signatures;
 use Carp;
 
-=head2 SUB
+=head2 re_sub
 
 This evaluates the supplied subroutine on the current subset of data. The
 three arguments supplied to the function are (1) the full piddle under
@@ -1078,8 +1092,8 @@ to a numeric value, even when you've activated warnings.
 
 
 # This builds a subroutine regexp object:
-sub Regex::Engine::SUB {
-	croak("SUB takes one, two, or three arguments: SUB([[name], quantifiers], subref)")
+sub Regex::Engine::re_sub {
+	croak("re_sub takes one, two, or three arguments: re_sub([[name], quantifiers], subref)")
 		if @_ == 0 or @_ > 3;
 	
 	# Get the arguments:
@@ -1088,7 +1102,7 @@ sub Regex::Engine::SUB {
 	my $subref = shift;
 	
 	# Check that they actually supplied a subref:
-	croak("SUB requires a subroutine reference")
+	croak("re_sub requires a subroutine reference")
 		unless ref($subref) eq ref(sub {});
 	
 	$quantifiers = [1,1] unless defined $quantifiers;
@@ -1125,16 +1139,16 @@ use warnings;
 use Method::Signatures;
 use Carp;
 
-sub Regex::Engine::ZWA {
+sub Regex::Engine::re_zwa {
 	# If two arguments, assume the first is a name and the second is a
 	# subroutine reference:
-	croak("ZWA takes one or two arguments: ZWA([name], subref)")
+	croak("re_zwa takes one or two arguments: re_zwa([name], subref)")
 		if @_ == 0 or @_ > 2;
 	# Pull off the name if it's supplied:
 	my $name = shift if @_ == 2;
 	# Get and check the subref:
 	my $subref = shift;
-	croak("ZWA requires a subroutine reference")
+	croak("re_zwa requires a subroutine reference")
 		unless ref($subref) eq ref(sub{});
 	
 	# Return the constructed zero-width assertion:
@@ -1146,7 +1160,7 @@ sub Regex::Engine::ZWA {
 method _apply ($left, $right) {
 	unless ($right < $left) {
 		my $name = $self->get_bracketed_name_string;
-		croak("Internal error in calling ZWA regex$name: $right is not "
+		croak("Internal error in calling re_zwa regex$name: $right is not "
 			. "less that $left");
 	}
 	
@@ -1157,7 +1171,7 @@ method _apply ($left, $right) {
 	# Handle any exceptions
 	if ($@ ne '') {
 		my $name = $self->get_bracketed_name_string;
-		die "ZWA regex$name died:\n$@\n";
+		die "re_zwa regex$name died:\n$@\n";
 	}
 	
 	# Make sure they only consumed zero elements:
@@ -1171,7 +1185,7 @@ method _apply ($left, $right) {
 }
 
 package Regex::Engine::Grouped;
-# Defines grouped regexes, like OR, AND, and SEQUENCE
+# Defines grouped regexes, like re_or, re_and, and re_seq
 use parent -norequire, 'Regex::Engine';
 use strict;
 use warnings;
@@ -1303,7 +1317,7 @@ method is_cleaning () {
 }
 
 # Clear stored match assumes that all the regexes matched, so this will
-# need to be overridden for OR:
+# need to be overridden for re_or:
 method clear_stored_match() {
 	# Call the parent's method:
 	$self->SUPER::clear_stored_match;
@@ -1355,7 +1369,7 @@ method add_name_to ($hashref) {
 
 
 
-=head2 OR
+=head2 re_or
 
 This takes a collection of regular expression objects and evaluates all of
 them until it finds one that succeeds. This does not take any quantifiers.
@@ -1433,7 +1447,7 @@ method _apply ($left, $right) {
 			if ($@ ne '') {
 				my $name = $self->get_bracketed_name_string;
 				my $child_name = $regex->get_bracketed_name_string;
-				die "In OR regex$name, ${i}th regex$child_name failed:\n$@"; 
+				die "In re_or regex$name, ${i}th regex$child_name failed:\n$@"; 
 			}
 			
 			# Make sure that the regex didn't consume more than it was supposed
@@ -1441,7 +1455,7 @@ method _apply ($left, $right) {
 			if ($consumed > $r - $left + 1) {
 				my $name = $self->get_bracketed_name_string;
 				my $child_name = $regex->get_bracketed_name_string;
-				die "In OR regex$name, ${i}th regex$child_name consumed $consumed\n"
+				die "In re_or regex$name, ${i}th regex$child_name consumed $consumed\n"
 					. "but it was only allowed to consume " . ($r - $left + 1) . "\n"; 
 			}
 			
@@ -1468,7 +1482,7 @@ method _apply ($left, $right) {
 	return 0;
 }
 
-sub Regex::Engine::OR {
+sub Regex::Engine::re_or {
 	# If the first argument is an object, assume no name:
 	return Regex::Engine::Or->new(regexes => \@_) if ref $_[0];
 	# Otherwise assume that the first argument is a name:
@@ -1476,7 +1490,7 @@ sub Regex::Engine::OR {
 	return Regex::Engine::Or->new(name => $name, regexes => \@_);
 }
 
-=head2 AND
+=head2 re_and
 
 This takes a collection of regular expression objects and evaluates all of
 them, returning true if all succeed. This does not take any quantifiers.
@@ -1506,7 +1520,7 @@ method _apply ($left, $right) {
 			$self->pop_match for (1..$i);
 			# Make sure i starts counting from 1 in death note:
 			$i++;
-			die "In AND regex$name, ${i}th regex$child_name failed:\n$@"; 
+			die "In re_and regex$name, ${i}th regex$child_name failed:\n$@"; 
 		}
 		
 		# Return failure immediately:
@@ -1524,7 +1538,7 @@ method _apply ($left, $right) {
 			$self->pop_match for (1..$i);
 			# Make sure i starts counting from 1 in death note:
 			$i++;
-			die "In AND regex$name, ${i}th regex$child_name consumed $consumed\n"
+			die "In re_and regex$name, ${i}th regex$child_name consumed $consumed\n"
 				. "but it was only allowed to consume $consumed_length\n";
 		}
 		
@@ -1573,7 +1587,7 @@ method _minmax () {
 	$self->max_size($full_max);
 }
 
-sub Regex::Engine::AND {
+sub Regex::Engine::re_and {
 	# If the first argument is an object, assume no name:
 	return Regex::Engine::And->new(regexes => \@_) if ref $_[0];
 	# Otherwise assume that the first argument is a name:
@@ -1581,7 +1595,7 @@ sub Regex::Engine::AND {
 	return Regex::Engine::And->new(name => $name, regexes => \@_);
 }
 
-=head2 SEQ
+=head2 re_seq
 
 Applies a sequence of regular expressions in the order supplied. Obviously
 this needs elaboration, but I'll ignore that for now. :-)
@@ -1620,7 +1634,7 @@ working here - problems with recursion
 
 Consider this recursive regex:
 
-  $recursive_seq = SEQ(A, $recursive_seq);
+  $recursive_seq = re_seq(A, $recursive_seq);
 
 This won't pass add_name_to if either A or the sequence is named, and
 if neither are named, it will recurse infinitely and never return. Now,
@@ -1631,29 +1645,29 @@ would fall into a recursive loop figuring out the max or min lengths. :-(
 However, consider this regex:
 
  my ($seq_regex, $and_regex);
- $seq_regex = SEQ(A, $and_regex);
- $and_regex = AND(B, $seq_regex);
+ $seq_regex = re_seq(A, $and_regex);
+ $and_regex = re_and(B, $seq_regex);
  
  # which is equivalent to 
- $seq_regex = SEQ(A, AND(B, $seq_regex));
+ $seq_regex = re_seq(A, re_and(B, $seq_regex));
 
 To the best of my knowledge, this sequence can never terminate successfully.
 On the other hand, this one can terminate successfully:
 
- $seq_regex = SEQ(A, OR(B, $seq_regex));
+ $seq_regex = re_seq(A, re_or(B, $seq_regex));
 
 but that is equivalent to the following repetition regex:
 
- $regex = SEQ( REPEAT(A), B);
+ $regex = re_seq( REPEAT(A), B);
 
 However, this regex cannot be written like that:
 
- $regex = SEQ(A OR(B, $regex), A);
+ $regex = re_seq(A re_or(B, $regex), A);
 
 That finds nested numerical signatures, much like the followin quasi-string
 regex:
 
- $regex = SEQ(
+ $regex = re_seq(
      /\(/,          # opening paren
      /[^()]*/,      # anything which is not paretheses
      REPEAT([0,1],  # zero or one
@@ -1704,7 +1718,7 @@ method seq_apply ($left, $right, @regexes) {
 			my $i = scalar @{$self->{regexes_to_apply}};
 			my $name = $self->get_bracketed_name_string;
 			my $child_name = $regex->get_bracketed_name_string;
-			die "In SEQ regex$name, ${i}th regex$child_name failed:\n$@"; 
+			die "In re_seq regex$name, ${i}th regex$child_name failed:\n$@"; 
 		}
 		
 		# Croak if the regex consumed more than it was given:
@@ -1713,7 +1727,7 @@ method seq_apply ($left, $right, @regexes) {
 			my $child_name = $regex->get_bracketed_name_string;
 			# Make sure i starts counting from 1 in death note:
 			my $i = scalar @{$self->{regexes_to_apply}};
-			die "In SEQ regex$name, ${i}th regex$child_name consumed $consumed\n"
+			die "In re_seq regex$name, ${i}th regex$child_name consumed $consumed\n"
 				. "but it was only allowed to consume $size\n";
 		}
 		
@@ -1753,7 +1767,7 @@ method seq_apply ($left, $right, @regexes) {
 			my $i = scalar @{$self->{regexes_to_apply}} - scalar(@regexes);
 			my $name = $self->get_bracketed_name_string;
 			my $child_name = $regex->get_bracketed_name_string;
-			die "In SEQ regex$name, ${i}th regex$child_name failed:\n$@"; 
+			die "In re_seq regex$name, ${i}th regex$child_name failed:\n$@"; 
 		}
 		
 		# Fail immediately if we get a numeric zero:
@@ -1765,7 +1779,7 @@ method seq_apply ($left, $right, @regexes) {
 			my $child_name = $regex->get_bracketed_name_string;
 			# Make sure i starts counting from 1 in death note:
 			my $i = scalar @{$self->{regexes_to_apply}} - scalar(@regexes);
-			die "In SEQ regex$name, ${i}th regex$child_name consumed $left_consumed\n"
+			die "In re_seq regex$name, ${i}th regex$child_name consumed $left_consumed\n"
 				. "but it was only allowed to consume $size\n";
 		}
 		
@@ -1838,7 +1852,7 @@ method _minmax () {
 	$self->max_size($full_max);
 }
 
-sub Regex::Engine::SEQ {
+sub Regex::Engine::re_seq {
 	# If the first argument is an object, assume no name:
 	return Regex::Engine::Sequence->new(regexes => \@_) if ref $_[0];
 	# Otherwise assume that the first argument is a name:
@@ -1981,7 +1995,7 @@ A potential concise syntax might look like this:
     # Comments and whitespace are allowed
     
     # If there is more than one regex in a row, the grouping
-    # is assumed to be a SEQUENCE group.
+    # is assumed to be a re_seq group.
     
     # ---( Basics )---
     # Perl scalars and lists are properly interpolated:

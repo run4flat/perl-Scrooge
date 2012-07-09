@@ -2,7 +2,7 @@ use strict;
 use warnings;
 use Test::More tests => 47;
 use PDL;
-use PDL::Regex;
+use Regex::Engine;
 
 # Load the basics module:
 my $module_name = 'Basics.pm';
@@ -18,22 +18,22 @@ elsif (-f "t\\$module_name") {
 
 # Assemble the data and a collection of regexes:
 my $data = sequence(20);
-my $fail_re = PDL::Regex::Test::Fail->new(name => 'fail');
-my $should_croak_re = PDL::Regex::Test::ShouldCroak->new(name => 'should_croak');
-my $croak_re = PDL::Regex::Test::Croak->new(name => 'croak');
-my $all_re = PDL::Regex::Test::All->new(name => 'all');
-my $even_re = PDL::Regex::Test::Even->new(name => 'even');
-my $exact_re = PDL::Regex::Test::Exactly->new(name => 'exact');
-my $range_re = PDL::Regex::Test::Range->new(name => 'range');
-my $offset_re = PDL::Regex::Test::Exactly::Offset->new(name => 'offset');
+my $fail_re = Regex::Engine::Test::Fail->new(name => 'fail');
+my $should_croak_re = Regex::Engine::Test::ShouldCroak->new(name => 'should_croak');
+my $croak_re = Regex::Engine::Test::Croak->new(name => 'croak');
+my $all_re = Regex::Engine::Test::All->new(name => 'all');
+my $even_re = Regex::Engine::Test::Even->new(name => 'even');
+my $exact_re = Regex::Engine::Test::Exactly->new(name => 'exact');
+my $range_re = Regex::Engine::Test::Range->new(name => 'range');
+my $offset_re = Regex::Engine::Test::Exactly::Offset->new(name => 'offset');
 
 ########################
 # Constructor tests: 7 #
 ########################
 
-my $regex = eval{OR('test regex', $all_re, $fail_re)};
+my $regex = eval{re_or('test regex', $all_re, $fail_re)};
 is($@, '', 'Basic constructor does not croak');
-isa_ok($regex, 'PDL::Regex::Or');
+isa_ok($regex, 'Regex::Engine::Or');
 is($regex->{name}, 'test regex', 'Constructor correctly interprets name');
 
 my ($length, $offset) = eval{$regex->apply($data)};
@@ -41,33 +41,33 @@ is($@, '', 'Basic usage does not croak');
 is($length, $data->nelem, 'Or matches on first successful regex, i.e. All');
 is($offset, 0, 'Offset of All match is zero');
 
-($length, $offset) = OR($fail_re, $all_re)->apply($data);
+($length, $offset) = re_or($fail_re, $all_re)->apply($data);
 is($length, $data->nelem, 'Or matches on first *successful* regex');
 
 #####################
 # Croaking regex: 6 #
 #####################
 
-$regex = eval{OR($should_croak_re)};
+$regex = eval{re_or($should_croak_re)};
 is($@, '', 'Constructor without name does not croak');
-isa_ok($regex, 'PDL::Regex::Or');
+isa_ok($regex, 'Regex::Engine::Or');
 eval{$regex->apply($data)};
-isnt($@, '', 'OR croaks when one of the regexes consumes too much');
-eval{OR($croak_re, $all_re)->apply($data)};
-isnt($@, '', 'OR croaks when one of its constituents croaks even if a later one would pass');
-eval{OR($all_re, $croak_re)->apply($data)};
-is($@, '', 'OR short-circuits on the first success');
-eval{OR($fail_re, $croak_re)->apply($data)};
-isnt($@, '', 'OR does not short-circuit unless it actually encounters success');
+isnt($@, '', 're_or croaks when one of the regexes consumes too much');
+eval{re_or($croak_re, $all_re)->apply($data)};
+isnt($@, '', 're_or croaks when one of its constituents croaks even if a later one would pass');
+eval{re_or($all_re, $croak_re)->apply($data)};
+is($@, '', 're_or short-circuits on the first success');
+eval{re_or($fail_re, $croak_re)->apply($data)};
+isnt($@, '', 're_or does not short-circuit unless it actually encounters success');
 
 ###################
 # Simple regex: 6 #
 ###################
 
 for $regex ($fail_re, $all_re, $even_re, $exact_re, $range_re, $offset_re) {
-	my (@results) = OR($regex)->apply($data);
+	my (@results) = re_or($regex)->apply($data);
 	my (@expected) = $regex->apply($data);
-	is_deeply(\@results, \@expected, 'Wrapping OR does not alter behavior of ' . $regex->{name} . ' regex');
+	is_deeply(\@results, \@expected, 'Wrapping re_or does not alter behavior of ' . $regex->{name} . ' regex');
 }
 
 ####################
@@ -76,7 +76,7 @@ for $regex ($fail_re, $all_re, $even_re, $exact_re, $range_re, $offset_re) {
 
 $exact_re->set_N(25);
 $offset_re->set_offset(30);
-if (OR($fail_re, $exact_re, $offset_re)->apply($data)) {
+if (re_or($fail_re, $exact_re, $offset_re)->apply($data)) {
 	fail('Failing regex passed when it should have failed');
 }
 else {
@@ -93,14 +93,14 @@ is_deeply([$offset_re->get_details], [], '    Offset regex does not have match i
 
 $offset_re->set_offset(4);
 $offset_re->set_N(8);
-my @results = OR($fail_re, $exact_re, $offset_re)->apply($data);
+my @results = re_or($fail_re, $exact_re, $offset_re)->apply($data);
 is_deeply(\@results, [8, 4], 'First complex regex should match against the offset regex');
 is_deeply([$fail_re->get_details], [], '    Fail does not match');
 is_deeply([$exact_re->get_details], [], '    Exact does not have any match');
 is_deeply($offset_re->get_details, {left => 4, right => 11}, '    Offset does have match info');
 
 $exact_re->set_N(15);
-@results = OR($fail_re, $exact_re, $even_re, $range_re)->apply($data);
+@results = re_or($fail_re, $exact_re, $even_re, $range_re)->apply($data);
 is_deeply(\@results, [15, 0], 'Second complex regex should match against the exact regex');
 my $first_result_ref = $exact_re->get_details;
 my %first_result_hash = %$first_result_ref;
@@ -112,7 +112,7 @@ is_deeply([$fail_re->get_details], [], '    Fail does not have match info');
 is_deeply([$even_re->get_details], [], '    Even does not have match info');
 is_deeply([$range_re->get_details], [], '    Range does not have match info');
 
-@results = OR($even_re, $exact_re, $range_re)->apply($data);
+@results = re_or($even_re, $exact_re, $range_re)->apply($data);
 is_deeply(\@results, [20, 0], 'Third complex regex should match against the even regex');
 my %even_results_hash = %{ $even_re->get_details };
 ($left, $right) = @even_results_hash{'left', 'right'};
@@ -124,7 +124,7 @@ is_deeply([$range_re->get_details], [], '    Range does not have match info');
 
 $range_re->min_size(10);
 $range_re->max_size(18);
-@results = OR($fail_re, $range_re, $even_re, $exact_re)->apply($data);
+@results = re_or($fail_re, $range_re, $even_re, $exact_re)->apply($data);
 is_deeply(\@results, [18, 0], 'Fourth complex regex should match against the range regex');
 my %range_results_hash = %{ $range_re->get_details };
 ($left, $right) = @range_results_hash{'left', 'right'};

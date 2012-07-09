@@ -1,22 +1,22 @@
 # A collection of tests to ensure that return values from _apply are
 # correctly handled by apply. Note that similar tests should also be run for
-# all the grouping regexes: OR, AND, SEQUENCE, etc, although their 
+# all the grouping regexes: re_or, re_and, re_seq, etc, although their 
 # short-circuiting should also be taken into account.
 
 use strict;
 use warnings;
 use Test::More tests => 23;
-use PDL::Regex;
+use Regex::Engine;
 use PDL;
 
 ####################
-# PDL::Regex::Test #
+# Regex::Engine::Test #
 ####################
 
 # A simple, lexically tweakable regex class that tracks the number of times
 # _apply is called.
-package PDL::Regex::Test;
-our @ISA = qw(PDL::Regex);
+package Regex::Engine::Test;
+our @ISA = qw(Regex::Engine);
 my ($apply_returns, $data, $min_size, $max_size);
 my @got;
 sub _prep {
@@ -50,7 +50,7 @@ sub build_expected {
 	return \@to_return;
 }
 
-my $regex = PDL::Regex::Test->new();
+my $regex = Regex::Engine::Test->new();
 
 ######################################
 # Check that build_expected works: 3 #

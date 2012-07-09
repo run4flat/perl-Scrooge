@@ -7,7 +7,7 @@ use PDL;
 use strict;
 use warnings;
 use Test::More tests => 15;
-use PDL::Regex;
+use Regex::Engine;
 use Data::Dumper;
 
 # Load the tracker module:
@@ -32,16 +32,16 @@ else {
 #                        Constructor Tests - 2                        #
 #######################################################################
 
-package PDL::Regex::Test::Tracker::New;
-our @ISA = ('PDL::Regex');
+package Regex::Engine::Test::Tracker::New;
+our @ISA = ('Regex::Engine');
 Tracker::track({_apply => '1', _prep => '1', _init => '1', _cleanup => '1'},
 	qw(new _to_stash apply is_prepping prep min_size max_size is_applying
 			store_match clear_stored_match is_cleaning cleanup)
 );
 
-my $regex = PDL::Regex::Test::Tracker::New->new();
+my $regex = Regex::Engine::Test::Tracker::New->new();
 # Ensure the class was properly created:
-isa_ok($regex, 'PDL::Regex::Test::Tracker::New')
+isa_ok($regex, 'Regex::Engine::Test::Tracker::New')
 	or diag($regex);
 
 # The call order for new should look like this:
@@ -57,8 +57,8 @@ is_deeply(\@call_structure, $expected, 'New calls _init');
 #                         Successful Prep - 4                         #
 #######################################################################
 
-package PDL::Regex::Test::Tracker::Override;
-our @ISA = ('PDL::Regex');
+package Regex::Engine::Test::Tracker::Override;
+our @ISA = ('Regex::Engine');
 Tracker::track(
 	{
 		_apply		=> q{ our $apply_returns->() },
@@ -74,7 +74,7 @@ our $prep_returns = sub {1};
 our $apply_returns = sub {1};
 our $cleanup_returns = sub {1};
 
-$regex = PDL::Regex::Test::Tracker::Override->new;
+$regex = Regex::Engine::Test::Tracker::Override->new;
 our @call_structure = ();
 
 my $data = sequence(50);
