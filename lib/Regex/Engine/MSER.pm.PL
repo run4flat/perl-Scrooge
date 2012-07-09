@@ -1,8 +1,22 @@
 # A set of conditions that use MSER-inspired methods.
-
-use PDL::PP qw(Regex::Engine::MSER Regex::Engine::MSER lib/PDL/Regex/MSER);
 use strict;
 use warnings;
+
+# Invoke PDL::PP
+my $base_name;
+BEGIN {
+	# .PL scripts are sent their filename, sans the .PL part. That's almost what
+	# PDL::PP expects to see, so massage it into the proper form:
+	$base_name = $ARGV[0];
+	$base_name =~ s/\.pm//;
+	
+	# Handle backslashes for Windows paths:
+	$base_name =~ s/\\/\\\\/g;
+}
+use PDL::PP (qw(Regex::Engine::MSER Regex::Engine::MSER), $base_name);
+
+# Add the .xs file to the cleanup lists:
+$build->add_to_cleanup("$base_name.xs");
 
 # working here - make the functions return their fitting values, and make
 # the regexes store them. (Getting access to those stored parameter values,

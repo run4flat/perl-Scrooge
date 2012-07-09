@@ -15,10 +15,6 @@ my $build = Module::Build->new(
 		PDL						=> 2,
 	},
 	needs_compiler => 1,
-	PL_files => {
-		'lib/Regex/Engine/MSER.pm.PL'
-			=> ['lib/Regex/Engine/MSER.xs', 'lib/Regex/Engine/MSER.pm'],
-	},
 	include_dirs => $inc,
 	
 );
