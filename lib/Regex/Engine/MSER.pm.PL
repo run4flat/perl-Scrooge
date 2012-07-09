@@ -16,6 +16,8 @@ BEGIN {
 use PDL::PP (qw(Regex::Engine::MSER Regex::Engine::MSER), $base_name);
 
 # Add the .xs file to the cleanup lists:
+use Module::Build;
+my $build = Module::Build->current;
 $build->add_to_cleanup("$base_name.xs");
 
 # working here - make the functions return their fitting values, and make
