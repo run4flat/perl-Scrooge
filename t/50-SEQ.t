@@ -1,6 +1,6 @@
 use strict;
 use warnings;
-use Test::More tests => 29;
+use Test::More tests => 28;
 use PDL;
 use Regex::Engine;
 
@@ -72,9 +72,9 @@ for $regex ($fail_re, $all_re, $even_re, $exact_re, $range_re, $offset_re) {
 }
 
 
-#######################
-# Complex Regexes: 10 #
-#######################
+######################
+# Complex Regexes: 9 #
+######################
 
 # Create two zero-width assertion regexes:
 $offset_re->set_N('0 but true');
@@ -84,9 +84,10 @@ my $at_ten = Regex::Engine::Test::Exactly::Offset->new(N => '0 but true', offset
 ok($length, 'First complex regex matches');
 is($length, 6, '    Length was correctly determined to be 6');
 is($offset, 4, '    Offset was correctly determined to be 4');
-is_deeply([$all_re->get_offsets], [pdl(4), pdl(9)], '    All has correct offset information');
-my @offsets = $offset_re->get_offsets;
-is_deeply([$offset_re->get_offsets], [pdl(4), pdl(3)], '    Offset has correct offset information');
+my $expected = {left => 4, right => 9};
+is_deeply($all_re->get_details, $expected, '    All has correct offset information');
+$expected = {left => 4, right => 3};
+is_deeply($offset_re->get_details, $expected, '    Offset has correct offset information');
 
 # Perform a match at three different segments with the same regex and make
 # sure it stores all three:
@@ -94,7 +95,11 @@ is_deeply([$offset_re->get_offsets], [pdl(4), pdl(3)], '    Offset has correct o
 ok($length, 'Second complex regex matches');
 is($length, 20, '    Length was correctly determined to be 20');
 is($offset, 0, '    Offset was correctly determined to be 0');
-my ($left, $right) = $all_re->get_offsets;
-ok(all ($left == pdl(0, 4, 10)), '    All regex correctly stored is left offsets');
-ok(all ($right == pdl(3, 9, 19)), '    All regex correctly stored its right offsets');
+my $expected = [
+	{left => 0, right => 3},
+	{left => 4, right => 9},
+	{left => 10, right => 19},
+];
+my @results = $all_re->get_details;
+is_deeply(\@results, $expected, '    Single regex stores multiple matches correctly');
 
