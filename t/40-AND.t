@@ -95,10 +95,10 @@ else {
 $exact_re->set_N(14);
 my @results = re_and($all_re, $exact_re, $even_re)->apply($data);
 is_deeply(\@results, [14, 0], 'First complex regex matches');
-my $expected = {left => pdl(0), right => pdl(13)};
-is_deeply([$all_re->get_details], $expected, '    All regex has correct offsets');
-is_deeply([$exact_re->get_details], $expected, '    Exact regex has correct offsets');
-is_deeply([$even_re->get_details], $expected, '    Even regex has correct offset');
+my $expected = {left => 0, right => 13};
+is_deeply($all_re->get_details, $expected, '    All regex has correct offsets');
+is_deeply($exact_re->get_details, $expected, '    Exact regex has correct offsets');
+is_deeply($even_re->get_details, $expected, '    Even regex has correct offset');
 
 $offset_re->set_N(4);
 $offset_re->set_offset(4);
@@ -106,7 +106,7 @@ $range_re->min_size(1);
 $range_re->max_size(10);
 @results = re_and($offset_re, $all_re, $range_re)->apply($data);
 is_deeply(\@results, [4, 4], 'Second complex regex matches');
-$expected = {left => pdl(4), left => pdl(7)};
+$expected = {left => 4, right => 7};
 is_deeply($all_re->get_details, $expected, '    All regex has correct offsets');
 is_deeply($range_re->get_details, $expected, '    Range regex has correct offsets');
 is_deeply($offset_re->get_details, $expected, '    Offset regex has correct offsets');
@@ -115,6 +115,8 @@ is_deeply($offset_re->get_details, $expected, '    Offset regex has correct offs
 $exact_re->set_N(5);
 @results = re_and($exact_re, $even_re)->apply($data);
 is_deeply(\@results, [], 'Third complex regex should fail');
-is_deeply($exact_re->get_offsets, [], '    Exact regex does not have any offsets');
-is_deeply($even_re->get_offsets, [], '    Even regex does not have any offsets');
+# These return nothing when they did not match; compare by capturing in an
+# anonymous array and comparing with an empty array:
+is_deeply([$exact_re->get_details], [], '    Exact regex does not have any offsets');
+is_deeply([$even_re->get_details], [], '    Even regex does not have any offsets');
 
