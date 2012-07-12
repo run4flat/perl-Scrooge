@@ -2,11 +2,10 @@
 
 =cut
 
-use PDL::Regex;
+use Regex::Engine;
 package Regex::Engine::Intersect;
 use strict;
 use warnings;
-use Method::Signatures;
 use Carp;
 
 our @ISA=qw(Regex::Engine::Quantified);
@@ -26,9 +25,9 @@ our @ISA=qw(Regex::Engine::Quantified);
 # Throws     : no exceptions
 # Notes      : expects keys 'above' and 'below'
 
-#method _init(){
+#sub _init {
 #   Parent class handles quantifiers
-#   $self->SUPER::_init;
+#   $_[0]->SUPER::_init;
   
 #   XXX 
 #}
@@ -43,7 +42,8 @@ our @ISA=qw(Regex::Engine::Quantified);
 # Throws     : no exceptions
 # Notes      : none atm
 
-method _prep($data){
+sub _prep {
+  my ($self, $data) = @_;
   my $above = $self->{ above };
   my $below = $self->{ below };
   
@@ -57,7 +57,23 @@ method _prep($data){
   $self->{ subref } = sub {
     my ($left, $right) = @_;
     
-    # XXX pick up here. 
+    # Zero width assertions are trivially true.
+    return '0 but true' if ($left > $right);
+
+    my $sub_piddle = $data->slice("$left:$right");
+
+    # Return a failed match if the match doesn't occur
+    # at the given left offset 
+    return 0 if $data->at($left) >= $below or $data->at($left) <= $above;
+
+    # Return the length of the whole segment if
+    # all of data is within the range. 
+    return ($right - $left +1) 
+        if all ( ($sub_piddle > $above) & ($sub_piddle < $below) );
+    
+    # Returns the index of the first point outside the range, which is equal to the length
+    # of the match.
+    return which( ($sub_piddle < $above) | ($sub_piddle > $below))->at(0);     
     
   };
 }
@@ -71,6 +87,11 @@ method _prep($data){
 # Throws     : no exceptions
 # Notes      : expects keys 'above' and 'below'
 
+sub _apply {
+  my $self = shift;
+  return $self->(subref)->(@_);
+  
+}
 
 
 ###########################################################
@@ -107,3 +128,10 @@ sub re_intersect {
     
   return Regex::Engine::Intersect->new(%args);
 }
+
+package Main;
+
+my $data = sin(sequence(100)/10);
+$data->slice('37') .= 100;
+
+

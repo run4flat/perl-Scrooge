@@ -13,7 +13,7 @@ my ($mean , $std_dev) = $data->stats;
     my (undef, $left, $right) = @_;
         # Return undefined so we don't have to deal
     # with zero width assertions
-    return 0 if ($left > $right);
+    return '0 but true' if ($left > $right);
     # Should be able to return undef
     
     my $sub_piddle = $data->slice("$left:$right");
