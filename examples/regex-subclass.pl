@@ -7,6 +7,7 @@ package Regex::Engine::Intersect;
 use strict;
 use warnings;
 use Carp;
+use PDL;
 
 our @ISA=qw(Regex::Engine::Quantified);
 # Override _init, _prep, _apply, 
@@ -49,11 +50,11 @@ sub _prep {
   
   # It could be the case that the intersection could be null if above is under below.
   # We retrun false to signify to the Regex Engine that it never needs to evaluate this. 
-  if ($above < $below){
+  if ($above > $below){
     return '';
   }
-    
-  #Build the subroutine reference
+  
+  # Build the subroutine reference
   $self->{ subref } = sub {
     my ($left, $right) = @_;
     
@@ -76,6 +77,8 @@ sub _prep {
     return which( ($sub_piddle < $above) | ($sub_piddle > $below))->at(0);     
     
   };
+  
+  return $self->SUPER::_prep($data);
 }
 
 ###########################################################
@@ -89,7 +92,7 @@ sub _prep {
 
 sub _apply {
   my $self = shift;
-  return $self->(subref)->(@_);
+  return $self->{subref}->(@_);
   
 }
 
@@ -112,7 +115,7 @@ sub re_intersect {
     if @_ % 2 == 1;
 
   my %args = @_;
-  
+
   # Check to see if 'above' and 'below' exist
   croak("re_intersect expects an 'above' key.")
     unless exists $args{ above };
@@ -129,9 +132,17 @@ sub re_intersect {
   return Regex::Engine::Intersect->new(%args);
 }
 
-package Main;
+package main;
+
+use strict;
+use warnings;
+use PDL;
 
 my $data = sin(sequence(100)/10);
 $data->slice('37') .= 100;
 
+my $regex = Regex::Engine::Intersect::re_intersect(above => 2, below => 1000);
 
+my ($matched, $offset) = $regex->apply($data);
+print "not " if not defined $offset or $offset != 37;
+print "ok - offset finds crazy value\n";
