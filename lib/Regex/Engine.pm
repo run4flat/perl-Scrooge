@@ -1,7 +1,6 @@
 package Regex::Engine;
 use strict;
 use warnings;
-use Method::Signatures;
 use Carp;
 use Exporter;
 use PDL;
@@ -235,7 +234,11 @@ and retrieve sub-match results using C<get_offsets_for>, as discussed below.
 
 # User-level method, not to be overridden.
 our %method_table;
-method apply ($data) {
+sub apply {
+	croak('Regex::Engine::apply is a one-argument method')
+		unless @_ == 2;
+	my ($self, $data) = @_;
+	
 	# Prepare the regex for execution. This may involve computing low and
 	# high quantifier limits, keeping track of $data, stashing
 	# intermediate data if this is a nested regex, and many other things.
@@ -380,7 +383,11 @@ within the containers.
 
 =cut
 
-method get_details_for ($name) {
+sub get_details_for {
+	croak('Regex::Engine::get_details_for is a one-argument method')
+		unless @_ == 2;
+	my ($self, $name) = @_;
+	
 	# Croak if this regex is not named:
 	croak("This regex was not told to capture anything!")
 		unless defined $self->{name};
@@ -411,7 +418,11 @@ name with which to search.
 # This returns the details stored by this regex. Note that this does not
 # croak as it assumes you know what you're doing calling this method
 # directly.
-method get_details {
+sub get_details {
+	croak('Regex::Engine::get_details is a method that takes no arguments')
+		unless @_ == 1;
+	my ($self) = @_;
+	
 	# Return undef or the empty list if nothing matched
 	return unless defined $self->{final_details};
 	
@@ -627,10 +638,11 @@ comes out must be capable of running its C<prep> method.
 
 =cut
 
-func new ($class, @args) {
+sub new {
+	my $class = shift;
 	croak("Internal Error: args to Regex::Engine::new must have a class name and then key => value pairs")
-		unless @args % 2 == 0;
-	my $self = bless {@args}, $class;
+		unless @_ % 2 == 0;
+	my $self = bless {@_}, $class;
 	
 	# Set the default state so that stashing works correctly:
 	$self->{state} = 'not running';
@@ -648,8 +660,10 @@ working here - document this method
 =cut
 
 # Default init does nothing:
-method _init () {}
-
+sub _init {
+	croak('Regex::Engine::_init is a method that takes no arguments')
+		unless @_ == 1;
+}
 =item prep ($data)
 
 This function is called before the regular expression hammers on the supplied
@@ -696,25 +710,32 @@ The C<_prep> method is called as the very first step in C<apply>.
 # phases.
 # Do *not* set the state to prepping; that is part of prep's short-
 # circuiting.
-method is_prepping () {
+sub is_prepping {
+	croak('Regex::Engine::is_prepping is a method that takes no arguments')
+		unless @_ == 1;
+	my $self = shift;
 	if ($self->{state}) {
 		push @{$self->{old_state}}, $self->{state};
 		delete $self->{state};
 	}
 }
 
-method is_applying () {
-	$self->{state} = 'apply';
+sub is_applying {
+	$_[0]->{state} = 'apply';
 }
 
 # As with is_prepping, do *not* set the state since cleaning's short-
 # circuiting depends on this being clear:
-method is_cleaning () {
-	delete $self->{state};
+sub is_cleaning {
+	delete $_[0]->{state};
 }
 
 # Make sure this only gets run once per call to apply:
-method prep ($data) {
+sub prep {
+	croak('Regex::Engine::prep is a one-argument method')
+		unless @_ == 2;
+	my ($self, $data) = @_;
+	
 	return 1 if $self->{state};
 	$self->{state} = 'prepping';
 	
@@ -738,11 +759,13 @@ method prep ($data) {
 }
 
 # Default _prep simply returns true, meaning a successful prep:
-method _prep ($data) { return 1 }
+sub _prep {	return 1 }
 
 # The internal keys with values that we want to protect in case of
 # recursive usage:
-method _to_stash () {
+sub _to_stash {
+	croak('Regex::Engine::_to_stash is a method that takes no arguments')
+		unless @_ == 1;
 	return qw (data min_size max_size match_details);
 }
 
@@ -786,14 +809,16 @@ max_size are keys in the object, they will be the default values.
 
 =cut
 
-method min_size ($new_value?) {
-	$self->{min_size} = $new_value if defined $new_value;
-	return $self->{min_size};
+sub min_size {
+	return $_[0]->{min_size} if @_ == 1;
+	return $_[0]->{min_size} = $_[1] if @_ == 2;
+	croak('Regex::Engine::min_size is an accessor method');
 }
 
-method max_size ($new_value?) {
-	$self->{max_size} = $new_value if defined $new_value;
-	return $self->{max_size};
+sub max_size {
+	return $_[0]->{max_size} if @_ == 1;
+	return $_[0]->{max_size} = $_[1] if @_ == 2;
+	croak('Regex::Engine::max_size is an accessor method');
 }
 
 =item _cleanup
@@ -806,7 +831,11 @@ without dying.
 
 =cut
 
-method cleanup () {
+sub cleanup {
+	croak('Regex::Engine::cleanup is a method that takes no arguments')
+		unless @_ == 1;
+	my $self = shift;
+	
 	# self's state is *always* deleted just before cleanup is called, so if
 	# it has any true value, then the cleanup phase for this object has
 	# already been called:
@@ -867,7 +896,7 @@ method cleanup () {
 }
 
 # Default _cleanup does nothing
-method _cleanup () { }
+sub _cleanup { }
 
 =back
 
@@ -886,7 +915,11 @@ the C<match_details> key if the regex is named.
 
 =cut
 
-method store_match ($details) {
+sub store_match {
+	croak('Regex::Engine::store_match is a one-argument method')
+		unless @_ == 2;
+	my ($self, $details) = @_;
+	
 	# Only store the match if this is named
 	return unless exists $self->{name};
 	push @{$self->{match_details}}, $details;
@@ -903,7 +936,11 @@ own values.
 
 =cut
 
-method clear_stored_match () {
+sub clear_stored_match {
+	croak('Regex::Engine::_stored_match is a method that takes no arguments')
+		unless @_ == 1;
+	my $self = shift;
+	
 	return 0 unless exists $self->{name};
 	pop @{$self->{match_details}};
 	return 0;
@@ -927,7 +964,10 @@ working here - discuss more in the group discussion
 
 =cut
 
-method add_name_to ($hashref) {
+sub add_name_to {
+	croak('Regex::Engine::add_name_to is a one-argument method')
+		unless @_ == 2;
+	my ($self, $hashref) = @_;
 	return unless exists $self->{name};
 	
 	my $name = $self->{name};
@@ -946,7 +986,10 @@ have a name. You shouldn't override this except for debugging purposes.
 
 =cut
 
-method get_bracketed_name_string () {
+sub get_bracketed_name_string {
+	croak('Regex::Engine::get_bracketed_name_string is a method that takes no arguments')
+		unless @_ == 1;
+	my $self = shift;
 	if (defined $self->{name}) {
 		return ' [' . $self->{name} . ']';
 	}
@@ -1058,7 +1101,6 @@ package Regex::Engine::Quantified;
 use parent -norequire, 'Regex::Engine';
 use strict;
 use warnings;
-use Method::Signatures;
 use Carp;
 
 =head1 Regex::Engine::Quantified
@@ -1071,7 +1113,8 @@ override the C<_apply> method.
 
 =cut
 
-method _init () {
+sub _init {
+	my $self = shift;
 	# Parse the quantifiers:
 	my ($ref) = delete $self->{quantifiers};
 	# Make sure the caller supplied a quantifiers key and that it's correct:
@@ -1111,10 +1154,11 @@ method _init () {
 }
 
 # Default minimum length is zero:
-method _min_length () { 0 }
+sub _min_length { 0 }
 
 # Prepare the current quantifiers:
-method _prep ($data) {
+sub _prep {
+	my ($self, $data) = @_;
 	# Compute and store the numeric values for the min and max quantifiers:
 	my $N = Regex::Engine::data_length($data);
 	my ($min_size, $max_size);
@@ -1165,7 +1209,6 @@ package Regex::Engine::Any;
 use parent -norequire, 'Regex::Engine::Quantified';
 use strict;
 use warnings;
-use Method::Signatures;
 use Carp;
 
 =head2 re_any
@@ -1189,7 +1232,8 @@ sub Regex::Engine::re_any {
 }
 
 # apply (the non-overrideable method) will store the saved values:
-method _apply ($left, $right) {
+sub _apply {
+	my (undef, $left, $right) = @_;
 	return $right - $left + 1;
 }
 
@@ -1197,7 +1241,6 @@ package Regex::Engine::Sub;
 use parent -norequire, 'Regex::Engine::Quantified';
 use strict;
 use warnings;
-use Method::Signatures;
 use Carp;
 
 =head2 re_sub
@@ -1236,7 +1279,8 @@ sub Regex::Engine::re_sub {
 		, defined $name ? (name => $name) : ());
 }
 
-method _apply ($left, $right) {
+sub _apply {
+	my ($self, $left, $right) = @_;
 	# Apply the rule and see what we get:
 	my ($consumed, %details) = eval{$self->{subref}->($self->{data}, $left, $right)};
 	
@@ -1260,7 +1304,6 @@ package Regex::Engine::ZeroWidthAssertion;
 use parent -norequire, 'Regex::Engine::Quantified';
 use strict;
 use warnings;
-use Method::Signatures;
 use Carp;
 
 sub Regex::Engine::re_zwa {
@@ -1281,7 +1324,8 @@ sub Regex::Engine::re_zwa {
 	
 }
 
-method _apply ($left, $right) {
+sub _apply {
+	my ($self, $left, $right) = @_;
 	unless ($right < $left) {
 		my $name = $self->get_bracketed_name_string;
 		croak("Internal error in calling re_zwa regex$name: $right is not "
@@ -1313,10 +1357,10 @@ package Regex::Engine::Grouped;
 use parent -norequire, 'Regex::Engine';
 use strict;
 use warnings;
-use Method::Signatures;
 use Carp;
 
-method _init () {
+sub _init {
+	my $self = shift;
 	croak("Grouped regexes must supply a key [regexes]")
 		unless defined $self->{regexes};
 	
@@ -1340,14 +1384,16 @@ method _init () {
 # Derivatives must supply their own _apply
 
 # Some state information that will need to be stashed:
-method _to_stash () {
+sub _to_stash {
+	my $self = shift;
 	return qw(regexes_to_apply positive_matches), $self->SUPER::_to_stash;
 }
 
 # _prep will call _prep on all its children and keep track of those that
 # return true values. Success or failure is based upon the inherited method
 # _prep_success.
-method _prep ($data) {
+sub _prep {
+	my ($self, $data) = @_;
 	# Call the prep function for each of them, keeping track of all those
 	# that succeed. Notice that I capture errors and continue because every
 	# single regex needs to run its prep method in order for it to be 
@@ -1391,11 +1437,13 @@ method _prep ($data) {
 }
 
 # The default success happens when we plan to apply *all* the regexes
-method _prep_success () {
+sub _prep_success {
+	my $self = shift;
 	return @{$self->{regexes}} == @{$self->{regexes_to_apply}};
 }
 
-method _cleanup () {
+sub _cleanup {
+	my $self = shift;
 	# Call the cleanup method for *all* child regexes:
 	my @errors;
 	foreach (@{$self->{regexes}}) {
@@ -1414,14 +1462,16 @@ method _cleanup () {
 
 
 # State functions need to be called on all children.
-method is_prepping () {
+sub is_prepping {
+	my $self = shift;
 	$self->SUPER::is_prepping;
 	foreach my $regex (@{$self->{regexes}}) {
 		$regex->is_prepping;
 	}
 }
 
-method is_applying () {
+sub is_applying {
+	my $self = shift;
 	$self->SUPER::is_applying;
 	foreach my $regex (@{$self->{regexes}}) {
 		$regex->is_applying;
@@ -1430,7 +1480,8 @@ method is_applying () {
 
 # As with is_prepping, do *not* set the state since cleaning's short-
 # circuiting depends on this being clear:
-method is_cleaning () {
+sub is_cleaning {
+	my $self = shift;
 	$self->SUPER::is_cleaning;
 	foreach my $regex (@{$self->{regexes}}) {
 		$regex->is_cleaning;
@@ -1439,7 +1490,8 @@ method is_cleaning () {
 
 # Clear stored match assumes that all the regexes matched, so this will
 # need to be overridden for re_or:
-method clear_stored_match() {
+sub clear_stored_match {
+	my $self = shift;
 	# Call the parent's method:
 	$self->SUPER::clear_stored_match;
 	
@@ -1452,19 +1504,24 @@ method clear_stored_match() {
 	return 0;
 }
 
-method push_match ($regex, $details) {
+sub push_match {
+	croak('Regex::Engine::Grouped::push_match is a method that expects two arguments')
+		unless @_ == 3;
+	my ($self, $regex, $details) = @_;
 	push @{$self->{positive_matches}}, $regex;
 	$regex->store_match($details);
 }
 
 # This should only be called when we know that something is on the
 # positive_matches stack. recursive check this
-method pop_match () {
+sub pop_match {
+	my $self = shift;
 	$self->{positive_matches}->[-1]->clear_stored_match;
 	pop @{$self->{positive_matches}};
 }
 
-method get_details_for ($name) {
+sub get_details_for {
+	my ($self, $name) = @_;
 	# This is a user-level function. Croak if the name does not exist.
 	croak("Unknown regex name $name") unless exists $self->{names}->{$name};
 	
@@ -1478,7 +1535,8 @@ method get_details_for ($name) {
 # Structures like ABA should pass this, but recursive structures will go
 # into deep recursion.
 # recursive check this
-method add_name_to ($hashref) {
+sub add_name_to {
+	my ($self, $hashref) = @_;
 	# Go through each named value in this group's collection of names:
 	while( my ($name, $ref) = each %{$self->{names}}) {
 		croak("Found multiple regular expressions named $name")
@@ -1501,13 +1559,13 @@ package Regex::Engine::Or;
 use parent -norequire, 'Regex::Engine::Grouped';
 use strict;
 use warnings;
-use Method::Signatures;
 use Carp;
 
 # Called by the _prep method; sets the internal minimum and maximum match
 # sizes.
 # recursive check this
-method _minmax () {
+sub _minmax {
+	my $self = shift;
 	my ($full_min, $full_max);
 	
 	# Compute the min as the least minimum, and max as the greatest maximum:
@@ -1523,13 +1581,14 @@ method _minmax () {
 
 # Must override the default _prep_success method. If we have *any* regexes
 # that will run, that is considered a success.
-method _prep_success () {
-	return @{$self->{regexes_to_apply}} > 0;
+sub _prep_success {
+	return @{$_[0]->{regexes_to_apply}} > 0;
 }
 
 # This only needs to clear out the current matching regex:
 # recursive check this
-method clear_stored_match() {
+sub clear_stored_match {
+	my $self = shift;
 	# Call the Regex::Engine's method:
 	Regex::Engine::clear_stored_match($self);
 	
@@ -1542,7 +1601,8 @@ method clear_stored_match() {
 
 # Run all the regexes (that said they wanted to run). Return the first
 # success that we find:
-method _apply ($left, $right) {
+sub _apply {
+	my ($self, $left, $right) = @_;
 	my @regexes = @{$self->{regexes_to_apply}};
 	my $max_size = $right - $left + 1;
 	my $min_r = $left + $self->min_size - 1;
@@ -1622,11 +1682,11 @@ package Regex::Engine::And;
 use parent -norequire, 'Regex::Engine::Grouped';
 use strict;
 use warnings;
-use Method::Signatures;
 use Carp;
 
 # Return false if any of them fail or if they disagree on the matched length
-method _apply ($left, $right) {
+sub _apply {
+	my ($self, $left, $right) = @_;
 	my $consumed_length = $right - $left + 1;
 	my @to_store;
 	my @regexes = @{$self->{regexes_to_apply}};
@@ -1694,7 +1754,8 @@ method _apply ($left, $right) {
 
 # Called by the _prep method; stores minimum and maximum match sizes in an
 # internal cache:
-method _minmax () {
+sub _minmax {
+	my $self = shift;
 	my ($full_min, $full_max);
 	
 	# Compute the min as the greatest minimum, and max as the least maximum:
@@ -1736,15 +1797,15 @@ package Regex::Engine::Sequence;
 use parent -norequire, 'Regex::Engine::Grouped';
 use strict;
 use warnings;
-use Method::Signatures;
 use Carp;
 
 # make sure that temp_matches is stashed:
-method _to_stash () {
-	return 'temp_matches', $self->SUPER::_to_stash;
+sub _to_stash {
+	return 'temp_matches', $_[0]->SUPER::_to_stash;
 }
 
-method _init () {
+sub _init {
+	my $self = shift;
 	$self->SUPER::_init();
 	$self->{temp_matches} = {};
 }
@@ -1813,11 +1874,13 @@ the execution of the later rules.
 
 =cut	
 
-method _apply ($left, $right) {
+sub _apply {
+	my ($self, $left, $right) = @_;
 	return $self->seq_apply($left, $right, @{$self->{regexes_to_apply}});
 }
 
-method seq_apply ($left, $right, @regexes) {
+sub seq_apply {
+	my ($self, $left, $right, @regexes) = @_;
 	my $regex = shift @regexes;
 	my $data = $self->{data};
 	
@@ -1961,7 +2024,8 @@ method seq_apply ($left, $right, @regexes) {
 
 # Called by the _prep method, sets the internal minimum and maximum sizes:
 # recursive check this
-method _minmax () {
+sub _minmax {
+	my $self = shift;
 	my ($full_min, $full_max) = (0, 0);
 	
 	# Compute the min and max as the sum of the mins and maxes

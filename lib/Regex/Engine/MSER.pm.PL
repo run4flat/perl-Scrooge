@@ -28,7 +28,6 @@ pp_addpm '# line ' . (__LINE__ + 2) . <<'FOR_MODULE';
  "MSER.pm.PL"
 use PDL;
 use Regex::Engine;
-use Method::Signatures;
 
 package Regex::Engine::MSER;
 # An MSER condition base class:
@@ -44,7 +43,8 @@ our @EXPORT = qw(MSER_const MSER_linear);
 # working here - find a way to keep this from trying to export PP functions
 # since they are only meant for internal use.
 
-method _init {
+sub _init {
+	my $self = shift;
 	$self->SUPER::_init();
 	
 	# Check that explicit min and max quantifiers are reasonable:
@@ -95,7 +95,8 @@ method _init {
 # A minor extension to Quantified _prep that ensures the piddle is one or
 # two dimensional. It is considered a fatal error if they try to run this
 # regex on a higher-dimensional piddle.
-method _prep ($self, $piddle) {
+sub _prep {
+	my ($self, $piddle) = @_;
 	die("You can only apply MSER conditions to one- or two-dimensional piddles\n")
 		if $piddle->ndims > 2;
 	return $self->SUPER::_prep($piddle);
@@ -155,7 +156,6 @@ package Regex::Engine::MSER::Const;
 use strict;
 use warnings;
 our @ISA = qw(Regex::Engine::MSER);
-use Method::Signatures;
 use PDL::NiceSlice;
 
 # We need at least two points for the MSER Const:
@@ -164,15 +164,16 @@ sub _min_length { 2 }
 # working here - consider adding a field for which row to use, rather than
 # defaulting to the first.
 
-method _to_stash () {
-	return qw(average), $self->SUPER::_to_stash;
+sub _to_stash {
+	return qw(average), $_[0]->SUPER::_to_stash;
 }
 
 sub Regex::Engine::MSER::MSER_const {
 	Regex::Engine::MSER::Const->_mser_new('MSER_const', @_);
 }
 
-method _apply ($left, $right) {
+sub _apply {
+	my ($self, $left, $right) = @_;
 	my $piddle = $self->{data};
 	
 	my $to_apply;
@@ -193,7 +194,6 @@ package Regex::Engine::MSER::Linear;
 use strict;
 use warnings;
 our @ISA = qw(Regex::Engine::MSER);
-use Method::Signatures;
 
 # we need at least three points for the MSER Linear:
 sub _min_length { 3 }
@@ -202,7 +202,8 @@ sub Regex::Engine::MSER::MSER_linear {
 	Regex::Engine::MSER::Linear->_mser_new('MSER_linear', @_);
 }
 
-method _apply ($left, $right)
+sub _apply {
+	my ($self, $left, $right) = @_;
 	my $piddle = $self->{data};
 	
 	my ($x, $y);
