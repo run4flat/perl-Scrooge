@@ -247,5 +247,28 @@ sub _apply {
 	return $self->SUPER::_apply($left, $right);
 }
 
+############################################################################
+#                       Regex::Engine::Test::Printer                       #
+############################################################################
+
+# Useful for knowning the position of the current matching. Not presently used
+# in the test suite; used for debugging.
+
+package Regex::Engine::Test::Printer;
+use strict;
+use warnings;
+our @ISA = qw(Regex::Engine);
+
+sub _init {
+	my $self = shift;
+	$self->{min_size} = 0;
+	$self->{max_size} = 0;
+}
+
+sub _apply {
+	my ($self, $left) = @_;
+	Test::More::diag("Looking at $left\n");
+	return '0 but true';
+}
 
 1;
