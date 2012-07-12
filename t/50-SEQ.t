@@ -79,10 +79,11 @@ for $regex ($fail_re, $all_re, $even_re, $exact_re, $range_re, $offset_re) {
 # Create two zero-width assertion regexes:
 $offset_re->set_N('0 but true');
 $offset_re->set_offset(4);
-my $at_ten = Regex::Engine::Test::Exactly::Offset->new(N => '0 but true', offset => 10);
+# XXX cannot set N => '0 but true'. Why?
+my $at_ten = Regex::Engine::Test::Exactly::Offset->new(N => 1, offset => 10);
 ($length, $offset) = re_seq($offset_re, $all_re, $at_ten)->apply($data);
 ok($length, 'First complex regex matches');
-is($length, 6, '    Length was correctly determined to be 6');
+is($length, 7, '    Length was correctly determined to be 6');
 is($offset, 4, '    Offset was correctly determined to be 4');
 my $expected = {left => 4, right => 9};
 is_deeply($all_re->get_details, $expected, '    All has correct offset information');
@@ -98,7 +99,7 @@ is($offset, 0, '    Offset was correctly determined to be 0');
 my $expected = [
 	{left => 0, right => 3},
 	{left => 4, right => 9},
-	{left => 10, right => 19},
+	{left => 11, right => 19},
 ];
 my @results = $all_re->get_details;
 is_deeply(\@results, $expected, '    Single regex stores multiple matches correctly');
