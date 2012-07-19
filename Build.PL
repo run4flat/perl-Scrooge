@@ -14,6 +14,9 @@ my $build = Module::Build->new(
 		perl					=> '5.6.1',
 		PDL						=> 2,
 	},
+	build_requires => {
+		'Test::More'  => 0.88,
+	},
 	needs_compiler => 1,
 	include_dirs => $inc,
 	
