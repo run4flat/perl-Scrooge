@@ -61,6 +61,7 @@ from the mean of the data.
 
 sub _prep {
   my ($self, $data) = @_;
+  $data = PDL::Core::topdl($data);
   my $original_above = my $above = $self->{ above };
   my $original_below = my$below = $self->{ below };
  
