@@ -5,10 +5,7 @@ use Regex::Engine;
 use Carp;
 use PDL;
 
-use Exporter;
-
-our @ISA=qw(Regex::Engine::Quantified Exporter);
-our @EXPORT = qw(re_intersect);
+our @ISA = qw(Regex::Engine::Quantified);
 
 =head1 NAME
 
@@ -142,6 +139,14 @@ sub _apply {
   
 }
 
+################################################################################
+
+package Regex::Engine::Range;
+
+use Exporter 'import';
+our @EXPORT = qw(re_intersect);
+use strict;
+use warnings;
 
 ###########################################################
 # Name       : re_intersect
@@ -205,24 +210,4 @@ sub re_intersect {
   return Regex::Engine::Intersect->new(%args);
 }
 
-package main;
-
-use strict;
-use warnings;
-use PDL;
-
-my $data = sin(sequence(100)/10);
-$data->slice('37') .= 100;
-
-my $regex = Regex::Engine::Intersect::re_intersect(above => 2, below => 1000);
-my ($matched, $offset) = $regex->apply($data);
-print "not " if not defined $offset or $offset != 37;
-print "ok - offset finds crazy value\n";
-
-$regex = Regex::Engine::Intersect::re_intersect(above => 'avg + 2@', below => 1000);
-($matched, $offset) = $regex->apply($data);
-print "not " if not defined $offset or $offset != 37;
-print "ok - offset finds crazy value\n";
-
-#'5 - 2@'
-#'5 - 2%'
+1;
