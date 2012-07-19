@@ -56,7 +56,7 @@ from the mean of the data.
 # Purpose    : create an anonymous subroutine that performs the condition check
 # Returns    : a True value
 # Parameters : $self (implicit), $data
-# Throws     : no exceptions
+# Throws     : if parse_range_strings had trouble
 # Notes      : none atm
 
 sub _prep {
@@ -112,7 +112,6 @@ sub _prep {
 sub _apply {
   my $self = shift;
   return $self->{subref}->(@_);
-  
 }
 
 ################################################################################
@@ -124,13 +123,35 @@ our @EXPORT = qw(re_intersect);
 use strict;
 use warnings;
 
+=head2 Range Strings
+
+working here - document more sufficiently.
+
+The following suffixes and strings are converted:
+
+=over
+
+=item num@
+
+=item num%
+
+=item min
+
+=item max
+
+=item avg
+
+=back
+
+=cut
+
 ###########################################################
 # Name       : parse_range_strings
 # Usage      : parse_range_strings($data, $above, $below, ...)
 # Purpose    : parse range strings for a given piddle
 # Returns    : numeric values for the given range strings
 # Parameters : a piddle, then a collection of range strings
-# Throws     : 
+# Throws     : if the range string is not eval-able after munging
 # Notes      : none, yet
 
 sub parse_range_strings {
@@ -158,13 +179,21 @@ sub parse_range_strings {
     # Replace ... avg ... with ... $mean ...  
     $range_string =~ s/avg/\$mean/g;
     
+    # Replace min and max with $min and $max
+    $range_string =~ s/min/\$min/g;
+    $range_string =~ s/max/\$max/g;
+    
     # Evaluate the result and store it, croaking if we ran into trouble
     push @to_return, eval($range_string);
     croak("parse_range_strings had trouble with range_string $original_string")
       if $@ ne '';
   }
   
-  return @to_return;
+  # return all strings in list context
+  return @to_return if wantarray;
+  
+  # return only the first result in scalar context
+  return $to_return[0];
 }
 
 ###########################################################
