@@ -16,7 +16,7 @@ Regex::Engine::Range - create regexen to match numbers inside a given numeric ra
 
 =cut
 
-our $VERSION = 0.01
+our $VERSION = 0.01;
 
 =head1 VERSION
 

@@ -2,9 +2,10 @@
 
 use strict;
 use warnings;
-use Test::More tests => 2;
+use Test::More tests => 3;
 
 use_ok('Regex::Engine');
+use_ok('Regex::Engine::Range');
 
 # make sure that new croaks if called with a bad number of arguments
 $@ = '';
