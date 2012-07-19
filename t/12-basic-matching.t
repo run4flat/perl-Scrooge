@@ -259,5 +259,5 @@ is($offset, 0, 'Zero-width assertion matched at zero offset');
 ###########################################################
 
 $N_to_match = 1;
-my $matched = eval{ $single_value_regex->apply(5) };
+$matched = eval{ $single_value_regex->apply(5) };
 isnt($@, '', "Can't apply regex to simple scalars");

@@ -96,7 +96,7 @@ is_deeply($offset_re->get_details, $expected, '    Offset has correct offset inf
 ok($length, 'Second complex regex matches');
 is($length, 20, '    Length was correctly determined to be 20');
 is($offset, 0, '    Offset was correctly determined to be 0');
-my $expected = [
+$expected = [
 	{left => 0, right => 3},
 	{left => 4, right => 9},
 	{left => 11, right => 19},
