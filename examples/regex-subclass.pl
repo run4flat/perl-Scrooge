@@ -45,15 +45,42 @@ our @ISA=qw(Regex::Engine::Quantified);
 
 sub _prep {
   my ($self, $data) = @_;
-  my $above = $self->{ above };
-  my $below = $self->{ below };
+  my $original_above = my $above = $self->{ above };
+  my $original_below = my$below = $self->{ below };
+ 
+  my ($mean, $st_dev) = $data->stats;
+  my ($min, $max) = $data->minmax;
+  my $pct = ($max - $min) / 100;
+  
+  for my $entry ($above, $below){
+    # Replace ... 5@ ... with ... 5 * $st_dev ...
+    $entry =~ s/(\d)\s*\@/$1 * \$st_dev/g;
+    
+    # Replace ... 5% ... with ... 5 * $pct ...  
+    $entry =~ s/(\d)\s*\%/$1 * \$pct/g;
+    
+    # Replace ... avg ... with ... $mean ...  
+    $entry =~ s/avg/\$mean/g;
+    
+  }
+  
+  #Evaluate the expression
+  $above = eval($above);
+  if ($@){
+    # If they give junk
+    croak("Had trouble with above specification: $original_above");
+  }
+  
+  $below = eval($below);
+  if ($@){
+    croak("Had trouble with below specification: $original_below");
+  }
   
   # It could be the case that the intersection could be null if above is under below.
   # We retrun false to signify to the Regex Engine that it never needs to evaluate this. 
   if ($above > $below){
     return '';
   }
-  
   # Build the subroutine reference
   $self->{ subref } = sub {
     my ($left, $right) = @_;
@@ -142,7 +169,14 @@ my $data = sin(sequence(100)/10);
 $data->slice('37') .= 100;
 
 my $regex = Regex::Engine::Intersect::re_intersect(above => 2, below => 1000);
-
 my ($matched, $offset) = $regex->apply($data);
 print "not " if not defined $offset or $offset != 37;
 print "ok - offset finds crazy value\n";
+
+$regex = Regex::Engine::Intersect::re_intersect(above => 'avg + 2@', below => 1000);
+($matched, $offset) = $regex->apply($data);
+print "not " if not defined $offset or $offset != 37;
+print "ok - offset finds crazy value\n";
+
+#'5 - 2@'
+#'5 - 2%'
