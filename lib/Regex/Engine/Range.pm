@@ -12,7 +12,7 @@ our @EXPORT = qw(re_intersect);
 
 =head1 NAME
 
-Regex::Engine::Range - a module built to find matches inside a given numeric range
+Regex::Engine::Range - create regexen to match numbers inside a given numeric range
 
 =cut
 
@@ -152,6 +152,35 @@ sub _apply {
 # Throws     : if given an odd number of arguments
 #            : if not given an 'above' or 'below'
 # Notes      : defaults to quantifier of length 1
+
+=head2 re_intersect
+
+This is the short-name constructor for an intersection regex. It takes its
+arguments as key/value pairs, where the keys are among the following:
+
+=over
+
+=item name
+
+The regex's name, if you wish to later retrieve the matched indices. Default:
+no name (and thus no storage).
+
+=item below, above
+
+The upper and lower bounds (respectively) for your regex. For example, if you
+want to match a number between 
+
+=item above
+
+=item quantifiers
+
+The regexes quantifiers, an anonymous two-element array with the min and the
+max quantifiers. (See L<Regex::Engine> for a discussion about quantifiers.)
+Default: C<[1, 1]>, i.e. matches one and only one element.
+
+=back
+
+=cut
 
 sub re_intersect {
   
