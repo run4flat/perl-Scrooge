@@ -10,12 +10,29 @@ use Carp;
 use PDL;
 
 our @ISA=qw(Regex::Engine::Quantified);
-# Override _init, _prep, _apply, 
-# _init: parsing of the string into an abstract structure.
-# _prep: take abstract structure and turn into hard numbers, construct a subroutine, eval it, then store it. 
-# _apply: invoke subroutine with left and right offsets. 
-# write some sort of re_intersect and re_union (functions, not methods).
+=head1 NAME
 
+Regex::Engine::Range - a module built to find matches inside a given range
+
+=cut
+
+our $VERSION = 0.01
+
+=head1 VERSION
+
+This documentation is supposed to be for version 0.01 of Regex::Engine::Range
+
+=head1 SYNOPSIS
+
+ use Regex::Engine::Range;
+ 
+=head1 DESCRIPTION
+
+This module allows the user to match data in sections, rather than just matching the whole set of data. This
+should mainly be used for finding data outside of certain ranges, for example outside 2 standard deviations
+from the mean of the data. 
+
+=cut
 #Override _init: Ignoring for now
 ###########################################################
 # Name       : _init
