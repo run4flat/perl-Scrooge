@@ -62,36 +62,11 @@ from the mean of the data.
 sub _prep {
   my ($self, $data) = @_;
   $data = PDL::Core::topdl($data);
-  my $original_above = my $above = $self->{ above };
-  my $original_below = my$below = $self->{ below };
  
-  my ($mean, $st_dev) = $data->stats;
-  my ($min, $max) = $data->minmax;
-  my $pct = ($max - $min) / 100;
-  
-  for my $entry ($above, $below){
-    # Replace ... 5@ ... with ... 5 * $st_dev ...
-    $entry =~ s/(\d)\s*\@/$1 * \$st_dev/g;
-    
-    # Replace ... 5% ... with ... 5 * $pct ...  
-    $entry =~ s/(\d)\s*\%/$1 * \$pct/g;
-    
-    # Replace ... avg ... with ... $mean ...  
-    $entry =~ s/avg/\$mean/g;
-    
-  }
-  
-  #Evaluate the expression
-  $above = eval($above);
-  if ($@){
-    # If they give junk
-    croak("Had trouble with above specification: $original_above");
-  }
-  
-  $below = eval($below);
-  if ($@){
-    croak("Had trouble with below specification: $original_below");
-  }
+  # Parse the above and below specifications
+  my ($above, $below) = Regex::Engine::Range::parse_range_strings(
+      $data, $self->{above}, $self->{below}
+  );
   
   # It could be the case that the intersection could be null if above is under below.
   # We retrun false to signify to the Regex Engine that it never needs to evaluate this. 
@@ -150,6 +125,49 @@ use strict;
 use warnings;
 
 ###########################################################
+# Name       : parse_range_strings
+# Usage      : parse_range_strings($data, $above, $below, ...)
+# Purpose    : parse range strings for a given piddle
+# Returns    : numeric values for the given range strings
+# Parameters : a piddle, then a collection of range strings
+# Throws     : 
+# Notes      : none, yet
+
+sub parse_range_strings {
+  my $data = shift;
+  
+  # Ensure we have a good input
+  croak('parse_range_strings expects first arg to be a piddle')
+    unless eval {$data->isa('PDL')};
+  
+  my ($mean, $st_dev) = $data->stats;
+  my ($min, $max) = $data->minmax;
+  my $pct = ($max - $min) / 100;
+  my @to_return;
+  
+  # Parse each string in turn; make a copy so we can modify it
+  while (defined (my $range_string = shift @_)) {
+    my $original_string = $range_string;
+    
+    # Replace ... 5@ ... with ... 5 * $st_dev ...
+    $range_string =~ s/(\d)\s*\@/$1 * \$st_dev/g;
+    
+    # Replace ... 5% ... with ... 5 * $pct ...  
+    $range_string =~ s/(\d)\s*\%/$1 * \$pct/g;
+    
+    # Replace ... avg ... with ... $mean ...  
+    $range_string =~ s/avg/\$mean/g;
+    
+    # Evaluate the result and store it, croaking if we ran into trouble
+    push @to_return, eval($range_string);
+    croak("parse_range_strings had trouble with range_string $original_string")
+      if $@ ne '';
+  }
+  
+  return @to_return;
+}
+
+###########################################################
 # Name       : re_intersect
 # Usage      : re_intersect(above=>'5', below=>'9@')
 # Purpose    : create an intersect regular expression
@@ -174,9 +192,7 @@ no name (and thus no storage).
 =item below, above
 
 The upper and lower bounds (respectively) for your regex. For example, if you
-want to match a number between 
-
-=item above
+want to match a number between 2 and 5, you would say C<above => 2, below => 5>.
 
 =item quantifiers
 
@@ -185,6 +201,54 @@ max quantifiers. (See L<Regex::Engine> for a discussion about quantifiers.)
 Default: C<[1, 1]>, i.e. matches one and only one element.
 
 =back
+
+The C<name> and C<quantifiers> keys are not new to C<re_intersect>, but C<above>
+and C<below> are. These are the expressions that define the region of values to
+match. Both C<above> and C<below> take either pure numbers:
+
+ my $two_to_five = re_intersect(above => 2, below => 5);
+
+or string expressions with a special syntax that I will explain shortly:
+
+ my $three_to_five_stdev
+   = re_intersect(above => 'avg + 3@',
+                  below => 'avg + 5@');
+
+The strings for C<above> and C<below> can involve arithmetic with numeric values
+and a few specially parsed symbols and strings. For example this regex matches
+within 2 of the average:
+
+ re_intersect(above => 'avg - 1',
+              below => 'avg + 1');
+ 
+and this regex matches data that is between 2% and 50% of the data's total
+range (max - min):
+
+The symbols allowed in these sorts of expressions are as follows:
+
+=over
+
+=item a number
+
+Any number, taken alone, is simply the value of that number.
+
+Example:
+
+ above => '2 + 5'
+
+=item avg
+
+The string C<avg> is replaced with the data's average 
+
+=back
+
+ Symbol      Meaning
+ ---------------------------
+ M           the data's mean
+ <number>@   multiples of the data's standard deviation
+ <number>%   
+
+At the moment, the expressions for C<above> and C<below> are gently massaged can involve any arithm
 
 =cut
 
