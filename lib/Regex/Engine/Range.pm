@@ -1,18 +1,18 @@
-=head1 Regex Subclass
-
-=cut
-
-use Regex::Engine;
 package Regex::Engine::Intersect;
 use strict;
 use warnings;
+use Regex::Engine;
 use Carp;
 use PDL;
 
-our @ISA=qw(Regex::Engine::Quantified);
+use Exporter;
+
+our @ISA=qw(Regex::Engine::Quantified Exporter);
+our @EXPORT = qw(re_intersect);
+
 =head1 NAME
 
-Regex::Engine::Range - a module built to find matches inside a given range
+Regex::Engine::Range - a module built to find matches inside a given numeric range
 
 =cut
 
@@ -20,11 +20,12 @@ our $VERSION = 0.01
 
 =head1 VERSION
 
-This documentation is supposed to be for version 0.01 of Regex::Engine::Range
+This documentation discusses version 0.01 of Regex::Engine::Range
 
 =head1 SYNOPSIS
 
  use Regex::Engine::Range;
+ 
  
 =head1 DESCRIPTION
 
@@ -33,6 +34,7 @@ should mainly be used for finding data outside of certain ranges, for example ou
 from the mean of the data. 
 
 =cut
+
 #Override _init: Ignoring for now
 ###########################################################
 # Name       : _init
@@ -150,8 +152,6 @@ sub _apply {
 # Throws     : if given an odd number of arguments
 #            : if not given an 'above' or 'below'
 # Notes      : defaults to quantifier of length 1
-
-
 
 sub re_intersect {
   
