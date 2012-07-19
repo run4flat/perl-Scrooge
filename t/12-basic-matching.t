@@ -2,13 +2,13 @@
 
 use strict;
 use warnings;
-use Test::More tests => 36;
+use Test::More tests => 39;
 use Regex::Engine;
 use PDL;
 
-####################
+#######################
 # Regex::Engine::Test #
-####################
+#######################
 
 # A simple base class for testing purposes. This makes it easy to adjust
 # the number of elements to match by simply changing the lexical variable
@@ -22,7 +22,7 @@ sub min_size { $N_to_match }
 sub max_size { $N_to_match }
 
 #############################################################
-#      Guaranteed single- and multi-valued matches - 11     #
+#      Guaranteed single- and multi-valued matches - 13     #
 #############################################################
 
 package Regex::Engine::Test::SingleMatch;
@@ -42,6 +42,12 @@ my ($matched, $offset) = $single_value_regex->apply($data);
 # See how it went:
 is($matched, $N_to_match, 'Properly matches simple regex with fixed length');
 is($offset, 0, 'Computes proper offset for super-simple regex');
+
+# Single-piddle matching
+($matched, $offset) = $single_value_regex->apply(pdl(5));
+is($matched, $N_to_match, 'Properly matches simple regex with fixed length on single-element piddle');
+is($offset, 0, 'Computes proper offset for super-simple regex on single-element-piddle');
+
 
 # ---( N = 15 )---
 
@@ -247,3 +253,11 @@ else {
 }
 is($matched, 0, 'Zero-width assertion matched zero elements');
 is($offset, 0, 'Zero-width assertion matched at zero offset');
+
+###########################################################
+#                 Unknown data lengths - 1                #
+###########################################################
+
+$N_to_match = 1;
+my $matched = eval{ $single_value_regex->apply(5) };
+isnt($@, '', "Can't apply regex to simple scalars");

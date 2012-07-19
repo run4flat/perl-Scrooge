@@ -227,6 +227,9 @@ second regex will be stored in C<$first_matched> and C<$first_off>. So, do
 not use the return values from a regular expression in a large list
 assignment like this.
 
+working here - discuss known types and how unknown types throw errors (or should
+they silently fail instead? I think not.)
+
 If you only want to know where a sub-regex matches, you can name that sub-regex
 and retrieve sub-match results using C<get_offsets_for>, as discussed below.
 
@@ -266,7 +269,9 @@ sub apply {
 	# Note change in local state:
 	$self->is_applying;
 	
+	# Get the data's length
 	my $N = data_length($data);
+	croak("Could not get length of the supplied data") if $N eq '';
 	my $min_diff = $self->min_size - 1;
 	my $max_diff = $self->max_size - 1;
 
