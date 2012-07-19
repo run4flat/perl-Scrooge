@@ -16,7 +16,7 @@ Regex::Engine::Range - a module built to find matches inside a given numeric ran
 
 =cut
 
-our $VERSION = 0.01
+our $VERSION = 0.01;
 
 =head1 VERSION
 
