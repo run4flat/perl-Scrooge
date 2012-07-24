@@ -1,6 +1,6 @@
 use strict;
 use warnings;
-use Test::More tests => 15;
+use Test::More tests => 34;
 use PDL;
 use Regex::Engine::Range;
 
@@ -35,9 +35,9 @@ is($@, '', 'Basic constructor does not croak');
 isa_ok($two_to_five, 'Regex::Engine::Intersect');
 is($two_to_five->{name}, 'test regex', 'Constructor correctly interprets name');
 
-########################
-# Basic Match Tests: 4 #
-########################
+#########################
+# Basic Match Tests: 20 #
+#########################
 $data = pdl(-3, 4, 5, 9);
 my ($matched, $offset) = $two_to_five->apply($data);
 isnt($matched, undef, 'two_to_five matched against (-3, 4, 5, 9)');
@@ -48,16 +48,64 @@ $data = pdl(7, 8, 9);
 ($matched, $offset) = $two_to_five->apply($data);
 is($matched, undef, 'two_to_five could not match piddle (7, 8, 9)');
 
-__END__
 $data = sin(sequence(100)/10);
 $data->slice('37') .= 100;
 
-$regex = Regex::Engine::Intersect::re_intersect(above => 2, below => 1000);
-($matched, $offset) = $regex->apply($data);
-print "not " if not defined $offset or $offset != 37;
-print "ok - offset finds crazy value\n";
+$two_to_five = eval{re_intersect(name=>'test regex',above => 2, below => 1000)};
+($matched, $offset) = $two_to_five->apply($data);
+isnt($matched, undef, 'two_to_five matched against piddle');
+is($matched, 1, 'default quantifier is a single match');
+is($offset, 37, 'identifies the first matching element');
 
-$regex = Regex::Engine::Intersect::re_intersect(above => 'avg + 2@', below => 1000);
-($matched, $offset) = $regex->apply($data);
-print "not " if not defined $offset or $offset != 37;
-print "ok - offset finds crazy value\n";
+
+$two_to_five = eval{re_intersect(name => 'test regex', above => 'avg + 2@', below => 1000)};
+($matched, $offset) = $two_to_five->apply($data);
+isnt($matched, undef, 'two_to_five matched piddle');
+is($matched, 1, 'default quantifier is a single match');
+is($offset, 37, 'identifies first matching element');
+
+$two_to_five = eval{re_intersect(name => 'test regex', above => 2, below => 'avg + 10@')};
+($matched, $offset) = $two_to_five->apply($data);
+isnt($matched, undef, 'two_to_fve matched piddle');
+is($matched, 1, 'default quantifier is a single match');
+is($offset, 37, 'identifies first matching element');
+
+$two_to_five = eval{re_intersect(name => 'test regex', above => 'avg - 3@', below => 'avg - 2@')};
+($matched, $offset) = $two_to_five->apply($data);
+is($matched, undef, 'two_to_five could not match piddle');
+
+$two_to_five = eval{re_intersect(name => 'test regex', above => -1, below => 200)};
+($matched, $offset) = $two_to_five->apply($data);
+isnt($matched, undef, 'two_to_five matched piddle');
+is($matched, 1, 'default quantifier is a single match');
+is($offset, 0, 'identifies first matching element');
+
+$data->slice('9') .= -10;
+
+$two_to_five = eval{re_intersect(name => 'test regex', above => 'avg - 10@', below => 'avg - 1@')};
+($matched, $offset) = $two_to_five->apply($data);
+isnt($matched, undef, 'two_to_five matched piddle');
+is($matched, 1, 'default quantifier is a single match');
+is($offset, 9, 'identifies first matching element');
+
+##########################
+# Complex Match Tests: 3 #
+##########################
+
+$data->slice('10') .= -11;
+$data->slice('11') .= -12;
+
+$two_to_five = eval{re_intersect(name => 'test regex', above => 'avg - 15@', below => 'avg - 1@', quantifiers => [1,3])};
+($matched, $offset) = $two_to_five->apply($data);
+isnt($matched, undef, 'two_to_five matched piddle');
+is($matched, 3, 'matched a segment of lentgth 3');
+is($offset, 9, 'identifies first matching value');
+
+__END__
+$data = sin(sequence(100)/10);
+$two_to_five = eval{re_intersect(name => 'test regex', above => -1, below => 1, quantifiers => [1,100])};
+($matched, $offset) = $two_to_five->apply($data);
+#isnt($matched, undef, 'two_to_five matched piddle');
+
+is($matched, 100, 'whole segment matched');
+is($offset, 0, 'identifies first matching element');
