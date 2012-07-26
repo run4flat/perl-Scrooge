@@ -1,6 +1,6 @@
 use strict;
 use warnings;
-use Test::More tests => 34;
+use Test::More tests => 37;
 use PDL;
 use Regex::Engine::Range;
 
@@ -101,11 +101,11 @@ isnt($matched, undef, 'two_to_five matched piddle');
 is($matched, 3, 'matched a segment of lentgth 3');
 is($offset, 9, 'identifies first matching value');
 
-__END__
+
 $data = sin(sequence(100)/10);
-$two_to_five = eval{re_intersect(name => 'test regex', above => -1, below => 1, quantifiers => [1,100])};
+$two_to_five = re_intersect(name => 'test regex', above => -1.1, below => 1.1, quantifiers => [1,100]);
 ($matched, $offset) = $two_to_five->apply($data);
-#isnt($matched, undef, 'two_to_five matched piddle');
+isnt($matched, undef, 'two_to_five matched piddle');
 
 is($matched, 100, 'whole segment matched');
 is($offset, 0, 'identifies first matching element');

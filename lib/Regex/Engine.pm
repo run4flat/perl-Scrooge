@@ -1146,7 +1146,7 @@ sub _init {
 				unless $to_check <= 100;
 		}
 		# Check that non-percentage quantifiers are strictly integers:
-		elsif ($_ !~ /^-?\d$/) {
+		elsif ($_ !~ /^-?\d+$/) {
 			croak("Non-percentage quantifiers must be integers; I got [$_]");
 		}
 	}
