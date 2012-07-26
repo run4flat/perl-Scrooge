@@ -10,7 +10,7 @@ expression classes that do not depend upon the Quantified class.
 # Basics.pm
 #
 # A collection of basic classes for testing purposes. These classes let you
-# test the base class, Regex::Engine, with no dependence on the derived classes
+# test the base class, Scrooge, with no dependence on the derived classes
 # in Regex.pm. This is good because it allows you to test the engine and the
 # Grouping regexes without depending on the operation of the Quantitative
 # regexes.
@@ -18,22 +18,22 @@ expression classes that do not depend upon the Quantified class.
 # Tests for *these* classes (which ensure that they work as advertised)
 # can be found in -Basics.t
 
-use Regex::Engine;
+use Scrooge;
 
 ##########################################################################
-#                         Regex::Engine::Test::Fail                         #
+#                         Scrooge::Test::Fail                         #
 ##########################################################################
 
 # A class that always fails during the apply stage. To create an object of
 # this class, you simply use:
 #
-#     my $regex = Regex::Engine::Test::Fail->new;
+#     my $regex = Scrooge::Test::Fail->new;
 #
 
-package Regex::Engine::Test::Fail;
+package Scrooge::Test::Fail;
 use strict;
 use warnings;
-our @ISA = qw(Regex::Engine);
+our @ISA = qw(Scrooge);
 
 sub _init {
 	my $self = shift;
@@ -44,42 +44,42 @@ sub _init {
 sub _apply { 0 }
 
 ##########################################################################
-#                      Regex::Engine::Test::Fail::Prep                      #
+#                      Scrooge::Test::Fail::Prep                      #
 ##########################################################################
 
 # A class that always fails during the prep stage. To create an object of
 # this class, use this:
 #
-#     my $regex = Regex::Engine::Test::Fail::Prep->new;
+#     my $regex = Scrooge::Test::Fail::Prep->new;
 #
 
-package Regex::Engine::Test::Fail::Prep;
+package Scrooge::Test::Fail::Prep;
 use strict;
 use warnings;
-our @ISA = qw(Regex::Engine);
+our @ISA = qw(Scrooge);
 
 sub _prep { 0 }
 sub _apply { 0 }
 
 ###########################################################################
-#                          Regex::Engine::Test::All                          #
+#                          Scrooge::Test::All                          #
 ###########################################################################
 
 # A class that always matches everything that it is given. To create an
 # object of this class, use this:
 #
-#     my $regex = Regex::Engine::Test::All->new;
+#     my $regex = Scrooge::Test::All->new;
 #
 
-package Regex::Engine::Test::All;
+package Scrooge::Test::All;
 use strict;
 use warnings;
-our @ISA = qw(Regex::Engine);
+our @ISA = qw(Scrooge);
 
 sub _prep {
 	my $self = shift;
 	$self->{min_size} = 0;
-	$self->{max_size} = Regex::Engine::data_length($self->{data});
+	$self->{max_size} = Scrooge::data_length($self->{data});
 }
 
 sub _apply {
@@ -90,15 +90,15 @@ sub _apply {
 
 
 ###########################################################################
-#                      Regex::Engine::Test::ShouldCroak                      #
+#                      Scrooge::Test::ShouldCroak                      #
 ###########################################################################
 
 # This creates a class that always returns more than it is given, so it
 # should always elicit a croak from the engine:
-package Regex::Engine::Test::ShouldCroak;
+package Scrooge::Test::ShouldCroak;
 use strict;
 use warnings;
-our @ISA = qw(Regex::Engine::Test::All);
+our @ISA = qw(Scrooge::Test::All);
 
 sub _apply {
 	my (undef, $left, $right) = @_;
@@ -107,14 +107,14 @@ sub _apply {
 
 
 ###########################################################################
-#                         Regex::Engine::Test::Croak                         #
+#                         Scrooge::Test::Croak                         #
 ###########################################################################
 
 # This creates a class that always croaks during the apply phase:
-package Regex::Engine::Test::Croak;
+package Scrooge::Test::Croak;
 use strict;
 use warnings;
-our @ISA = qw(Regex::Engine::Test::All);
+our @ISA = qw(Scrooge::Test::All);
 
 sub _apply {
 	die "This regex always croaks\n";
@@ -122,14 +122,14 @@ sub _apply {
 
 
 ############################################################################
-#                          Regex::Engine::Test::Even                          #
+#                          Scrooge::Test::Even                          #
 ############################################################################
 
 # A subclass of Test::All that matches only even lengths:
-package Regex::Engine::Test::Even;
+package Scrooge::Test::Even;
 use strict;
 use warnings;
-our @ISA = (qw(Regex::Engine::Test::All));
+our @ISA = (qw(Scrooge::Test::All));
 
 sub _apply {
 	my (undef, $left, $right) = @_;
@@ -143,23 +143,23 @@ sub _apply {
 
 
 ###########################################################################
-#                        Regex::Engine::Test::Exactly                        #
+#                        Scrooge::Test::Exactly                        #
 ###########################################################################
 
 # Successfully matches exactly the number of elements that you specify
 
-package Regex::Engine::Test::Exactly;
+package Scrooge::Test::Exactly;
 use strict;
 use warnings;
-our @ISA = qw(Regex::Engine);
+our @ISA = qw(Scrooge);
 
 # To create an object of this class, you can call it as:
 #
-#     my $regex = Regex::Engine::Test::Exactly->new(N => 5);
+#     my $regex = Scrooge::Test::Exactly->new(N => 5);
 #
 # You can also call it without specifying N (defaults to 1):
 # 
-#     my $regex = Regex::Engine::Test::Exactly->new();
+#     my $regex = Scrooge::Test::Exactly->new();
 #
 # You can change the number of items to exactly match:
 #
@@ -185,13 +185,13 @@ sub _apply {
 }
 
 ###########################################################################
-#                         Regex::Engine::Test::Range                         #
+#                         Scrooge::Test::Range                         #
 ###########################################################################
 
 # Successfully matches anything within a range of lengths.
 # To use, specify min_size and max_size in the constructor:
 # 
-#     my $regex = Regex::Engine::Test::Range->new(min_size => 1, max_size => 5);
+#     my $regex = Scrooge::Test::Range->new(min_size => 1, max_size => 5);
 # 
 # You can also call it without specifying any sizes, in which case it
 # defaults to 1, 1. You can change the size by calling min_size and max_size
@@ -202,10 +202,10 @@ sub _apply {
 #     $regex->max_size(15);
 # 
 
-package Regex::Engine::Test::Range;
+package Scrooge::Test::Range;
 use strict;
 use warnings;
-our @ISA = qw(Regex::Engine);
+our @ISA = qw(Scrooge);
 
 sub _init {
 	my $self = shift;
@@ -219,15 +219,15 @@ sub _apply {
 }
 
 ###########################################################################
-#                    Regex::Engine::Test::Exactly::Offset                    #
+#                    Scrooge::Test::Exactly::Offset                    #
 ###########################################################################
 
 # Subclass of Test::Exactly that matches only when left is at a specified
 # offset.
-package Regex::Engine::Test::Exactly::Offset;
+package Scrooge::Test::Exactly::Offset;
 use strict;
 use warnings;
-our @ISA = (qw(Regex::Engine::Test::Exactly));
+our @ISA = (qw(Scrooge::Test::Exactly));
 
 sub _init {
 	my $self = shift;
@@ -248,16 +248,16 @@ sub _apply {
 }
 
 ############################################################################
-#                       Regex::Engine::Test::Printer                       #
+#                       Scrooge::Test::Printer                       #
 ############################################################################
 
 # Useful for knowning the position of the current matching. Not presently used
 # in the test suite; used for debugging.
 
-package Regex::Engine::Test::Printer;
+package Scrooge::Test::Printer;
 use strict;
 use warnings;
-our @ISA = qw(Regex::Engine);
+our @ISA = qw(Scrooge);
 
 sub _init {
 	my $self = shift;

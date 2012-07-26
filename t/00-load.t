@@ -5,7 +5,7 @@ use warnings;
 use Test::More tests => 3;
 
 use_ok('Scrooge');
-use_ok('Scrooge::Range');
+use_ok('Scrooge::PDL');
 
 # make sure that new croaks if called with a bad number of arguments
 $@ = '';

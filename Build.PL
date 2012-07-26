@@ -8,7 +8,7 @@ my $inc = PDL_INCLUDE;
 $inc =~ s/^-I//;
 
 my $build = Module::Build->new(
-	module_name => 'Regex::Engine',
+	module_name => 'Scrooge',
 	license  => 'perl',
 	requires => {
 		perl					=> '5.6.1',
