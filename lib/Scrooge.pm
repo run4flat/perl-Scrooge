@@ -2326,3 +2326,7 @@ Interesting article on finding time series that "look like" other time
 series:
 
 http://citeseerx.ist.psu.edu/viewdoc/download?doi=10.1.1.133.6186&rep=rep1&type=pdf
+
+=head1 AUTHOR
+
+David Mertens C<dcmertens.perl@gmail.com>
