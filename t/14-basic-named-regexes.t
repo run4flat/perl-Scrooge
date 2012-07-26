@@ -6,9 +6,9 @@ use Test::More tests => 10;
 use Scrooge;
 use PDL;
 
-#############
+#################
 # Scrooge::Test #
-#############
+#################
 
 # A simple base class for testing that always matches $N_to_match with
 # offset $offset
@@ -27,9 +27,9 @@ sub _apply {
 
 package main;
 
-############################################
+################################################
 # Test the basic operation of Scrooge::Test, 3 #
-############################################
+################################################
 
 my $test_regex = Scrooge::Test->new;
 my $data = sequence(15);
