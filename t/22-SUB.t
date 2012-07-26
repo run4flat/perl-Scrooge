@@ -2,7 +2,7 @@
 use strict;
 use warnings;
 use Test::More tests => 8;
-use Regex::Engine;
+use Scrooge;
 use PDL;
 
 my $data = sequence(20);
@@ -46,9 +46,9 @@ my $match_positive = re_sub(sub {
 
 # Check that the explicit constructor works:
 $@ = '';
-my $explicit = eval {Regex::Engine::Sub->new(quantifiers => [1,1], subref => $match_all_subref)};
-is ($@, '', 'Regex::Engine::Sub::->new does not croak');
-isa_ok($explicit, 'Regex::Engine::Sub');
+my $explicit = eval {Scrooge::Sub->new(quantifiers => [1,1], subref => $match_all_subref)};
+is ($@, '', 'Scrooge::Sub::->new does not croak');
+isa_ok($explicit, 'Scrooge::Sub');
 my ($matched, $offset) = $explicit->apply($data);
 is($matched, 1, 'Properly interprets single-element quantifier and runs subref');
 is($offset, 0, 'Correctly identified first element as matching');
@@ -59,7 +59,7 @@ is($offset, 0, 'Correctly identified first element as matching');
 $@ = '';
 my $simple = eval {re_sub($match_all_subref)};
 is($@, '', 're_sub does not croak');
-isa_ok($simple, 'Regex::Engine::Sub');
+isa_ok($simple, 'Scrooge::Sub');
 ($matched, $offset) = $simple->apply($data);
 is($matched, 1, 'Simple constructor defaults to a single-element match');
 is($offset, 0, 'Simple constructor correctly identified first element as matching');

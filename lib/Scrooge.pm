@@ -1,4 +1,4 @@
-package Regex::Engine;
+package Scrooge;
 use strict;
 use warnings;
 use Carp;
@@ -17,7 +17,7 @@ our @EXPORT = qw(re_or re_and re_seq re_sub re_any re_zwa);
 
 =head1 NAME
 
-Regex::Engine - a regular expression engine for arbitrary objects, like PDLs
+Scrooge - a greedy regular expression engine for arbitrary objects, like PDLs
 
 =cut
 
@@ -25,11 +25,11 @@ our $VERSION = 0.01;
 
 =head1 VERSION
 
-This documentation is supposed to be for version 0.01 of Regex::Engine.
+This documentation is supposed to be for version 0.01 of Scrooge.
 
 =head1 SYNOPSIS
 
- use Regex::Engine;
+ use Scrooge;
  
  # Build the regular expression object first. This one
  # matches positive values and assumes it is working with
@@ -69,7 +69,7 @@ This documentation is supposed to be for version 0.01 of Regex::Engine.
 
 =head1 DESCRIPTION
 
-Regex::Engine creates a set of classes that let you construct numerical regular
+Scrooge creates a set of classes that let you construct numerical regular
 expression objects that you can apply to a container object such as an anonymous
 array, or a piddle. Because the patterns against which you might match are
 limitless, this module provides a means for easily creating your own conditions
@@ -90,7 +90,7 @@ digits. The second regular expression differs from the first because it
 makes use of quantifiers and because it uses a character class (the C<\d>
 matches many characters).
 
-The Regex::Engine equivalents of these take up quite a bit more space to
+The Scrooge equivalents of these take up quite a bit more space to
 construct. Here is how to build a numerical regular expression that checks
 for a positive number followed by a local maximum, or a negative number
 followed by a local minimum. I'll assume that the individual regular expression
@@ -238,7 +238,7 @@ and retrieve sub-match results using C<get_offsets_for>, as discussed below.
 # User-level method, not to be overridden.
 our %method_table;
 sub apply {
-	croak('Regex::Engine::apply is a one-argument method')
+	croak('Scrooge::apply is a one-argument method')
 		unless @_ == 2;
 	my ($self, $data) = @_;
 	
@@ -389,7 +389,7 @@ within the containers.
 =cut
 
 sub get_details_for {
-	croak('Regex::Engine::get_details_for is a one-argument method')
+	croak('Scrooge::get_details_for is a one-argument method')
 		unless @_ == 2;
 	my ($self, $name) = @_;
 	
@@ -424,7 +424,7 @@ name with which to search.
 # croak as it assumes you know what you're doing calling this method
 # directly.
 sub get_details {
-	croak('Regex::Engine::get_details is a method that takes no arguments')
+	croak('Scrooge::get_details is a method that takes no arguments')
 		unless @_ == 1;
 	my ($self) = @_;
 	
@@ -572,21 +572,21 @@ trying to write a rule to apply to data, you are almost certainly interested
 in creating a new Quantified regular expression. That's also the easier one
 of the two to create, so I'll discuss subclassing that first.
 
-To subclass C<Regex::Engine::Quantified> (argh... not finished, but see the
+To subclass C<Scrooge::Quantified> (argh... not finished, but see the
 next section as it discusses most of this anyway).
 
 
 =head1 Internals
 
-All regex classes must inheret from C<Regex::Engine> or a class derived from
+All regex classes must inheret from C<Scrooge> or a class derived from
 it. This section of documentation discusses how you might go about doing
-that. You are encouraged to override any of the methods of C<Regex::Engine> or
+that. You are encouraged to override any of the methods of C<Scrooge> or
 its derivatives, except for the C<apply> method.
 
 =head2 Required Methods
 
-If your class derives directly from Regex::Engine, Regex::Engine::Quantified, or
-Regex::Engine::Grouped, you must supply the C<_apply> internal method. However,
+If your class derives directly from Scrooge, Scrooge::Quantified, or
+Scrooge::Grouped, you must supply the C<_apply> internal method. However,
 you can override other methods as you see fit. The only methods you should
 not override are the Internal methods documented at the end of this section.
 
@@ -645,7 +645,7 @@ comes out must be capable of running its C<prep> method.
 
 sub new {
 	my $class = shift;
-	croak("Internal Error: args to Regex::Engine::new must have a class name and then key => value pairs")
+	croak("Internal Error: args to Scrooge::new must have a class name and then key => value pairs")
 		unless @_ % 2 == 0;
 	my $self = bless {@_}, $class;
 	
@@ -666,7 +666,7 @@ working here - document this method
 
 # Default init does nothing:
 sub _init {
-	croak('Regex::Engine::_init is a method that takes no arguments')
+	croak('Scrooge::_init is a method that takes no arguments')
 		unless @_ == 1;
 }
 =item prep ($data)
@@ -676,9 +676,9 @@ data. If you have any data-specific setup to do, do it in this function.
 
 From the standpoint of internals, you need to know two things: what this
 function should prepare and what this function should return. (For a
-discussion on intepreting return values from C<_prep>, see Regex::Engine::Grouped.)
+discussion on intepreting return values from C<_prep>, see Scrooge::Grouped.)
 
-If you are not deriving your class from Regex::Engine::Quantified or Regex::Engine::Grouped and
+If you are not deriving your class from Scrooge::Quantified or Scrooge::Grouped and
 you intend for your regex to run, you must either set C<< $self->{min_size} >>
 and C<< $self->{max_size} >> at this point or you must override the
 related internal functions so that they operate correctly without having
@@ -693,7 +693,7 @@ has been called and was able to set up internal data that might be required
 for their operation. Furthermore, if you realize in the middle of C<_prep>
 that your regex cannot run, it is safe to return 0 immediately and expect
 the parent regex to call C<_cleanup> for you. (working here - make sure the
-documentation for Regex::Engine::Grouped details what Grouped regexes are supposed to
+documentation for Scrooge::Grouped details what Grouped regexes are supposed to
 do with C<_prep> return values.)
 
 Your regex may still be querried afterwards for a match by
@@ -716,7 +716,7 @@ The C<_prep> method is called as the very first step in C<apply>.
 # Do *not* set the state to prepping; that is part of prep's short-
 # circuiting.
 sub is_prepping {
-	croak('Regex::Engine::is_prepping is a method that takes no arguments')
+	croak('Scrooge::is_prepping is a method that takes no arguments')
 		unless @_ == 1;
 	my $self = shift;
 	if ($self->{state}) {
@@ -737,7 +737,7 @@ sub is_cleaning {
 
 # Make sure this only gets run once per call to apply:
 sub prep {
-	croak('Regex::Engine::prep is a one-argument method')
+	croak('Scrooge::prep is a one-argument method')
 		unless @_ == 2;
 	my ($self, $data) = @_;
 	
@@ -769,7 +769,7 @@ sub _prep {	return 1 }
 # The internal keys with values that we want to protect in case of
 # recursive usage:
 sub _to_stash {
-	croak('Regex::Engine::_to_stash is a method that takes no arguments')
+	croak('Scrooge::_to_stash is a method that takes no arguments')
 		unless @_ == 1;
 	return qw (data min_size max_size match_details);
 }
@@ -817,13 +817,13 @@ max_size are keys in the object, they will be the default values.
 sub min_size {
 	return $_[0]->{min_size} if @_ == 1;
 	return $_[0]->{min_size} = $_[1] if @_ == 2;
-	croak('Regex::Engine::min_size is an accessor method');
+	croak('Scrooge::min_size is an accessor method');
 }
 
 sub max_size {
 	return $_[0]->{max_size} if @_ == 1;
 	return $_[0]->{max_size} = $_[1] if @_ == 2;
-	croak('Regex::Engine::max_size is an accessor method');
+	croak('Scrooge::max_size is an accessor method');
 }
 
 =item _cleanup
@@ -837,7 +837,7 @@ without dying.
 =cut
 
 sub cleanup {
-	croak('Regex::Engine::cleanup is a method that takes no arguments')
+	croak('Scrooge::cleanup is a method that takes no arguments')
 		unless @_ == 1;
 	my $self = shift;
 	
@@ -921,7 +921,7 @@ the C<match_details> key if the regex is named.
 =cut
 
 sub store_match {
-	croak('Regex::Engine::store_match is a one-argument method')
+	croak('Scrooge::store_match is a one-argument method')
 		unless @_ == 2;
 	my ($self, $details) = @_;
 	
@@ -942,7 +942,7 @@ own values.
 =cut
 
 sub clear_stored_match {
-	croak('Regex::Engine::_stored_match is a method that takes no arguments')
+	croak('Scrooge::_stored_match is a method that takes no arguments')
 		unless @_ == 1;
 	my $self = shift;
 	
@@ -970,7 +970,7 @@ working here - discuss more in the group discussion
 =cut
 
 sub add_name_to {
-	croak('Regex::Engine::add_name_to is a one-argument method')
+	croak('Scrooge::add_name_to is a one-argument method')
 		unless @_ == 2;
 	my ($self, $hashref) = @_;
 	return unless exists $self->{name};
@@ -992,7 +992,7 @@ have a name. You shouldn't override this except for debugging purposes.
 =cut
 
 sub get_bracketed_name_string {
-	croak('Regex::Engine::get_bracketed_name_string is a method that takes no arguments')
+	croak('Scrooge::get_bracketed_name_string is a method that takes no arguments')
 		unless @_ == 1;
 	my $self = shift;
 	if (defined $self->{name}) {
@@ -1005,7 +1005,7 @@ sub get_bracketed_name_string {
 
 =head2 Cross-Container Accessors
 
-Regex::Engine is designed to operate on any data container you wish to throw at
+Scrooge is designed to operate on any data container you wish to throw at
 it. However, it needs to know how to get certain information about your
 container. At the moment, at least, it needs to know how to get your container's
 length.
@@ -1017,18 +1017,18 @@ container-agnostic regular expression objects, though the jury is still out on
 whether or not this is a good way of doing it. Part of me suspects that this is
 not really a generically good idea...
 
-=item %Regex::Engine::method_table
+=item %Scrooge::method_table
 
 This holds subroutine references that handle various operations that
 are meant to work cross-container. You should add specially named methods to
-this table for your container so that calls to C<Regex::Engine::data_length>,
-C<Regex::Engine::data_at>, and C<Regex::Engine::data_slice> all work for your
+this table for your container so that calls to C<Scrooge::data_length>,
+C<Scrooge::data_at>, and C<Scrooge::data_slice> all work for your
 container.
 
 For example, after doing this:
 
- $Regex::Engine::method_table{'My::Class::Name'} = {
-     # Required for your container to work with Regex::Engine
+ $Scrooge::method_table{'My::Class::Name'} = {
+     # Required for your container to work with Scrooge
      length => sub {
          # Returns the length of its first argument.
          return $_[0]->length;
@@ -1048,7 +1048,7 @@ For example, after doing this:
  };
 
 Then, if C<$object> is an object or C<My::Class::Name>, you can simply use
-C<Regex::Engine::length($object)> to get the length of your class's container.
+C<Scrooge::length($object)> to get the length of your class's container.
 See the next item for more details.
 
 =cut
@@ -1084,6 +1084,7 @@ sub data_length {
 	return $method_table{ref $data}->{length}->($data)
 		if exists $method_table{ref $data};
 	# working here - consider adding some useful error messages.
+	croak("Unable to determine the length of your data\n");
 }
 
 sub data_at {
@@ -1102,15 +1103,15 @@ sub data_slice {
 
 =cut
 
-package Regex::Engine::Quantified;
-use parent -norequire, 'Regex::Engine';
+package Scrooge::Quantified;
+use parent -norequire, 'Scrooge';
 use strict;
 use warnings;
 use Carp;
 
-=head1 Regex::Engine::Quantified
+=head1 Scrooge::Quantified
 
-The Quantified abstract base class inherets from the Regex::Engine abstract base class
+The Quantified abstract base class inherets from the Scrooge abstract base class
 and provides functionality for handling quantifiers, including parsing the
 quantifier argument. If you need a regex object that handles quantifiers but
 you do not care how it works, you should inheret from this base class and
@@ -1165,7 +1166,7 @@ sub _min_length { 0 }
 sub _prep {
 	my ($self, $data) = @_;
 	# Compute and store the numeric values for the min and max quantifiers:
-	my $N = Regex::Engine::data_length($data);
+	my $N = Scrooge::data_length($data);
 	my ($min_size, $max_size);
 	my $min_quant = $self->{min_quant};
 	my $max_quant = $self->{max_quant};
@@ -1210,8 +1211,8 @@ sub _prep {
 # the size information. Also, I do not supply an _apply because that must be
 # provided by the derived classes.
 
-package Regex::Engine::Any;
-use parent -norequire, 'Regex::Engine::Quantified';
+package Scrooge::Any;
+use parent -norequire, 'Scrooge::Quantified';
 use strict;
 use warnings;
 use Carp;
@@ -1222,8 +1223,8 @@ Creates a regex that matches any value.
 
 =cut
 
-sub Regex::Engine::re_any {
-	croak("Regex::Engine::re_any takes one or two optional arguments: re_any([[name], quantifiers])")
+sub Scrooge::re_any {
+	croak("Scrooge::re_any takes one or two optional arguments: re_any([[name], quantifiers])")
 		if @_ > 2;
 	
 	# Get the arguments:
@@ -1232,7 +1233,7 @@ sub Regex::Engine::re_any {
 	$quantifiers = [1,1] unless defined $quantifiers;
 	
 	# Create the subroutine regexp:
-	return Regex::Engine::Any->new(quantifiers => $quantifiers
+	return Scrooge::Any->new(quantifiers => $quantifiers
 		, defined $name ? (name => $name) : ());
 }
 
@@ -1242,8 +1243,8 @@ sub _apply {
 	return $right - $left + 1;
 }
 
-package Regex::Engine::Sub;
-use parent -norequire, 'Regex::Engine::Quantified';
+package Scrooge::Sub;
+use parent -norequire, 'Scrooge::Quantified';
 use strict;
 use warnings;
 use Carp;
@@ -1264,7 +1265,7 @@ to a numeric value, even when you've activated warnings.
 
 
 # This builds a subroutine regexp object:
-sub Regex::Engine::re_sub {
+sub Scrooge::re_sub {
 	croak("re_sub takes one, two, or three arguments: re_sub([[name], quantifiers], subref)")
 		if @_ == 0 or @_ > 3;
 	
@@ -1280,7 +1281,7 @@ sub Regex::Engine::re_sub {
 	$quantifiers = [1,1] unless defined $quantifiers;
 	
 	# Create the subroutine regexp:
-	return Regex::Engine::Sub->new(quantifiers => $quantifiers, subref => $subref
+	return Scrooge::Sub->new(quantifiers => $quantifiers, subref => $subref
 		, defined $name ? (name => $name) : ());
 }
 
@@ -1305,13 +1306,13 @@ sub _apply {
 	return ($consumed, %details);
 }
 
-package Regex::Engine::ZeroWidthAssertion;
-use parent -norequire, 'Regex::Engine::Quantified';
+package Scrooge::ZeroWidthAssertion;
+use parent -norequire, 'Scrooge::Quantified';
 use strict;
 use warnings;
 use Carp;
 
-sub Regex::Engine::re_zwa {
+sub Scrooge::re_zwa {
 	# If two arguments, assume the first is a name and the second is a
 	# subroutine reference:
 	croak("re_zwa takes one or two arguments: re_zwa([name], subref)")
@@ -1324,7 +1325,7 @@ sub Regex::Engine::re_zwa {
 		unless ref($subref) eq ref(sub{});
 	
 	# Return the constructed zero-width assertion:
-	my $self = Regex::Engine::ZeroWidthAssertion->new(quantifiers => [0,0],
+	my $self = Scrooge::ZeroWidthAssertion->new(quantifiers => [0,0],
 		subref => $subref, defined $name ? (name => $name) : ());
 	
 }
@@ -1357,9 +1358,9 @@ sub _apply {
 	return ($consumed, %details);
 }
 
-package Regex::Engine::Grouped;
+package Scrooge::Grouped;
 # Defines grouped regexes, like re_or, re_and, and re_seq
-use parent -norequire, 'Regex::Engine';
+use parent -norequire, 'Scrooge';
 use strict;
 use warnings;
 use Carp;
@@ -1379,7 +1380,7 @@ sub _init {
 	
 	# Check each of the child regexes and add their names:
 	foreach (@{$self->{regexes}}) {
-		croak("Invalid regex") unless eval {$_->isa('Regex::Engine')};
+		croak("Invalid regex") unless eval {$_->isa('Scrooge')};
 		$_->add_name_to($self->{names});
 	}
 	
@@ -1411,7 +1412,7 @@ sub _prep {
 		if ($successful_prep) {
 			# Make sure the min size is not too large:
 			push (@succeeded, $_)
-				unless $_->min_size > Regex::Engine::data_length($data);
+				unless $_->min_size > Scrooge::data_length($data);
 		}
 	}
 	
@@ -1430,7 +1431,7 @@ sub _prep {
 	
 	# Cache the minimum and maximum number of elements to match:
 	$self->_minmax;
-	my $data_size = Regex::Engine::data_length($data);
+	my $data_size = Scrooge::data_length($data);
 	$self->max_size($data_size) if $self->max_size > $data_size;
 	# Check those values for sanity:
 	if ($self->max_size < $self->min_size or $self->min_size > $data_size) {
@@ -1510,7 +1511,7 @@ sub clear_stored_match {
 }
 
 sub push_match {
-	croak('Regex::Engine::Grouped::push_match is a method that expects two arguments')
+	croak('Scrooge::Grouped::push_match is a method that expects two arguments')
 		unless @_ == 3;
 	my ($self, $regex, $details) = @_;
 	push @{$self->{positive_matches}}, $regex;
@@ -1560,8 +1561,8 @@ them until it finds one that succeeds. This does not take any quantifiers.
 
 =cut
 
-package Regex::Engine::Or;
-use parent -norequire, 'Regex::Engine::Grouped';
+package Scrooge::Or;
+use parent -norequire, 'Scrooge::Grouped';
 use strict;
 use warnings;
 use Carp;
@@ -1594,8 +1595,8 @@ sub _prep_success {
 # recursive check this
 sub clear_stored_match {
 	my $self = shift;
-	# Call the Regex::Engine's method:
-	Regex::Engine::clear_stored_match($self);
+	# Call the Scrooge's method:
+	Scrooge::clear_stored_match($self);
 	
 	# Only pop off the latest match:
 	$self->pop_match;
@@ -1668,12 +1669,12 @@ sub _apply {
 	return 0;
 }
 
-sub Regex::Engine::re_or {
+sub Scrooge::re_or {
 	# If the first argument is an object, assume no name:
-	return Regex::Engine::Or->new(regexes => \@_) if ref $_[0];
+	return Scrooge::Or->new(regexes => \@_) if ref $_[0];
 	# Otherwise assume that the first argument is a name:
 	my $name = shift;
-	return Regex::Engine::Or->new(name => $name, regexes => \@_);
+	return Scrooge::Or->new(name => $name, regexes => \@_);
 }
 
 =head2 re_and
@@ -1683,8 +1684,8 @@ them, returning true if all succeed. This does not take any quantifiers.
 
 =cut
 
-package Regex::Engine::And;
-use parent -norequire, 'Regex::Engine::Grouped';
+package Scrooge::And;
+use parent -norequire, 'Scrooge::Grouped';
 use strict;
 use warnings;
 use Carp;
@@ -1774,12 +1775,12 @@ sub _minmax {
 	$self->max_size($full_max);
 }
 
-sub Regex::Engine::re_and {
+sub Scrooge::re_and {
 	# If the first argument is an object, assume no name:
-	return Regex::Engine::And->new(regexes => \@_) if ref $_[0];
+	return Scrooge::And->new(regexes => \@_) if ref $_[0];
 	# Otherwise assume that the first argument is a name:
 	my $name = shift;
-	return Regex::Engine::And->new(name => $name, regexes => \@_);
+	return Scrooge::And->new(name => $name, regexes => \@_);
 }
 
 =head2 re_seq
@@ -1798,8 +1799,8 @@ This operates recursively thu:
 
 =cut
 
-package Regex::Engine::Sequence;
-use parent -norequire, 'Regex::Engine::Grouped';
+package Scrooge::Sequence;
+use parent -norequire, 'Scrooge::Grouped';
 use strict;
 use warnings;
 use Carp;
@@ -2042,12 +2043,12 @@ sub _minmax {
 	$self->max_size($full_max);
 }
 
-sub Regex::Engine::re_seq {
+sub Scrooge::re_seq {
 	# If the first argument is an object, assume no name:
-	return Regex::Engine::Sequence->new(regexes => \@_) if ref $_[0];
+	return Scrooge::Sequence->new(regexes => \@_) if ref $_[0];
 	# Otherwise assume that the first argument is a name:
 	my $name = shift;
-	return Regex::Engine::Sequence->new(name => $name, regexes => \@_)
+	return Scrooge::Sequence->new(name => $name, regexes => \@_)
 }
 
 # THE magic value that indicates this module compiled correctly:
@@ -2203,14 +2204,14 @@ A potential concise syntax might look like this:
     
     # ---( Prefixes )---
     # Barewords are called as-is unless you specify an auto-prefix:
-    Regex::Engine::OneD::
+    Scrooge::OneD::
     
     # Now these constructors have that prefix added so:
     reg1(args)
-    # is interpreted as Regex::Engine::OneD::reg1(args)
+    # is interpreted as Scrooge::OneD::reg1(args)
     
     # You can explicitly resolve a constructor like so:
-    Regex::Engine::Extra::reg3(args)
+    Scrooge::Extra::reg3(args)
     
     # To restore the original prefix, simply use two colons:
     ::

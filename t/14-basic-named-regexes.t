@@ -3,18 +3,18 @@
 use strict;
 use warnings;
 use Test::More tests => 10;
-use Regex::Engine;
+use Scrooge;
 use PDL;
 
 #############
-# Regex::Engine::Test #
+# Scrooge::Test #
 #############
 
 # A simple base class for testing that always matches $N_to_match with
 # offset $offset
 
-package Regex::Engine::Test;
-our @ISA = qw(Regex::Engine);
+package Scrooge::Test;
+our @ISA = qw(Scrooge);
 my ($N_to_match, $test_offset) = (10, 5);
 sub min_size { $N_to_match }
 sub max_size { $N_to_match }
@@ -28,15 +28,15 @@ sub _apply {
 package main;
 
 ############################################
-# Test the basic operation of Regex::Engine::Test, 3 #
+# Test the basic operation of Scrooge::Test, 3 #
 ############################################
 
-my $test_regex = Regex::Engine::Test->new;
+my $test_regex = Scrooge::Test->new;
 my $data = sequence(15);
 
 my ($matched, $offset) = $test_regex->apply($data);
-is($matched, $N_to_match, 'Regex::Engine::Test gives correct match');
-is($offset, $test_offset, 'Regex::Engine::Test gives correct offset');
+is($matched, $N_to_match, 'Scrooge::Test gives correct match');
+is($offset, $test_offset, 'Scrooge::Test gives correct offset');
 $test_offset++;
 $matched = $test_regex->apply($data);
 is($matched, undef, 'L = 10, Off = 6 fails for N = 15');
@@ -45,7 +45,7 @@ is($matched, undef, 'L = 10, Off = 6 fails for N = 15');
 # Test a named regex, 5 #
 #########################
 
-my $regex = Regex::Engine::Test->new(name => 'test');
+my $regex = Scrooge::Test->new(name => 'test');
 $test_offset = 2;
 if ($regex->apply($data)) {
 	pass('regex matched where it should have matched');

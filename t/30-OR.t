@@ -2,7 +2,7 @@ use strict;
 use warnings;
 use Test::More tests => 47;
 use PDL;
-use Regex::Engine;
+use Scrooge;
 
 # Load the basics module:
 my $module_name = 'Basics.pm';
@@ -18,14 +18,14 @@ elsif (-f "t\\$module_name") {
 
 # Assemble the data and a collection of regexes:
 my $data = sequence(20);
-my $fail_re = Regex::Engine::Test::Fail->new(name => 'fail');
-my $should_croak_re = Regex::Engine::Test::ShouldCroak->new(name => 'should_croak');
-my $croak_re = Regex::Engine::Test::Croak->new(name => 'croak');
-my $all_re = Regex::Engine::Test::All->new(name => 'all');
-my $even_re = Regex::Engine::Test::Even->new(name => 'even');
-my $exact_re = Regex::Engine::Test::Exactly->new(name => 'exact');
-my $range_re = Regex::Engine::Test::Range->new(name => 'range');
-my $offset_re = Regex::Engine::Test::Exactly::Offset->new(name => 'offset');
+my $fail_re = Scrooge::Test::Fail->new(name => 'fail');
+my $should_croak_re = Scrooge::Test::ShouldCroak->new(name => 'should_croak');
+my $croak_re = Scrooge::Test::Croak->new(name => 'croak');
+my $all_re = Scrooge::Test::All->new(name => 'all');
+my $even_re = Scrooge::Test::Even->new(name => 'even');
+my $exact_re = Scrooge::Test::Exactly->new(name => 'exact');
+my $range_re = Scrooge::Test::Range->new(name => 'range');
+my $offset_re = Scrooge::Test::Exactly::Offset->new(name => 'offset');
 
 ########################
 # Constructor tests: 7 #
@@ -33,7 +33,7 @@ my $offset_re = Regex::Engine::Test::Exactly::Offset->new(name => 'offset');
 
 my $regex = eval{re_or('test regex', $all_re, $fail_re)};
 is($@, '', 'Basic constructor does not croak');
-isa_ok($regex, 'Regex::Engine::Or');
+isa_ok($regex, 'Scrooge::Or');
 is($regex->{name}, 'test regex', 'Constructor correctly interprets name');
 
 my ($length, $offset) = eval{$regex->apply($data)};
@@ -50,7 +50,7 @@ is($length, $data->nelem, 'Or matches on first *successful* regex');
 
 $regex = eval{re_or($should_croak_re)};
 is($@, '', 'Constructor without name does not croak');
-isa_ok($regex, 'Regex::Engine::Or');
+isa_ok($regex, 'Scrooge::Or');
 eval{$regex->apply($data)};
 isnt($@, '', 're_or croaks when one of the regexes consumes too much');
 eval{re_or($croak_re, $all_re)->apply($data)};

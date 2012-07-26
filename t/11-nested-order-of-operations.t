@@ -2,7 +2,7 @@ use PDL;
 use strict;
 use warnings;
 use Test::More tests => 11;
-use Regex::Engine;
+use Scrooge;
 use Data::Dumper;
 
 # Load the tracker module:
@@ -29,8 +29,8 @@ my $data = sequence(50);
 # I want to use a slightly more complex set of functions, so I'm going to
 # have the overridable functions call even more local functions. :-)
 
-package Regex::Engine::Test::Tracker::Nested;
-our @ISA = ('Regex::Engine');
+package Scrooge::Test::Tracker::Nested;
+our @ISA = ('Scrooge');
 Tracker::track(
 	{
 		_apply		=> q{ our $apply_returns->() },
@@ -47,7 +47,7 @@ sub _init {
 }
 
 
-my $regex = Regex::Engine::Test::Tracker::Nested->new;
+my $regex = Scrooge::Test::Tracker::Nested->new;
 our @call_structure = ();
 our $apply_returns = sub {1};
 our $cleanup_returns = sub {1};

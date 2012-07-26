@@ -6,17 +6,17 @@
 use strict;
 use warnings;
 use Test::More tests => 23;
-use Regex::Engine;
+use Scrooge;
 use PDL;
 
 ####################
-# Regex::Engine::Test #
+# Scrooge::Test #
 ####################
 
 # A simple, lexically tweakable regex class that tracks the number of times
 # _apply is called.
-package Regex::Engine::Test;
-our @ISA = qw(Regex::Engine);
+package Scrooge::Test;
+our @ISA = qw(Scrooge);
 my ($apply_returns, $data, $min_size, $max_size);
 my @got;
 sub _prep {
@@ -50,7 +50,7 @@ sub build_expected {
 	return \@to_return;
 }
 
-my $regex = Regex::Engine::Test->new();
+my $regex = Scrooge::Test->new();
 
 ######################################
 # Check that build_expected works: 3 #

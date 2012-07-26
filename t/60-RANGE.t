@@ -2,14 +2,14 @@ use strict;
 use warnings;
 use Test::More tests => 37;
 use PDL;
-use Regex::Engine::Range;
+use Scrooge::Range;
 
 #################################
 # Range string parsing tests: 8 #
 #################################
 
 # Make a local function alias for parse_range_strings
-*prs = \&Regex::Engine::Range::parse_range_strings;
+*prs = \&Scrooge::Range::parse_range_strings;
 
 my $data = sequence(11);
 # three tests here:
@@ -32,7 +32,7 @@ is(prs($data, 'max - 2'), 8, 'parse_range_strings correctly interprets max - 2')
 
 my $two_to_five = eval{re_intersect(name => 'test regex', above => '2', below => '5')};
 is($@, '', 'Basic constructor does not croak');
-isa_ok($two_to_five, 'Regex::Engine::Intersect');
+isa_ok($two_to_five, 'Scrooge::Intersect');
 is($two_to_five->{name}, 'test regex', 'Constructor correctly interprets name');
 
 #########################

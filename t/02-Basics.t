@@ -14,7 +14,7 @@ elsif (-f "t\\$module_name") {
 
 use strict;
 use warnings;
-use Regex::Engine;
+use Scrooge;
 use Test::More tests => 68;
 use PDL;
 
@@ -23,13 +23,13 @@ my $data = sequence(10);
 
 
 ###########################################################################
-#                        Regex::Engine::Test::Fail - 4                       #
+#                        Scrooge::Test::Fail - 4                       #
 ###########################################################################
 
 # ---( Build and make sure it builds properly, 2 )---
-$regex = eval { Regex::Engine::Test::Fail->new };
+$regex = eval { Scrooge::Test::Fail->new };
 is($@, '', 'Test::Fail constructor does not croak');
-isa_ok($regex, 'Regex::Engine::Test::Fail');
+isa_ok($regex, 'Scrooge::Test::Fail');
 
 # ---( Basic application, 2 )---
 ($length, $offset) = $regex->apply($data);
@@ -38,13 +38,13 @@ is($offset, undef, 'Test::Fail always fails, returning undef for offset');
 
 
 ###########################################################################
-#                     Regex::Engine::Test::Fail::Prep - 4                    #
+#                     Scrooge::Test::Fail::Prep - 4                    #
 ###########################################################################
 
 # ---( Build and make sure it builds properly, 2 )---
-$regex = eval { Regex::Engine::Test::Fail::Prep->new };
+$regex = eval { Scrooge::Test::Fail::Prep->new };
 is($@, '', 'Test::Fail::Prep constructor does not croak');
-isa_ok($regex, 'Regex::Engine::Test::Fail::Prep');
+isa_ok($regex, 'Scrooge::Test::Fail::Prep');
 
 # ---( Basic application, 2 )---
 ($length, $offset) = $regex->apply($data);
@@ -53,13 +53,13 @@ is($offset, undef, 'Test::Fail::Prep always fails, returning undef for offset');
 
 
 ###########################################################################
-#                        Regex::Engine::Test::All - 4                        #
+#                        Scrooge::Test::All - 4                        #
 ###########################################################################
 
 # ---( Build and make sure it builds properly, 2 )---
-$regex = eval { Regex::Engine::Test::All->new };
+$regex = eval { Scrooge::Test::All->new };
 is($@, '', 'Test::All constructor does not croak');
-isa_ok($regex, 'Regex::Engine::Test::All');
+isa_ok($regex, 'Scrooge::Test::All');
 
 # ---( Basic regex application, 2 )---
 ($length, $offset) = $regex->apply($data);
@@ -68,37 +68,37 @@ is($offset, 0, 'Test::All always matches at the start of what it is given');
 
 
 ###########################################################################
-#                       Regex::Engine::Test::Croak - 3                       #
+#                       Scrooge::Test::Croak - 3                       #
 ###########################################################################
 
 # ---( Build and make sure it runs properly, 3 )---
-$regex = eval { Regex::Engine::Test::Croak->new };
+$regex = eval { Scrooge::Test::Croak->new };
 is($@, '', 'Test::Croak constructor does not croak (that comes during apply)');
-isa_ok($regex, 'Regex::Engine::Test::Croak');
+isa_ok($regex, 'Scrooge::Test::Croak');
 eval{$regex->apply($data)};
 isnt($@, '', 'Engine croaks when its regex croaks');
 
 
 ###########################################################################
-#                    Regex::Engine::Test::ShouldCroak - 3                    #
+#                    Scrooge::Test::ShouldCroak - 3                    #
 ###########################################################################
 
 # ---( Build and make sure it runs properly, 3 )---
-$regex = eval { Regex::Engine::Test::ShouldCroak->new };
+$regex = eval { Scrooge::Test::ShouldCroak->new };
 is($@, '', 'Test::ShouldCroak constructor does not croak (that comes during apply)');
-isa_ok($regex, 'Regex::Engine::Test::ShouldCroak');
+isa_ok($regex, 'Scrooge::Test::ShouldCroak');
 eval{$regex->apply($data)};
 isnt($@, '', 'Engine croaks when regex consumes more than it was given');
 
 
 ###########################################################################
-#                       Regex::Engine::Test::Even - 10                       #
+#                       Scrooge::Test::Even - 10                       #
 ###########################################################################
 
 # ---( Build and make sure it builds properly, 2 )---
-$regex = eval { Regex::Engine::Test::Even->new };
+$regex = eval { Scrooge::Test::Even->new };
 is($@, '', 'Test::Even constructor does not croak');
-isa_ok($regex, 'Regex::Engine::Test::Even');
+isa_ok($regex, 'Scrooge::Test::Even');
 
 # ---( Basic regex application, 8 )---
 ($length, $offset) = $regex->apply($data);
@@ -116,13 +116,13 @@ is($offset, 0, 'Test::Even always matches at the start of what it is given');
 
 
 ###########################################################################
-#                      Regex::Engine::Test::Exactly - 12                     #
+#                      Scrooge::Test::Exactly - 12                     #
 ###########################################################################
 
 # ---( Build and make sure it builds ok, 4 )---
-$regex = eval{ Regex::Engine::Test::Exactly->new(N => 5) };
+$regex = eval{ Scrooge::Test::Exactly->new(N => 5) };
 is($@, '', 'Test::Exactly constructor does not croak');
-isa_ok($regex, 'Regex::Engine::Test::Exactly');
+isa_ok($regex, 'Scrooge::Test::Exactly');
 # Test that it matches 5 elements:
 ($length, $offset) = $regex->apply($data);
 is($length, 5, 'Test::Exactly should match the exact specified number of elements');
@@ -150,13 +150,13 @@ is($offset, undef, 'Test::Exactly does not match when data is too short');
 
 
 ###########################################################################
-#                       Regex::Engine::Test::Range - 15                      #
+#                       Scrooge::Test::Range - 15                      #
 ###########################################################################
 
 # ---( Build and make sure it builds properly, 4 )---
-$regex = eval { Regex::Engine::Test::Range->new };
+$regex = eval { Scrooge::Test::Range->new };
 is($@, '', 'Test::Range constructor does not croak');
-isa_ok($regex, 'Regex::Engine::Test::Range');
+isa_ok($regex, 'Scrooge::Test::Range');
 is($regex->{min_size}, 1, 'Default min_size is 1');
 is($regex->{max_size}, 1, 'Default max_size is 1');
 
@@ -186,20 +186,20 @@ is($offset, undef, 'Test::Range should not match if data is smaller than min');
 
 
 ###########################################################################
-#                  Regex::Engine::Test::Exactly::Offset - 13                 #
+#                  Scrooge::Test::Exactly::Offset - 13                 #
 ###########################################################################
 
 # ---( Build and make sure it builds properly, 5 )---
-$regex = eval { Regex::Engine::Test::Exactly::Offset->new };
+$regex = eval { Scrooge::Test::Exactly::Offset->new };
 is($@, '', 'Test::Exactly::Offset constructor does not croak');
-isa_ok($regex, 'Regex::Engine::Test::Exactly::Offset');
+isa_ok($regex, 'Scrooge::Test::Exactly::Offset');
 is($regex->{min_size}, 1, 'Default min_size is 1');
 is($regex->{max_size}, 1, 'Default max_size is 1');
 is($regex->{offset}, 0, 'Default offset is 0');
 
 # ---( Compare with Test::Exactly, 1 )---
-my $exact_regex = Regex::Engine::Test::Exactly->new(N => 5);
-$regex = Regex::Engine::Test::Exactly::Offset->new(N => 5);
+my $exact_regex = Scrooge::Test::Exactly->new(N => 5);
+$regex = Scrooge::Test::Exactly::Offset->new(N => 5);
 is_deeply([$exact_regex->apply($data)], [$regex->apply($data)],
 	, 'Test::Exactly::Offset agrees with basic Test::Exactly');
 

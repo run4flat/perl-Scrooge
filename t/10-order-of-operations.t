@@ -7,7 +7,7 @@ use PDL;
 use strict;
 use warnings;
 use Test::More tests => 15;
-use Regex::Engine;
+use Scrooge;
 use Data::Dumper;
 
 # Load the tracker module:
@@ -32,16 +32,16 @@ else {
 #                        Constructor Tests - 2                        #
 #######################################################################
 
-package Regex::Engine::Test::Tracker::New;
-our @ISA = ('Regex::Engine');
+package Scrooge::Test::Tracker::New;
+our @ISA = ('Scrooge');
 Tracker::track({_apply => '1', _prep => '1', _init => '1', _cleanup => '1'},
 	qw(new _to_stash apply is_prepping prep min_size max_size is_applying
 			store_match clear_stored_match is_cleaning cleanup)
 );
 
-my $regex = Regex::Engine::Test::Tracker::New->new();
+my $regex = Scrooge::Test::Tracker::New->new();
 # Ensure the class was properly created:
-isa_ok($regex, 'Regex::Engine::Test::Tracker::New')
+isa_ok($regex, 'Scrooge::Test::Tracker::New')
 	or diag($regex);
 
 # The call order for new should look like this:
@@ -57,8 +57,8 @@ is_deeply(\@call_structure, $expected, 'New calls _init');
 #                         Successful Prep - 4                         #
 #######################################################################
 
-package Regex::Engine::Test::Tracker::Override;
-our @ISA = ('Regex::Engine');
+package Scrooge::Test::Tracker::Override;
+our @ISA = ('Scrooge');
 Tracker::track(
 	{
 		_apply		=> q{ our $apply_returns->() },
@@ -74,7 +74,7 @@ our $prep_returns = sub {1};
 our $apply_returns = sub {1};
 our $cleanup_returns = sub {1};
 
-$regex = Regex::Engine::Test::Tracker::Override->new;
+$regex = Scrooge::Test::Tracker::Override->new;
 our @call_structure = ();
 
 my $data = sequence(50);
