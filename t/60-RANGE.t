@@ -2,7 +2,7 @@ use strict;
 use warnings;
 use Test::More tests => 37;
 use PDL;
-use Scrooge::Range;
+use Scrooge::PDL;
 
 #################################
 # Range string parsing tests: 8 #

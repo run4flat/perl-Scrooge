@@ -248,7 +248,7 @@ sub _apply {
 }
 
 ############################################################################
-#                       Scrooge::Test::Printer                       #
+#                       Scrooge::Test::Printer                             #
 ############################################################################
 
 # Useful for knowning the position of the current matching. Not presently used
