@@ -301,7 +301,12 @@ sub re_intersect {
   $args{ quantifiers } = [1,1]
     unless exists $args{ quantifiers };
     
-  return Regex::Engine::Intersect->new(%args);
+  return Scrooge::PDL->new(%args);
 }
 
+
 1;
+
+=head1 AUTHOR
+
+Jeff Giegold C<j.giegold@gmail.com>
