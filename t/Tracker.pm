@@ -1,6 +1,6 @@
-###########################################################################
-#                        Scrooge::Test::Tracker                        #
-###########################################################################
+############################################################################
+#                          Scrooge::Test::Tracker                          #
+############################################################################
 
 # Provides a way to install functions into a package that tracks the
 # function call order and croaking behavior, and preserving the calling
