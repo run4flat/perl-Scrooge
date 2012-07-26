@@ -88,9 +88,9 @@ isnt($matched, undef, 'two_to_five matched piddle');
 is($matched, 1, 'default quantifier is a single match');
 is($offset, 9, 'identifies first matching element');
 
-##########################
-# Complex Match Tests: 3 #
-##########################
+#############################
+# Quantified Match Tests: 6 #
+#############################
 
 $data->slice('10') .= -11;
 $data->slice('11') .= -12;
@@ -103,9 +103,8 @@ is($offset, 9, 'identifies first matching value');
 
 
 $data = sin(sequence(100)/10);
-$two_to_five = re_intersect(name => 'test regex', above => -1.1, below => 1.1, quantifiers => [1,100]);
+$two_to_five = re_intersect(name => 'test regex', above => -1, below => 1, quantifiers => [1,100]);
 ($matched, $offset) = $two_to_five->apply($data);
 isnt($matched, undef, 'two_to_five matched piddle');
-
 is($matched, 100, 'whole segment matched');
 is($offset, 0, 'identifies first matching element');
