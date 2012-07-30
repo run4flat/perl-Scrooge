@@ -1,200 +1,15 @@
-package Scrooge::PDL::Intersect;
-use strict;
-use warnings;
-use Scrooge;
-use Carp;
-use PDL;
-
-our @ISA = qw(Scrooge::Quantified);
-=head1 NAME
-
-Scrooge::PDL::Intersect - create regexen to match numbers inside a given numeric range
-
-=cut
-
-our $VERSION = 0.01;
-
-=head1 VERSION
-
-This documentation discusses version 0.01 of Scrooge::PDL::Intersect
-
-=head1 SYNOPSIS
-
- use Scrooge::PDL::Intersect;
- 
- 
-=head1 DESCRIPTION
-
-This module allows the user to match data in sections, rather than just matching the whole set of data. This
-should mainly be used for finding data outside of certain ranges, for example outside 2 standard deviations
-from the mean of the data. 
-
-=cut
-
-#Override _init: Ignoring for now
-###########################################################
-# Name       : _init
-# Usage      : $self->_init
-# Purpose    : parse the range strings into an op tree
-# Returns    : nothing
-# Parameters : $self (implicit)
-# Throws     : no exceptions
-# Notes      : expects keys 'above' and 'below'
-
-#sub _init {
-#   Parent class handles quantifiers
-#   $_[0]->SUPER::_init;
-  
-#   XXX 
-#}
-
-
-###########################################################
-# Name       : _prep
-# Usage      : $self->_prep($data)
-# Purpose    : create an anonymous subroutine that performs the condition check
-# Returns    : a True value
-# Parameters : $self (implicit), $data
-# Throws     : if parse_range_strings had trouble
-# Notes      : none atm
-
-sub _prep {
-  my ($self, $data) = @_;
-  $data = PDL::Core::topdl($data);
- 
-  # Parse the above and below specifications
-  my ($above, $below) = Scrooge::PDL::parse_range_strings(
-      $data, $self->{above}, $self->{below}
-  );
-  
-  # It could be the case that the intersection could be null if above is under below.
-  # We retrun false to signify to the Regex Engine that it never needs to evaluate this. 
-  if ($above > $below){
-    return '';
-  }
-  # Build the subroutine reference
-  $self->{ subref } = sub {
-    my ($left, $right) = @_;
-    
-    # Zero width assertions are trivially true.
-    return '0 but true' if ($left > $right);
-
-    my $sub_piddle = $data->slice("$left:$right");
-
-    # Return a failed match if the match doesn't occur
-    # at the given left offset 
-    return 0 if $data->at($left) >= $below or $data->at($left) <= $above;
-
-    # Return the length of the whole segment if
-    # all of data is within the range. 
-    return ($right - $left +1) 
-        if all ( ($sub_piddle > $above) & ($sub_piddle < $below) );
-    
-    # Returns the index of the first point outside the range, which is equal to the length
-    # of the match.
-    return which( ($sub_piddle < $above) | ($sub_piddle > $below))->at(0);     
-    
-  };
-  
-  return $self->SUPER::_prep($data);
-}
-
-###########################################################
-# Name       : _apply
-# Usage      : $self->_init
-# Purpose    : invoke the subroutine from prep with left and right offsets
-# Returns    : nothing
-# Parameters : $self (implicit)
-# Throws     : no exceptions
-# Notes      : expects keys 'above' and 'below'
-
-sub _apply {
-  my $self = shift;
-  return $self->{subref}->(@_);
-}
-
-################################################################################
-
 package Scrooge::PDL;
 
 use Exporter 'import';
-our @EXPORT = qw(re_intersect);
 use strict;
 use warnings;
+our $VERSION = 0.01;
 
-=head2 Range Strings
+=head2 VERSION
 
-working here - document more sufficiently.
-
-The following suffixes and strings are converted:
-
-=over
-
-=item num@
-
-=item num%
-
-=item min
-
-=item max
-
-=item avg
-
-=back
+This documentation discusses version 0.01 of Scrooge::PDL::Intersect
 
 =cut
-
-###########################################################
-# Name       : parse_range_strings
-# Usage      : parse_range_strings($data, $above, $below, ...)
-# Purpose    : parse range strings for a given piddle
-# Returns    : numeric values for the given range strings
-# Parameters : a piddle, then a collection of range strings
-# Throws     : if the range string is not eval-able after munging
-# Notes      : none, yet
-
-sub parse_range_strings {
-  my $data = shift;
-  
-  # Ensure we have a good input
-  croak('parse_range_strings expects first arg to be a piddle')
-    unless eval {$data->isa('PDL')};
-  
-  my ($mean, $st_dev) = $data->stats;
-  my ($min, $max) = $data->minmax;
-  my $pct = ($max - $min) / 100;
-  my @to_return;
-  
-  # Parse each string in turn; make a copy so we can modify it
-  while (defined (my $range_string = shift @_)) {
-    my $original_string = $range_string;
-    
-    # Replace ... 5@ ... with ... 5 * $st_dev ...
-    $range_string =~ s/(\d)\s*\@/$1 * \$st_dev/g;
-    
-    # Replace ... 5% ... with ... 5 * $pct ...  
-    $range_string =~ s/(\d)\s*\%/$1 * \$pct/g;
-    
-    # Replace ... avg ... with ... $mean ...  
-    $range_string =~ s/avg/\$mean/g;
-    
-    # Replace min and max with $min and $max
-    $range_string =~ s/min/\$min/g;
-    $range_string =~ s/max/\$max/g;
-    
-    # Evaluate the result and store it, croaking if we ran into trouble
-    push @to_return, eval($range_string);
-    croak("parse_range_strings had trouble with range_string $original_string")
-      if $@ ne '';
-  }
-  
-  # return all strings in list context
-  return @to_return if wantarray;
-  
-  # return only the first result in scalar context
-  return $to_return[0];
-}
-
 ###########################################################
 # Name       : re_intersect
 # Usage      : re_intersect(above=>'5', below=>'9@')
@@ -205,7 +20,7 @@ sub parse_range_strings {
 #            : if not given an 'above' or 'below'
 # Notes      : defaults to quantifier of length 1
 
-=head2 re_intersect
+=head1 re_intersect
 
 This is the short-name constructor for an intersection regex. It takes its
 arguments as key/value pairs, where the keys are among the following:
@@ -303,7 +118,235 @@ sub re_intersect {
   return Scrooge::PDL::Intersect->new(%args);
 }
 
+sub re_local_extrema {
+     
+  my %args = @_;
+  
+  # re_local_
+}
 
+=head21Range Strings
+
+working here - document more sufficiently.
+
+The following suffixes and strings are converted:
+
+=over
+
+=item num@
+
+=item num%
+
+=item min
+
+=item max
+
+=item avg
+
+=back
+
+=cut
+
+###########################################################
+# Name       : parse_range_strings
+# Usage      : parse_range_strings($data, $above, $below, ...)
+# Purpose    : parse range strings for a given piddle
+# Returns    : numeric values for the given range strings
+# Parameters : a piddle, then a collection of range strings
+# Throws     : if the range string is not eval-able after munging
+# Notes      : none, yet
+
+sub parse_range_strings {
+  my $data = shift;
+  
+  # Ensure we have a good input
+  croak('parse_range_strings expects first arg to be a piddle')
+    unless eval {$data->isa('PDL')};
+  
+  my ($mean, $st_dev) = $data->stats;
+  my ($min, $max) = $data->minmax;
+  my $pct = ($max - $min) / 100;
+  my @to_return;
+  
+  # Parse each string in turn; make a copy so we can modify it
+  while (defined (my $range_string = shift @_)) {
+    my $original_string = $range_string;
+    
+    # Replace ... 5@ ... with ... 5 * $st_dev ...
+    $range_string =~ s/(\d)\s*\@/$1 * \$st_dev/g;
+    
+    # Replace ... 5% ... with ... 5 * $pct ...  
+    $range_string =~ s/(\d)\s*\%/$1 * \$pct/g;
+    
+    # Replace ... avg ... with ... $mean ...  
+    $range_string =~ s/avg/\$mean/g;
+    
+    # Replace min and max with $min and $max
+    $range_string =~ s/min/\$min/g;
+    $range_string =~ s/max/\$max/g;
+    
+    # Evaluate the result and store it, croaking if we ran into trouble
+    push @to_return, eval($range_string);
+    croak("parse_range_strings had trouble with range_string $original_string")
+      if $@ ne '';
+  }
+  
+  # return all strings in list context
+  return @to_return if wantarray;
+  
+  # return only the first result in scalar context
+  return $to_return[0];
+}
+
+our @EXPORT = qw(re_intersect);
+
+
+package Scrooge::PDL::Intersect;
+use strict;
+use warnings;
+use Scrooge;
+use Carp;
+use PDL;
+
+our @ISA = qw(Scrooge::Quantified);
+=head2 NAME
+
+Scrooge::PDL::Intersect - create regexen to match numbers inside a given numeric range
+
+=cut
+
+=head2 SYNOPSIS
+
+ use Scrooge::PDL::Intersect;
+ 
+ 
+=head2 DESCRIPTION
+
+This package allows the user to match data in sections, rather than just matching the whole set of data. This
+should mainly be used for finding data outside of certain ranges, for example outside 2 standard deviations
+from the mean of the data. 
+
+=cut
+
+
+#Override _init: Ignoring for now
+###########################################################
+# Name       : _init
+# Usage      : $self->_init
+# Purpose    : parse the range strings into an op tree
+# Returns    : nothing
+# Parameters : $self (implicit)
+# Throws     : no exceptions
+# Notes      : expects keys 'above' and 'below'
+
+#sub _init {
+#   Parent class handles quantifiers
+#   $_[0]->SUPER::_init;
+  
+#   XXX 
+#}
+
+
+###########################################################
+# Name       : _prep
+# Usage      : $self->_prep($data)
+# Purpose    : create an anonymous subroutine that performs the condition check
+# Returns    : a True value
+# Parameters : $self (implicit), $data
+# Throws     : if parse_range_strings had trouble
+# Notes      : none atm
+
+sub _prep {
+  my ($self, $data) = @_;
+  $data = PDL::Core::topdl($data);
+ 
+  # Parse the above and below specifications
+  my ($above, $below) = Scrooge::PDL::parse_range_strings(
+      $data, $self->{above}, $self->{below}
+  );
+  
+  # It could be the case that the intersection could be null if above is under below.
+  # We retrun false to signify to the Regex Engine that it never needs to evaluate this. 
+  if ($above > $below){
+    return '';
+  }
+  # Build the subroutine reference
+  $self->{ subref } = sub {
+    my ($left, $right) = @_;
+    
+    # Zero width assertions are trivially true.
+    return '0 but true' if ($left > $right);
+
+    my $sub_piddle = $data->slice("$left:$right");
+
+    # Return a failed match if the match doesn't occur
+    # at the given left offset 
+    return 0 if $data->at($left) >= $below or $data->at($left) <= $above;
+
+    # Return the length of the whole segment if
+    # all of data is within the range. 
+    return ($right - $left +1) 
+        if all ( ($sub_piddle > $above) & ($sub_piddle < $below) );
+    
+    # Returns the index of the first point outside the range, which is equal to the length
+    # of the match.
+    return which( ($sub_piddle < $above) | ($sub_piddle > $below))->at(0);     
+    
+  };
+  
+  return $self->SUPER::_prep($data);
+}
+
+###########################################################
+# Name       : _apply
+# Usage      : $self->_init
+# Purpose    : invoke the subroutine from prep with left and right offsets
+# Returns    : nothing
+# Parameters : $self (implicit)
+# Throws     : no exceptions
+# Notes      : expects keys 'above' and 'below'
+
+sub _apply {
+  my $self = shift;
+  return $self->{subref}->(@_);
+}
+
+package Scrooge::PDL::Local_extrema;
+use strict;
+use warnings;
+use Scrooge;
+use Carp;
+use PDL;
+
+=head2 NAME
+
+Scrooge::PDL::Local_Extrema - create regex to match the local extrema of a set of data
+
+=head2 DESCRIPTION
+
+This package lets the user match the local extrema of a set of data. This requires the user to input data with
+no noise since it simply compares singe points its immediately adjacent points.
+
+=cut
+
+sub _prep {
+  my ($self, $data) = @_;
+  $data = PDL::Core::topdl($data);
+  
+  # A local maximum or minimum can only have a length of 1.
+  my ($MIN_SIZE, $MAX_SIZE) = (1,1);
+  
+  $self->{subref} = sub{
+    my ($left, $right) = @_;
+    
+    
+    
+    
+    
+    
+  };
+  
+}
 1;
 
 =head1 AUTHOR
