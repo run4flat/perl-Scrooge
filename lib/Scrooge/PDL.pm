@@ -1,15 +1,15 @@
-package Regex::Engine::Intersect;
+package Scrooge::PDL::Intersect;
 use strict;
 use warnings;
-use Regex::Engine;
+use Scrooge::PDL;
 use Carp;
 use PDL;
 
-our @ISA = qw(Regex::Engine::Quantified);
+our @ISA = qw(Scrooge::PDL::Quantified);
 
 =head1 NAME
 
-Regex::Engine::Range - create regexen to match numbers inside a given numeric range
+Scrooge::PDL::Intersect - create regexen to match numbers inside a given numeric range
 
 =cut
 
@@ -17,11 +17,11 @@ our $VERSION = 0.01;
 
 =head1 VERSION
 
-This documentation discusses version 0.01 of Regex::Engine::Range
+This documentation discusses version 0.01 of Scrooge::PDL::Intersect
 
 =head1 SYNOPSIS
 
- use Regex::Engine::Range;
+ use Scrooge::PDL::Intersect;
  
  
 =head1 DESCRIPTION
