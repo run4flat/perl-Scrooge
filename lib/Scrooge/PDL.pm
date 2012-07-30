@@ -1,12 +1,11 @@
 package Scrooge::PDL::Intersect;
 use strict;
 use warnings;
-use Scrooge::PDL;
+use Scrooge;
 use Carp;
 use PDL;
 
-our @ISA = qw(Scrooge::PDL::Quantified);
-
+our @ISA = qw(Scrooge::Quantified);
 =head1 NAME
 
 Scrooge::PDL::Intersect - create regexen to match numbers inside a given numeric range
@@ -64,7 +63,7 @@ sub _prep {
   $data = PDL::Core::topdl($data);
  
   # Parse the above and below specifications
-  my ($above, $below) = Regex::Engine::Range::parse_range_strings(
+  my ($above, $below) = Scrooge::PDL::parse_range_strings(
       $data, $self->{above}, $self->{below}
   );
   
@@ -116,7 +115,7 @@ sub _apply {
 
 ################################################################################
 
-package Regex::Engine::Range;
+package Scrooge::PDL;
 
 use Exporter 'import';
 our @EXPORT = qw(re_intersect);
@@ -226,7 +225,7 @@ want to match a number between 2 and 5, you would say C<above => 2, below => 5>.
 =item quantifiers
 
 The regexes quantifiers, an anonymous two-element array with the min and the
-max quantifiers. (See L<Regex::Engine> for a discussion about quantifiers.)
+max quantifiers. (See L<Scrooge> for a discussion about quantifiers.)
 Default: C<[1, 1]>, i.e. matches one and only one element.
 
 =back
@@ -301,7 +300,7 @@ sub re_intersect {
   $args{ quantifiers } = [1,1]
     unless exists $args{ quantifiers };
     
-  return Scrooge::PDL->new(%args);
+  return Scrooge::PDL::Intersect->new(%args);
 }
 
 
