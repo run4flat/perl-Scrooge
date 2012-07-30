@@ -271,7 +271,8 @@ sub apply {
 	
 	# Get the data's length
 	my $N = data_length($data);
-	croak("Could not get length of the supplied data") if $N eq '';
+	croak("Could not get length of the supplied data")
+		if not defined $N or $N eq '';
 	my $min_diff = $self->min_size - 1;
 	my $max_diff = $self->max_size - 1;
 
@@ -1069,14 +1070,14 @@ For example, after doing this:
  };
 
 Then, if C<$object> is an object or C<My::Class::Name>, you can simply use
-C<Scrooge::length($object)> to get the length of your class's container.
+C<Scrooge::data_length($object)> to get the length of your class's container.
 See the next item for more details.
 
 =cut
 
 %method_table = (
 	(ref [])  => {
-		length => sub { return scalar(@$_[0]) },
+		length => sub { return scalar(@{$_[0]}) },
 		at     => sub { return $_[0]->[$_[1]] },
 		slice  => sub { return [ @{$_[0]}[$_[1] .. $_[2]] ] },
 	},
