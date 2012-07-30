@@ -80,6 +80,7 @@ sub _prep {
 	my $self = shift;
 	$self->{min_size} = 0;
 	$self->{max_size} = Scrooge::data_length($self->{data});
+	return 1;
 }
 
 sub _apply {
