@@ -17,7 +17,7 @@ our @EXPORT = qw(re_or re_and re_seq re_sub re_any re_zwa);
 
 =head1 NAME
 
-Scrooge - a greedy regular expression engine for arbitrary objects, like PDLs
+Scrooge - a greedy pattern engine for arbitrary objects, like PDLs
 
 =cut
 
@@ -31,7 +31,7 @@ This documentation is supposed to be for version 0.01 of Scrooge.
 
  use Scrooge;
  
- # Build the regular expression object first. This one
+ # Build the pattern object first. This one
  # matches positive values and assumes it is working with
  # piddles.
  my $positive_re = re_sub(sub {
@@ -42,24 +42,24 @@ This documentation is supposed to be for version 0.01 of Scrooge.
      
      # A simple check for positivity. Notice that
      # I return the difference of the offsets PLUS 1,
-     # because that's the number of elements this regex
+     # because that's the number of elements this pattern
      # consumes.
      return ($right - $left + 1)
          if all $piddle->slice("$left:$right") > 0;
  });
  
- # Find the number of (contiguous) elements that match that regex:
+ # Find the number of (contiguous) elements that match that pattern:
  my $data = sequence(20);
  my ($matched, $offset) = $re->apply($data);
  print "Matched $matched elements, starting from $offset\n";
  
- # ... after you've built a few regexes ...
+ # ... after you've built a few patterns ...
  
- # Matches regex a, b, or c:
+ # Matches pattern a, b, or c:
  my ($matched, $offset)
      = re_or( $re_a, $re_b, $re_c )->apply($data);
  
- # Matches regex a, b, and c:
+ # Matches pattern a, b, and c:
  my ($matched, $offset)
      = re_and ( $re_a, $re_b, $re_c )->apply($data);
  
@@ -91,19 +91,19 @@ makes use of quantifiers and because it uses a character class (the C<\d>
 matches many characters).
 
 The Scrooge equivalents of these take up quite a bit more space to
-construct. Here is how to build a numerical regular expression that checks
+construct. Here is how to build a numerical pattern that checks
 for a positive number followed by a local maximum, or a negative number
-followed by a local minimum. I'll assume that the individual regular expression
+followed by a local minimum. I'll assume that the individual pattern
 pieces (i.e. C<$positive_re>) already exist.
 
- my $regex = re_or(
+ my $pattern = re_or(
      re_seq( $positive_re, $local_max_re ),
      re_seq( $negative_re, $local_min_re )
  );
 
 =head1 Examples
 
-Here is a regular expression that checks for a value that is positive and
+Here is a pattern that checks for a value that is positive and
 which is a local maximum, but which is flanked by at least one negative
 number on both sides. All of these assume that the data container is a piddle.
 
@@ -115,7 +115,7 @@ number on both sides. All of these assume that the data container is a piddle.
          my $index = $left;
          
          # The first or last element of the piddle cannot qualify
-         # as local maxima for purposes of this regex:
+         # as local maxima for purposes of this pattern:
          return 0 if $index == 0 or $index == $piddle->dim(0) - 1;
          
          return 1 if $piddle->at($index - 1) < $piddle->at($index)
@@ -145,49 +145,49 @@ number on both sides. All of these assume that the data container is a piddle.
  });
  
  # Build up the sequence:
- my $regex = re_seq(
+ my $pattern = re_seq(
      $is_negative, $is_local_max, $is_negative
  );
  
  # Match it against some data:
- if ($regex->apply($data)) {
+ if ($pattern->apply($data)) {
      # Do something
  }
 
 =head1 METHODS
 
-These are the user-level methods that each regex provides. Note that this
+These are the user-level methods that each pattern provides. Note that this
 section does not discuss subclassing or constructors; those are discussed below.
-In other words, if you have regex objects and you want to use them this is the
+In other words, if you have pattern objects and you want to use them this is the
 public API that you can use.
 
 =over
 
 =item apply ($data)
 
-This method applies the regular expression object on the given container. The
+This method applies the pattern object on the given container. The
 return value is a bit complicated to explain, but in general it Does What You
-Mean. In boolean context, it returns a truth value indicating whether the regex
+Mean. In boolean context, it returns a truth value indicating whether the pattern
 matched or not. In scalar context, it returns a scalar indicating the number of
 elements that matched if something matched, and undef otherwise. In particular,
-if the regex matched zero elements, it returns the string "0 but true", which
+if the pattern matched zero elements, it returns the string "0 but true", which
 evaluates to zero in numeric context, but true in boolean context. Finally, in
-list context, if the regex fails you get an empty list, and if it succeeds you
+list context, if the pattern fails you get an empty list, and if it succeeds you
 get two numbers indicating the number of matched elements and the offset
 (without any of that zero-but-true business to worry about).
 
 To put it all together, the following three expressions all Do Something when
-your regex mathces:
+your pattern matches:
 
- if (my ($matched, $offset) = $regex->apply($data)) {
+ if (my ($matched, $offset) = $pattern->apply($data)) {
      # Do Something
  }
  
- if (my $matched = $regex->apply($data)) {
+ if (my $matched = $pattern->apply($data)) {
      # Do Something 
  }
  
- if ($regex->apply($data)) {
+ if ($pattern->apply($data)) {
      # Do Something
  }
  
@@ -198,20 +198,20 @@ exception for the string "0 but true".) However, if you plan on
 printing the matched length, you should assure a numeric value with either of
 these two approaches:
 
- if (my $matched = $regex->apply($data)) {
+ if (my $matched = $pattern->apply($data)) {
      $matched += 0; # ensure $matched is numeric
      print "Matched $matched elements\n";
  }
 
 or
 
- if (my ($matched) = $regex->apply($data)) {
+ if (my ($matched) = $pattern->apply($data)) {
      print "Matched $matched elements\n";
  }
 
-Note that if your regex matches, you will get the empty list, so, if this fails:
+Note that if your pattern matches, you will get the empty list, so, if this fails:
 
- my ($matched, $offset) = $regex->apply($data);
+ my ($matched, $offset) = $pattern->apply($data);
 
 both C<$matched> and C<$offset> will be the undefined value, and if you use
 the expression in the conditional as in the first example above, the
@@ -220,17 +220,17 @@ regard is that Perl's list flatting means this will B<NOT> do what you think it
 is supposed to do:
 
  my ($first_matched, $first_off, $second_matched, $second_off)
-     = ($regex1->apply($data), $regex2->apply($data));
+     = ($pattern1->apply($data), $pattern2->apply($data));
 
-If C<$regex1> fails to match and C<$regex2> succeeds, the values for the
-second regex will be stored in C<$first_matched> and C<$first_off>. So, do
-not use the return values from a regular expression in a large list
+If C<$pattern1> fails to match and C<$pattern2> succeeds, the values for the
+second pattern will be stored in C<$first_matched> and C<$first_off>. So, do
+not use the return values from a pattern in a large list
 assignment like this.
 
 working here - discuss known types and how unknown types throw errors (or should
 they silently fail instead? I think not.)
 
-If you only want to know where a sub-regex matches, you can name that sub-regex
+If you only want to know where a sub-pattern matches, you can name that sub-pattern
 and retrieve sub-match results using C<get_offsets_for>, as discussed below.
 
 =cut
@@ -242,9 +242,9 @@ sub apply {
 		unless @_ == 2;
 	my ($self, $data) = @_;
 	
-	# Prepare the regex for execution. This may involve computing low and
+	# Prepare the pattern for execution. This may involve computing low and
 	# high quantifier limits, keeping track of $data, stashing
-	# intermediate data if this is a nested regex, and many other things.
+	# intermediate data if this is a nested pattern, and many other things.
 	# The actual prep method can fail, so look out for that.
 	$self->is_prepping;
 	my $prep_results = eval{$self->prep($data)};
@@ -258,7 +258,7 @@ sub apply {
 		
 		# Croak if there was an exception during prep or cleanup:
 		if (@croak_messages) {
-			die "Regex encountered trouble:\n" . 
+			die "Pattern encountered trouble:\n" . 
 				join("\n !!!! and !!!!\n", @croak_messages);
 		}
 		
@@ -293,7 +293,7 @@ sub apply {
 				if ($consumed > $r_off - $l_off + 1) {
 					my $class = ref($self);
 					my $name = $self->get_bracketed_name_string;
-					croak("Internal error: regex$name of class <$class> consumed $consumed,\n"
+					croak("Internal error: pattern$name of class <$class> consumed $consumed,\n"
 						. "but it was only allowed to consume " . ($r_off - $l_off + 1));
 				}
 				# If they returned less than zero, adjust r_off and try again:
@@ -325,7 +325,7 @@ sub apply {
 	
 	# Croak if there was an exception during prep or cleanup:
 	if (@croak_messages) {
-		die "Regex encountered trouble:\n" . 
+		die "Pattern encountered trouble:\n" . 
 			join("\n !!!! and !!!!\n", @croak_messages);
 	}
 	
@@ -340,16 +340,16 @@ sub apply {
 
 =item get_details_for ($name)
 
-After running a successful regex, you can use this method to query the match
-details for named regexes. This method returns an anonymous hash containing
-the left and right offsets along with any other details that the regex
-decided to return to you. (For example, a regex could return the average
+After running a successful pattern, you can use this method to query the match
+details for named patterns. This method returns an anonymous hash containing
+the left and right offsets along with any other details that the pattern
+decided to return to you. (For example, a pattern could return the average
 value of the matched data since that information might be useful, and it
 was part of the calculation.)
 
-Actually, you can have the same regex appear multiple times within a larger
-regular expression. In that case, the return value will be a list of hashes,
-each of which contains the pertinent details. So if this named regex appears
+Actually, you can have the same pattern appear multiple times within a larger
+pattern. In that case, the return value will be a list of hashes,
+each of which contains the pertinent details. So if this named pattern appears
 five times but only matches twice, you will get a list of two hashes with
 the details.
 
@@ -359,7 +359,7 @@ returned, or undef if there were no matches. In list context, you get a list
 of all the hashes, or an empty list of there were not matches. As such, the
 following expressions Do What You Mean:
 
- if (my @details = $regex->get_details_for('constant')) {
+ if (my @details = $pattern->get_details_for('constant')) {
      for my $match_details (@details) {
          # unpack the left and right boundaries of the match:
          my %match_hash = %$match_details;
@@ -368,13 +368,13 @@ following expressions Do What You Mean:
      }
  }
  
- for my $details ($regex->get_details_for('constant')) {
+ for my $details ($pattern->get_details_for('constant')) {
      print "Found a constant region between $details->{left} "
 		. "and $details->{right} with average value "
 		. "$details->{average}\n";
  }
  
- if (my $first_details = $regex->get_details_for('constant')) {
+ if (my $first_details = $pattern->get_details_for('constant')) {
      print "The first constant region had an average of "
 		. "$details->{average}\n";
  }
@@ -382,8 +382,8 @@ following expressions Do What You Mean:
 Note that for zero-width matches that succeed, the value of right will be one
 less than the value of left.
 
-Finally, note that you can call this method on container regexes such as
-C<re_and>, C<re_or>, and C<re_seq> to get the information for named sub-regexes
+Finally, note that you can call this method on container patterns such as
+C<re_and>, C<re_or>, and C<re_seq> to get the information for named sub-patterns
 within the containers.
 
 =cut
@@ -393,13 +393,13 @@ sub get_details_for {
 		unless @_ == 2;
 	my ($self, $name) = @_;
 	
-	# Croak if this regex is not named:
-	croak("This regex was not told to capture anything!")
+	# Croak if this pattern is not named:
+	croak("This pattern was not told to capture anything!")
 		unless defined $self->{name};
 	
-	# Croak if this regex has a different name (shouldn't happen, but let's
+	# Croak if this pattern has a different name (shouldn't happen, but let's
 	# be gentle to our users):
-	croak("This regex is named $self->{name}, not $name.")
+	croak("This pattern is named $self->{name}, not $name.")
 		unless $self->{name} eq $name;
 	
 	# Be sure to propogate calling context. Note that these return an empty
@@ -411,16 +411,16 @@ sub get_details_for {
 
 =item get_details
 
-Returns the match details for the current regex, as described under
+Returns the match details for the current pattern, as described under
 C<get_details_for>. The difference between this method and the previous one is
-that (1) if this regex was not named, it simply returns the undefined value
-rather than croaking and (2) this method will not search sub-regexes for
-container regexes such as C<re_and>, C<re_or>, and C<re_seq> since it has no
+that (1) if this pattern was not named, it simply returns the undefined value
+rather than croaking and (2) this method will not search sub-patterns for
+container patterns such as C<re_and>, C<re_or>, and C<re_seq> since it has no
 name with which to search.
 
 =cut
 
-# This returns the details stored by this regex. Note that this does not
+# This returns the details stored by this pattern. Note that this does not
 # croak as it assumes you know what you're doing calling this method
 # directly.
 sub get_details {
@@ -455,7 +455,7 @@ does not match for this range but B<might> match for a shorter range (if
 C<$right> were moved a little bit to the left), return -1. If it cannot
 match starting at C<$left>, return numeric zero. Those are the basics. However,
 other return values are allowed and using them can significantly improve the
-performance of your regex.
+performance of your pattern.
 
 Here is a rundown of what to return when:
 
@@ -463,10 +463,10 @@ Here is a rundown of what to return when:
 
 =item More than the Full Length
 
-You should never return more than the full length, and if you do, the regex
+You should never return more than the full length, and if you do, the pattern
 engine will croak saying
 
- Internal error: regex of class <class> consumed more than it was given
+ Internal error: pattern of class <class> consumed more than it was given
 
 doc working here - add this to the list of errors reported.
 
@@ -507,9 +507,9 @@ a match of zero length, you should probably return the numeric value of 0,
 instead.
 
 Zero-width assertions are a different sort of match of zero elements. In
-numerical regular expressions, this could be a condition on the slope between
+numerical patterns, this could be a condition on the slope between
 two values, or a threshold crossing between two values, for instance. In those
-cases, your regex does not match either of the values, but it matches in-between
+cases, your pattern does not match either of the values, but it matches in-between
 them. Look-ahead or look-behind assertions are also zero-width assertions
 with which you may be familiar from standard Perl regular expressions.
 
@@ -537,7 +537,7 @@ smaller value for C<$right>, you should return a negative value instead of zero.
 As I have already discussed, your condition may involve expensive
 calculations, so rather than check each sub-slice starting from C<$left>
 and reducing C<$right> until you find a match, you can simply return -1.
-That tells the regex engine that the current values of C<$left> and
+That tells the pattern engine that the current values of C<$left> and
 C<$right> do not match the condition, but smaller values of C<$right> might
 work. Generally speaking, returning zero is much stronger than returning -1,
 and it is safer to return -1 when the match fails. It is also far more
@@ -546,14 +546,14 @@ value of C<$right>.
 
 However, you can return more than just -1. For example, if your condition
 fails for C<$right> as well as C<$right - 1>, but beyond that it is
-difficult to calculate, you can return -2. That tells the regular expression
+difficult to calculate, you can return -2. That tells the pattern
 engine to try a shorter range starting from left, and in particular that the
 shorter range should be at least two elements shorter than the current
 range.
 
 You might ask, why not just B<evaluate> the condition at the lesser value? The
-reason to avoid this is because this regex may be part of a combined C<re_or>
-regex, for example. You might have a regex such as C<re_or ($first, $second)>.
+reason to avoid this is because this pattern may be part of a combined C<re_or>
+pattern, for example. You might have a pattern such as C<re_or ($first, $second)>.
 Suppose C<$first> fails at C<$right> but will succeed at C<$right - 1>, and
 C<$second> fails at C<$right> but will succeed at C<$right - 2>. It would be
 inefficient for C<$second> to evaluate its truth condition at C<$right - 2>
@@ -564,12 +564,12 @@ since the result will never be used.
 
 
 
-=head1 Creating your own Regex Class
+=head1 Creating your own Pattern Class
 
-The heierarchy of numerical regular expressions have two basic flavors:
-Quantified regular expressions and Grouped regular expressions. If you are
+The heierarchy of numerical patterns have two basic flavors:
+Quantified patterns and Grouped patterns. If you are
 trying to write a rule to apply to data, you are almost certainly interested
-in creating a new Quantified regular expression. That's also the easier one
+in creating a new Quantified pattern. That's also the easier one
 of the two to create, so I'll discuss subclassing that first.
 
 To subclass C<Scrooge::Quantified> (argh... not finished, but see the
@@ -578,7 +578,7 @@ next section as it discusses most of this anyway).
 
 =head1 Internals
 
-All regex classes must inheret from C<Scrooge> or a class derived from
+All pattern classes must inheret from C<Scrooge> or a class derived from
 it. This section of documentation discusses how you might go about doing
 that. You are encouraged to override any of the methods of C<Scrooge> or
 its derivatives, except for the C<apply> method.
@@ -594,13 +594,13 @@ not override are the Internal methods documented at the end of this section.
 
 =item _apply
 
-This function is called when it comes time to apply the regex to see if it
+This function is called when it comes time to apply the pattern to see if it
 matches the current range. That arguments to the apply function are the left
 and right offsets, respectively. (The data is not included, and you should
 make sure that you've cached a reference to the container during the C<_prep>
 phase.)
 
-If your regex encloses another, it should call the enclosed regex's C<_apply>
+If your pattern encloses another, it should call the enclosed pattern's C<_apply>
 function and take its return value into consideration with its own, unless
 it returned 0 when you called C<_prep>. In that case, you should not call it.
 
@@ -671,7 +671,7 @@ sub _init {
 }
 =item prep ($data)
 
-This function is called before the regular expression hammers on the supplied
+This function is called before the pattern hammers on the supplied
 data. If you have any data-specific setup to do, do it in this function.
 
 From the standpoint of internals, you need to know two things: what this
@@ -679,24 +679,24 @@ function should prepare and what this function should return. (For a
 discussion on intepreting return values from C<_prep>, see Scrooge::Grouped.)
 
 If you are not deriving your class from Scrooge::Quantified or Scrooge::Grouped and
-you intend for your regex to run, you must either set C<< $self->{min_size} >>
+you intend for your pattern to run, you must either set C<< $self->{min_size} >>
 and C<< $self->{max_size} >> at this point or you must override the
 related internal functions so that they operate correctly without having
 values associated with those keys.
 
-If, having examined the data, you know that this regex will not match, 
+If, having examined the data, you know that this pattern will not match, 
 you should return zero. This guarantees that the following functions
-will not be called on your regex during this run: C<_apply>, C<_min_size>,
+will not be called on your pattern during this run: C<_apply>, C<_min_size>,
 C<_max_size>, and C<_store_match>. Put a little bit
 differently, it is safe for any of those functions to assume that C<_prep>
 has been called and was able to set up internal data that might be required
 for their operation. Furthermore, if you realize in the middle of C<_prep>
-that your regex cannot run, it is safe to return 0 immediately and expect
-the parent regex to call C<_cleanup> for you. (working here - make sure the
-documentation for Scrooge::Grouped details what Grouped regexes are supposed to
+that your pattern cannot run, it is safe to return 0 immediately and expect
+the parent pattern to call C<_cleanup> for you. (working here - make sure the
+documentation for Scrooge::Grouped details what Grouped patterns are supposed to
 do with C<_prep> return values.)
 
-Your regex may still be querried afterwards for a match by
+Your pattern may still be querried afterwards for a match by
 C<get_details_for> or C<get_details>, regardless of the return value of
 C<_prep>. In both of those cases, returning the undefined value,
 indicating a failed match, would be the proper thing to do.
@@ -710,7 +710,7 @@ The C<_prep> method is called as the very first step in C<apply>.
 
 
 # The first phase. Back up the old state and clear the current state. The
-# state is required to be 'not running' before the regex starts, and it
+# state is required to be 'not running' before the pattern starts, and it
 # is required to have a defined value during all three user-directable
 # phases.
 # Do *not* set the state to prepping; that is part of prep's short-
@@ -744,13 +744,14 @@ sub prep {
 	return 1 if $self->{state};
 	$self->{state} = 'prepping';
 	
-	# Stash everything. Note that under repeated invocations of a regex, there
+	# Stash everything. Note that under repeated invocations of a pattern, there
 	# may be values that we traditionally stash that have lingered from the
 	# previous invocation.
 	# I would like to remove those values, but that causes troubles. :-(
 #	my @to_stash = $self->_to_stash;
 	if (defined $self->{data}) {
 		push @{$self->{"old_$_"}}, $self->{$_} foreach $self->_to_stash;
+#			@to_stash;
 	}
 	else {
 		#delete $self->{$_} foreach @to_stash;
@@ -766,6 +767,40 @@ sub prep {
 # Default _prep simply returns true, meaning a successful prep:
 sub _prep {	return 1 }
 
+=item _to_stash
+
+Stashing is a means of storing the pattern's internal state in the middle of a
+match. This will happen in the following series of events. First, you create a
+stand-alone pattern, say, C<my $complex_pattern>. Then you build a grouped
+pattern (such as a sequence) that includes C<$complex pattern> as well as a
+subroutine pattern. Finally, within that subroutine pattern, you C<apply> the same
+C<$complex_pattern> to a sub-slice of the data. In that case, C<$complex_pattern>
+will have internal data from the outer grouped pattern that needs to be stored
+so that the internal pattern match can run and return its values.
+
+Even if you didn't follow what I just explained, the point is that Scrooge will
+handle the saving and restoring your pattern's internal data at the right times
+so that everything works without any intervention on your part. To get this to
+work, all you need to do is tell Scrooge which keys to back-up. To do this, you
+overload the C<_to_stash> method with something like this:
+
+ sub _to_stash {
+     return 'velocity', 'acceleration', $self->SUPER::_to_stash;
+ }
+
+This will ensure that if you or your users try to do that crazy call-from-inside
+thing that I described above, the internal values of the pattern's engine, along
+with the keys C<velocity> and C<acceleration>, will be exactly what you asked
+them to be.
+
+What should you have stashed? You should stash anything that you expect to
+remain unchanged. For example, anything that you compute once during the _prep
+stage and expect to remain unchanged is exactly the sort of thing that should
+be stashed. The default keys that are stashed include C<data>, C<min_size>,
+C<max_size>, and C<match_details>.
+
+=cut
+
 # The internal keys with values that we want to protect in case of
 # recursive usage:
 sub _to_stash {
@@ -774,38 +809,23 @@ sub _to_stash {
 	return qw (data min_size max_size match_details);
 }
 
-=item _stash
-
-working here - rewrite, this realy *is* an internal function
-
-This is what is called when you need to stash old copies of internal data.
-This happens when your regex is used as a smaller part of a regex, and also
-when it is called within the execution of a condition. Basically, if you 
-override C<_prep> to initialize any internal data during C<_prep>, you must
-override C<_stash> to back it up.
-
-When you override this method, you must call the parent with
-C<< $self->SUPER::_stash($data) >> in your overridden method. Otherwise,
-internal data needed by the base class will not be properly backed up.
-
-=cut
-
 =item _min_size, _max_size
 
 These are getters and setters for the current lengths that indicate the
-minimum and maximum number of elements that your regex is capable of
+minimum and maximum number of elements that your pattern is capable of
 matching. The base class expects these to be set during the C<_prep> phase
 after afterwards consults whatever was stored there. Because of the
 complicated stack management, you would be wise to stick with the base class
 implementations of these functions.
 
-working here - make sure grouped regexes properly set these during the
+working here - make sure grouped patterns properly set these during the
 _prep phase.
 
 Note that at the moment, C<_min_size> and C<_max_size> are not querried
-during the actual operation of the regex. In other words, there's little
-point in overriding these methods at given the current architecture of the
-regex engine at the moment.
+during the actual operation of the pattern, only at the beginning. In other
+words, overriding these methods so that their return value changes throughout
+the course of the pattern match (with a hope of reporting a more precise value,
+perhaps) will not work.
 
 You are guaranteed that C<_prep> will have been run before these methods are
 run, and they will not be run if C<_prep> returned a false value. If you
@@ -851,7 +871,7 @@ sub cleanup {
 	$self->{final_details} = delete $self->{match_details};
 	
 #	# We're about to call the sub-class's cleanup method. If, for some
-#	# stupid reason, the sub-class's cleanup uses a regex, then we have
+#	# stupid reason, the sub-class's cleanup uses a pattern, then we have
 #	# to guard against call-stack issues. We do that by noting the size of
 #	# the current partial_state stack before we call.
 #	my $partial_state_stack_size = scalar(@{$self->{old_partial_state}});
@@ -859,9 +879,9 @@ sub cleanup {
 	eval { $self->_cleanup() };
 	my $err_string = $@;
 #	# If the partial state stack has changed size, then it's because the
-#	# _cleanup method called a numerical regex that contained this regex.
+#	# _cleanup method called a numerical pattern that contained this pattern.
 #	# Sounds ridiculous, but under very contrived circumstances, it can
-#	# happen without deep recursion. If it happened, restore *this* regex's
+#	# happen without deep recursion. If it happened, restore *this* pattern's
 #	# partial state (is_cleaning) and remove the old state from the stack:
 #	if ($partial_state_stack_size != scalar(@{$self->{old_partial_state}})) {
 #		$self->{is_cleaning} = 1;
@@ -916,7 +936,7 @@ These functions do that:
 =item store_match ({detail => hash})
 
 This is a function provided by the base class that stores the details under
-the C<match_details> key if the regex is named.
+the C<match_details> key if the pattern is named.
 
 =cut
 
@@ -932,11 +952,11 @@ sub store_match {
 
 =item clear_stored_match
 
-Grouping regexes like re_and and re_seq need to have some way of
+Grouping patterns like re_and and re_seq need to have some way of
 clearing a stored match when something goes wrong, and they do this by
 calling C<clear_stored_match>. In the base class's behavior, this function
-only runs when there is a name associated with the regex. Grouping regex
-objects should clear their children regexes, in addition to clearing their
+only runs when there is a name associated with the pattern. Grouping pattern
+objects should clear their children patterns, in addition to clearing their
 own values.
 
 =cut
@@ -953,19 +973,20 @@ sub clear_stored_match {
 
 =item add_name_to ($hashref)
 
-This method adds this regex's name (along with a reference to itself) to the
+This method adds this pattern's name (along with a reference to itself) to the
 supplied hashref. This serves two purposes: first, it gives the owner a fast
 way to look up named references if either of the above accessors are called.
 Second, it provides a means at construction time (as opposed to evaluation
-time) to check that no two regexes share the same name. If you overload this
+time) to check that no two patterns share the same name. If you overload this
 method, you should be sure to add your name and reference to the list (if
-your regex is named) and if yours is a grouping regex, you should also check
-for and add all of your childrens' names. Note that if your regex's name is
+your pattern is named) and if yours is a grouping pattern, you should also check
+for and add all of your childrens' names. Note that if your pattern's name is
 already taken, you should croak with a meaningful message, like
 
- Found multiple regular expressions named $name.
+ Found multiple patterns named $name.
 
-working here - discuss more in the group discussion
+working here - discuss more in the group discussion; also, should I weaken these
+references?
 
 =cut
 
@@ -977,7 +998,7 @@ sub add_name_to {
 	
 	my $name = $self->{name};
 	# check if the name exists:
-	croak("Found multiple regular expressions named $name")
+	croak("Found multiple patterns named $name")
 		if exists $hashref->{$name} and $hashref->{$name} != $self;
 	# Add self to the hashref under $name:
 	$hashref->{$name} = $self;
@@ -986,7 +1007,7 @@ sub add_name_to {
 =item _get_bracketed_name_string
 
 This returns a string to be used in error messages. It should return an
-empty string if the regex does not have a name, or ' [name]' if it does
+empty string if the pattern does not have a name, or ' [name]' if it does
 have a name. You shouldn't override this except for debugging purposes.
 
 =cut
@@ -1013,7 +1034,7 @@ length.
 However, the current API also provides hooks for getting an element at
 a given offset and for taking a slice of the current data's contents. I hope
 that such a general set of functions will make it easier to write
-container-agnostic regular expression objects, though the jury is still out on
+container-agnostic pattern objects, though the jury is still out on
 whether or not this is a good way of doing it. Part of me suspects that this is
 not really a generically good idea...
 
@@ -1113,7 +1134,7 @@ use Carp;
 
 The Quantified abstract base class inherets from the Scrooge abstract base class
 and provides functionality for handling quantifiers, including parsing the
-quantifier argument. If you need a regex object that handles quantifiers but
+quantifier argument. If you need a pattern object that handles quantifiers but
 you do not care how it works, you should inheret from this base class and
 override the C<_apply> method.
 
@@ -1219,7 +1240,7 @@ use Carp;
 
 =head2 re_any
 
-Creates a regex that matches any value.
+Creates a pattern that matches any value.
 
 =cut
 
@@ -1232,7 +1253,7 @@ sub Scrooge::re_any {
 	my $quantifiers = shift if @_ == 1;
 	$quantifiers = [1,1] unless defined $quantifiers;
 	
-	# Create the subroutine regexp:
+	# Create the subroutine pattern:
 	return Scrooge::Any->new(quantifiers => $quantifiers
 		, defined $name ? (name => $name) : ());
 }
@@ -1264,7 +1285,7 @@ to a numeric value, even when you've activated warnings.
 =cut
 
 
-# This builds a subroutine regexp object:
+# This builds a subroutine pattern object:
 sub Scrooge::re_sub {
 	croak("re_sub takes one, two, or three arguments: re_sub([[name], quantifiers], subref)")
 		if @_ == 0 or @_ > 3;
@@ -1280,7 +1301,7 @@ sub Scrooge::re_sub {
 	
 	$quantifiers = [1,1] unless defined $quantifiers;
 	
-	# Create the subroutine regexp:
+	# Create the subroutine pattern:
 	return Scrooge::Sub->new(quantifiers => $quantifiers, subref => $subref
 		, defined $name ? (name => $name) : ());
 }
@@ -1293,13 +1314,13 @@ sub _apply {
 	# handle any exceptions:
 	unless ($@ eq '') {
 		my $name = $self->get_bracketed_name_string;
-		die "Subroutine regex$name died:\n$@";
+		die "Subroutine pattern$name died:\n$@";
 	}
 	
 	# Make sure they didn't break any rules:
 	if ($consumed > $right - $left + 1) {
 		my $name = $self->get_bracketed_name_string;
-		die "Subroutine regex$name consumed more than it was allowed to consume\n";
+		die "Subroutine pattern$name consumed more than it was allowed to consume\n";
 	}
 	
 	# Return the result:
@@ -1334,7 +1355,7 @@ sub _apply {
 	my ($self, $left, $right) = @_;
 	unless ($right < $left) {
 		my $name = $self->get_bracketed_name_string;
-		croak("Internal error in calling re_zwa regex$name: $right is not "
+		croak("Internal error in calling re_zwa pattern$name: $right is not "
 			. "less that $left");
 	}
 	
@@ -1345,7 +1366,7 @@ sub _apply {
 	# Handle any exceptions
 	if ($@ ne '') {
 		my $name = $self->get_bracketed_name_string;
-		die "re_zwa regex$name died:\n$@\n";
+		die "re_zwa pattern$name died:\n$@\n";
 	}
 	
 	# Make sure they only consumed zero elements:
@@ -1359,7 +1380,7 @@ sub _apply {
 }
 
 package Scrooge::Grouped;
-# Defines grouped regexes, like re_or, re_and, and re_seq
+# Defines grouped patterns, like re_or, re_and, and re_seq
 use parent -norequire, 'Scrooge';
 use strict;
 use warnings;
@@ -1367,20 +1388,20 @@ use Carp;
 
 sub _init {
 	my $self = shift;
-	croak("Grouped regexes must supply a key [regexes]")
-		unless defined $self->{regexes};
+	croak("Grouped patterns must supply a key [patterns]")
+		unless defined $self->{patterns};
 	
-	croak("You must give me at least one regex in your group")
-		unless @{$self->{regexes}} > 0;
+	croak("You must give me at least one pattern in your group")
+		unless @{$self->{patterns}} > 0;
 	
 	# Create the list of names, starting with self's name. Adding self
 	# simplifies the logic later.
 	$self->{names} = {};
 	$self->{names}->{$self->{name}} = $self if defined $self->{name};
 	
-	# Check each of the child regexes and add their names:
-	foreach (@{$self->{regexes}}) {
-		croak("Invalid regex") unless eval {$_->isa('Scrooge')};
+	# Check each of the child patterns and add their names:
+	foreach (@{$self->{patterns}}) {
+		croak("Invalid pattern") unless eval {$_->isa('Scrooge')};
 		$_->add_name_to($self->{names});
 	}
 	
@@ -1392,7 +1413,7 @@ sub _init {
 # Some state information that will need to be stashed:
 sub _to_stash {
 	my $self = shift;
-	return qw(regexes_to_apply positive_matches), $self->SUPER::_to_stash;
+	return qw(patterns_to_apply positive_matches), $self->SUPER::_to_stash;
 }
 
 # _prep will call _prep on all its children and keep track of those that
@@ -1402,11 +1423,11 @@ sub _prep {
 	my ($self, $data) = @_;
 	# Call the prep function for each of them, keeping track of all those
 	# that succeed. Notice that I capture errors and continue because every
-	# single regex needs to run its prep method in order for it to be 
+	# single pattern needs to run its prep method in order for it to be 
 	# safe for it to call its cleanup method.
 	my @succeeded;
 	my @errors;
-	foreach (@{$self->{regexes}}) {
+	foreach (@{$self->{patterns}}) {
 		my $successful_prep = eval { $_->prep($data) };
 		push @errors, $@ if $@ ne '';
 		if ($successful_prep) {
@@ -1424,9 +1445,9 @@ sub _prep {
 		die(join(('='x20) . "\n", 'Multiple Errors', @errors));
 	}
 	
-	# Store the regexes to apply. If _prep_success returns zero, we do not
+	# Store the patterns to apply. If _prep_success returns zero, we do not
 	# need to call cleanup: that will be called by our parent:
-	$self->{regexes_to_apply} = \@succeeded;
+	$self->{patterns_to_apply} = \@succeeded;
 	return 0 unless $self->_prep_success;
 	
 	# Cache the minimum and maximum number of elements to match:
@@ -1442,17 +1463,17 @@ sub _prep {
 	return 1;
 }
 
-# The default success happens when we plan to apply *all* the regexes
+# The default success happens when we plan to apply *all* the patterns
 sub _prep_success {
 	my $self = shift;
-	return @{$self->{regexes}} == @{$self->{regexes_to_apply}};
+	return @{$self->{patterns}} == @{$self->{patterns_to_apply}};
 }
 
 sub _cleanup {
 	my $self = shift;
-	# Call the cleanup method for *all* child regexes:
+	# Call the cleanup method for *all* child patterns:
 	my @errors;
-	foreach (@{$self->{regexes}}) {
+	foreach (@{$self->{patterns}}) {
 		eval {$_->cleanup};
 		push @errors, $@ if $@ ne '';
 	}
@@ -1471,16 +1492,16 @@ sub _cleanup {
 sub is_prepping {
 	my $self = shift;
 	$self->SUPER::is_prepping;
-	foreach my $regex (@{$self->{regexes}}) {
-		$regex->is_prepping;
+	foreach my $pattern (@{$self->{patterns}}) {
+		$pattern->is_prepping;
 	}
 }
 
 sub is_applying {
 	my $self = shift;
 	$self->SUPER::is_applying;
-	foreach my $regex (@{$self->{regexes}}) {
-		$regex->is_applying;
+	foreach my $pattern (@{$self->{patterns}}) {
+		$pattern->is_applying;
 	}
 }
 
@@ -1489,21 +1510,21 @@ sub is_applying {
 sub is_cleaning {
 	my $self = shift;
 	$self->SUPER::is_cleaning;
-	foreach my $regex (@{$self->{regexes}}) {
-		$regex->is_cleaning;
+	foreach my $pattern (@{$self->{patterns}}) {
+		$pattern->is_cleaning;
 	}
 }
 
-# Clear stored match assumes that all the regexes matched, so this will
+# Clear stored match assumes that all the patterns matched, so this will
 # need to be overridden for re_or:
 sub clear_stored_match {
 	my $self = shift;
 	# Call the parent's method:
 	$self->SUPER::clear_stored_match;
 	
-	# Call all the positively matched regexes' clear function:
-	foreach my $regex (@{$self->{positive_matches}}) {
-		$regex->clear_stored_match;
+	# Call all the positively matched patterns' clear function:
+	foreach my $pattern (@{$self->{positive_matches}}) {
+		$pattern->clear_stored_match;
 	}
 	
 	# Always return zero:
@@ -1513,9 +1534,9 @@ sub clear_stored_match {
 sub push_match {
 	croak('Scrooge::Grouped::push_match is a method that expects two arguments')
 		unless @_ == 3;
-	my ($self, $regex, $details) = @_;
-	push @{$self->{positive_matches}}, $regex;
-	$regex->store_match($details);
+	my ($self, $pattern, $details) = @_;
+	push @{$self->{positive_matches}}, $pattern;
+	$pattern->store_match($details);
 }
 
 # This should only be called when we know that something is on the
@@ -1529,14 +1550,14 @@ sub pop_match {
 sub get_details_for {
 	my ($self, $name) = @_;
 	# This is a user-level function. Croak if the name does not exist.
-	croak("Unknown regex name $name") unless exists $self->{names}->{$name};
+	croak("Unknown pattern name $name") unless exists $self->{names}->{$name};
 	
 	# Propogate the callin context:
 	return ($self->{names}->{$name}->get_details) if wantarray;
 	return $self->{names}->{$name}->get_details;
 }
 
-# This is only called by regexes that *hold* this one, in the process of
+# This is only called by patterns that *hold* this one, in the process of
 # building their own name tables. Add this and all children to the hashref.
 # Structures like ABA should pass this, but recursive structures will go
 # into deep recursion.
@@ -1545,7 +1566,7 @@ sub add_name_to {
 	my ($self, $hashref) = @_;
 	# Go through each named value in this group's collection of names:
 	while( my ($name, $ref) = each %{$self->{names}}) {
-		croak("Found multiple regular expressions named $name")
+		croak("Found multiple patterns named $name")
 			if defined $hashref->{$name} and $hashref->{$name} != $ref;
 		
 		$hashref->{$name} = $ref;
@@ -1556,7 +1577,7 @@ sub add_name_to {
 
 =head2 re_or
 
-This takes a collection of regular expression objects and evaluates all of
+This takes a collection of pattern objects and evaluates all of
 them until it finds one that succeeds. This does not take any quantifiers.
 
 =cut
@@ -1575,9 +1596,9 @@ sub _minmax {
 	my ($full_min, $full_max);
 	
 	# Compute the min as the least minimum, and max as the greatest maximum:
-	foreach my $regex (@{$self->{regexes_to_apply}}) {
-		my $min = $regex->min_size;
-		my $max = $regex->max_size;
+	foreach my $pattern (@{$self->{patterns_to_apply}}) {
+		my $min = $pattern->min_size;
+		my $max = $pattern->max_size;
 		$full_min = $min if not defined $full_min or $full_min > $min;
 		$full_max = $max if not defined $full_max or $full_max < $max;
 	}
@@ -1585,13 +1606,13 @@ sub _minmax {
 	$self->max_size($full_max);
 }
 
-# Must override the default _prep_success method. If we have *any* regexes
+# Must override the default _prep_success method. If we have *any* patterns
 # that will run, that is considered a success.
 sub _prep_success {
-	return @{$_[0]->{regexes_to_apply}} > 0;
+	return @{$_[0]->{patterns_to_apply}} > 0;
 }
 
-# This only needs to clear out the current matching regex:
+# This only needs to clear out the current matching pattern:
 # recursive check this
 sub clear_stored_match {
 	my $self = shift;
@@ -1605,44 +1626,44 @@ sub clear_stored_match {
 	return 0;
 }
 
-# Run all the regexes (that said they wanted to run). Return the first
+# Run all the patterns (that said they wanted to run). Return the first
 # success that we find:
 sub _apply {
 	my ($self, $left, $right) = @_;
-	my @regexes = @{$self->{regexes_to_apply}};
+	my @patterns = @{$self->{patterns_to_apply}};
 	my $max_size = $right - $left + 1;
 	my $min_r = $left + $self->min_size - 1;
 	my $i = 0;
-	REGEX: for (my $i = 0; $i < @regexes; $i++) {
-		my $regex = $regexes[$i];
+	PATTERN: for (my $i = 0; $i < @patterns; $i++) {
+		my $pattern = $patterns[$i];
 		
 		# skip if it wants too many:
-		next if $regex->min_size > $max_size;
+		next if $pattern->min_size > $max_size;
 		
 		# Determine the minimum allowed right offset
-		my $min_r = $left + $regex->min_size - 1;
+		my $min_r = $left + $pattern->min_size - 1;
 		
 		# Start from the maximum allowed right offset and work our way down:
-		my $r = $left + $regex->max_size - 1;
+		my $r = $left + $pattern->max_size - 1;
 		$r = $right if $r > $right;
 		
 		RIGHT_OFFSET: while($r >= $min_r) {
-			# Apply the regex:
-			my ($consumed, %details) = eval{$regex->_apply($left, $r)};
+			# Apply the pattern:
+			my ($consumed, %details) = eval{$pattern->_apply($left, $r)};
 			
 			# Check for exceptions:
 			if ($@ ne '') {
 				my $name = $self->get_bracketed_name_string;
-				my $child_name = $regex->get_bracketed_name_string;
-				die "In re_or regex$name, ${i}th regex$child_name failed:\n$@"; 
+				my $child_name = $pattern->get_bracketed_name_string;
+				die "In re_or pattern$name, ${i}th pattern$child_name failed:\n$@"; 
 			}
 			
-			# Make sure that the regex didn't consume more than it was supposed
+			# Make sure that the pattern didn't consume more than it was supposed
 			# to consume:
 			if ($consumed > $r - $left + 1) {
 				my $name = $self->get_bracketed_name_string;
-				my $child_name = $regex->get_bracketed_name_string;
-				die "In re_or regex$name, ${i}th regex$child_name consumed $consumed\n"
+				my $child_name = $pattern->get_bracketed_name_string;
+				die "In re_or pattern$name, ${i}th pattern$child_name consumed $consumed\n"
 					. "but it was only allowed to consume " . ($r - $left + 1) . "\n"; 
 			}
 			
@@ -1655,15 +1676,15 @@ sub _apply {
 			
 			# Save the results and return if we have a good match:
 			if ($consumed) {
-				$self->push_match($regex => {left =>$left, %details
+				$self->push_match($pattern => {left =>$left, %details
 										, right => $left + $consumed - 1});
 				return $consumed;
 			}
 			
-			# At this point, the only option remaining is that the regex
+			# At this point, the only option remaining is that the pattern
 			# returned zero, which means the match will fail at this value
-			# of left, so move to the next regex:
-			next REGEX;
+			# of left, so move to the next pattern:
+			next PATTERN;
 		}
 	}
 	return 0;
@@ -1671,15 +1692,15 @@ sub _apply {
 
 sub Scrooge::re_or {
 	# If the first argument is an object, assume no name:
-	return Scrooge::Or->new(regexes => \@_) if ref $_[0];
+	return Scrooge::Or->new(patterns => \@_) if ref $_[0];
 	# Otherwise assume that the first argument is a name:
 	my $name = shift;
-	return Scrooge::Or->new(name => $name, regexes => \@_);
+	return Scrooge::Or->new(name => $name, patterns => \@_);
 }
 
 =head2 re_and
 
-This takes a collection of regular expression objects and evaluates all of
+This takes a collection of pattern objects and evaluates all of
 them, returning true if all succeed. This does not take any quantifiers.
 
 =cut
@@ -1695,19 +1716,19 @@ sub _apply {
 	my ($self, $left, $right) = @_;
 	my $consumed_length = $right - $left + 1;
 	my @to_store;
-	my @regexes = @{$self->{regexes_to_apply}};
-	for (my $i = 0; $i < @regexes; $i++) {
-		my ($consumed, %details) = eval{$regexes[$i]->_apply($left, $right)};
+	my @patterns = @{$self->{patterns_to_apply}};
+	for (my $i = 0; $i < @patterns; $i++) {
+		my ($consumed, %details) = eval{$patterns[$i]->_apply($left, $right)};
 		
 		# Croak problems if found:
 		if($@ ne '') {
 			my $name = $self->get_bracketed_name_string;
-			my $child_name = $regexes[$i]->get_bracketed_name_string;
+			my $child_name = $patterns[$i]->get_bracketed_name_string;
 			# Clear the stored matches before dying, just in case:
 			$self->pop_match for (1..$i);
 			# Make sure i starts counting from 1 in death note:
 			$i++;
-			die "In re_and regex$name, ${i}th regex$child_name failed:\n$@"; 
+			die "In re_and pattern$name, ${i}th pattern$child_name failed:\n$@"; 
 		}
 		
 		# Return failure immediately:
@@ -1717,15 +1738,15 @@ sub _apply {
 			return 0;
 		}
 		
-		# Croak if the regex consumed more than it was given:
+		# Croak if the pattern consumed more than it was given:
 		if ($consumed > $consumed_length) {
 			my $name = $self->get_bracketed_name_string;
-			my $child_name = $regexes[$i]->get_bracketed_name_string;
+			my $child_name = $patterns[$i]->get_bracketed_name_string;
 			# Clear the stored matches before dying, just in case:
 			$self->pop_match for (1..$i);
 			# Make sure i starts counting from 1 in death note:
 			$i++;
-			die "In re_and regex$name, ${i}th regex$child_name consumed $consumed\n"
+			die "In re_and pattern$name, ${i}th pattern$child_name consumed $consumed\n"
 				. "but it was only allowed to consume $consumed_length\n";
 		}
 		
@@ -1749,7 +1770,7 @@ sub _apply {
 		}
 		
 		# Otherwise, we have a successful match, so add it:
-		$self->push_match($regexes[$i], {left => $left, %details
+		$self->push_match($patterns[$i], {left => $left, %details
 							, right => $consumed_length + $left - 1});
 		
 	}
@@ -1765,9 +1786,9 @@ sub _minmax {
 	my ($full_min, $full_max);
 	
 	# Compute the min as the greatest minimum, and max as the least maximum:
-	foreach my $regex (@{$self->{regexes_to_apply}}) {
-		my $min = $regex->min_size;
-		my $max = $regex->max_size;
+	foreach my $pattern (@{$self->{patterns_to_apply}}) {
+		my $min = $pattern->min_size;
+		my $max = $pattern->max_size;
 		$full_min = $min if not defined $full_min or $full_min < $min;
 		$full_max = $max if not defined $full_max or $full_max > $max;
 	}
@@ -1777,25 +1798,25 @@ sub _minmax {
 
 sub Scrooge::re_and {
 	# If the first argument is an object, assume no name:
-	return Scrooge::And->new(regexes => \@_) if ref $_[0];
+	return Scrooge::And->new(patterns => \@_) if ref $_[0];
 	# Otherwise assume that the first argument is a name:
 	my $name = shift;
-	return Scrooge::And->new(name => $name, regexes => \@_);
+	return Scrooge::And->new(name => $name, patterns => \@_);
 }
 
 =head2 re_seq
 
-Applies a sequence of regular expressions in the order supplied. Obviously
+Applies a sequence of patterns in the order supplied. Obviously
 this needs elaboration, but I'll ignore that for now. :-)
 
 This operates recursively thu:
 
- 1) If the (i-1)th regex succeeded, attempt to apply the ith regex at its
+ 1) If the (i-1)th pattern succeeded, attempt to apply the ith pattern at its
     full quantifier range. If that fails, decrement the range until it it
-    succeeds. If that fails, consider it a failure of the (i-1th) regex at
-    its current range. If it succeeds, move to the next regex.
- 2) If the 1th regex fails, the match fails.
- 3) If the Nth regex succeeds, return success.
+    succeeds. If that fails, consider it a failure of the (i-1th) pattern at
+    its current range. If it succeeds, move to the next pattern.
+ 2) If the ith pattern fails, the match fails.
+ 3) If the Nth pattern succeeds, return success.
 
 =cut
 
@@ -1820,51 +1841,51 @@ sub _init {
 
 working here - problems with recursion
 
-Consider this recursive regex:
+Consider this recursive pattern:
 
   $recursive_seq = re_seq(A, $recursive_seq);
 
 This won't pass add_name_to if either A or the sequence is named, and
 if neither are named, it will recurse infinitely and never return. Now,
 this problem is better solved with a repetition, but I bet a recursive
-sequence regex could be useful in some context, somewhere. Also, it
+sequence pattern could be useful in some context, somewhere. Also, it
 would fall into a recursive loop figuring out the max or min lengths. :-(
 
-However, consider this regex:
+However, consider this pattern:
 
- my ($seq_regex, $and_regex);
- $seq_regex = re_seq(A, $and_regex);
- $and_regex = re_and(B, $seq_regex);
+ my ($seq_pattern, $and_pattern);
+ $seq_pattern = re_seq(A, $and_pattern);
+ $and_pattern = re_and(B, $seq_pattern);
  
  # which is equivalent to 
- $seq_regex = re_seq(A, re_and(B, $seq_regex));
+ $seq_pattern = re_seq(A, re_and(B, $seq_pattern));
 
 To the best of my knowledge, this sequence can never terminate successfully.
 On the other hand, this one can terminate successfully:
 
- $seq_regex = re_seq(A, re_or(B, $seq_regex));
+ $seq_pattern = re_seq(A, re_or(B, $seq_pattern));
 
-but that is equivalent to the following repetition regex:
+but that is equivalent to the following repetition pattern:
 
- $regex = re_seq( REPEAT(A), B);
+ $pattern = re_seq( REPEAT(A), B);
 
-However, this regex cannot be written like that:
+However, this pattern cannot be written like that:
 
- $regex = re_seq(A re_or(B, $regex), A);
+ $pattern = re_seq(A re_or(B, $pattern), A);
 
 That finds nested numerical signatures, much like the followin quasi-string
-regex:
+pattern:
 
- $regex = re_seq(
+ $pattern = re_seq(
      /\(/,          # opening paren
      /[^()]*/,      # anything which is not paretheses
      REPEAT([0,1],  # zero or one
-         $regex),   #     nested parentheses
+         $pattern),   #     nested parentheses
      /[^()]*/,      # anything which is not paretheses
      /\)/           # closing paren
  );
 
-So, by allowing for nested regexes, I allow for the possibility of recursive
+So, by allowing for nested patterns, I allow for the possibility of recursive
 descent parsing, which is not allowed under normal regexes. However, the
 current engine does a poor job of this becuase it's not possible to look up
 the 'left paren' in this example. For example, if you matched any sort of
@@ -1882,48 +1903,48 @@ the execution of the later rules.
 
 sub _apply {
 	my ($self, $left, $right) = @_;
-	return $self->seq_apply($left, $right, @{$self->{regexes_to_apply}});
+	return $self->seq_apply($left, $right, @{$self->{patterns_to_apply}});
 }
 
 sub seq_apply {
-	my ($self, $left, $right, @regexes) = @_;
-	my $regex = shift @regexes;
+	my ($self, $left, $right, @patterns) = @_;
+	my $pattern = shift @patterns;
 	my $data = $self->{data};
 	
-	# Handle edge case of this being the only regex:
-	if (@regexes == 0) {
-		# Make sure we don't sent any more or any less than the regex said
+	# Handle edge case of this being the only pattern:
+	if (@patterns == 0) {
+		# Make sure we don't sent any more or any less than the pattern said
 		# it was willing to handle:
 		my $size = $right - $left + 1;
-		return 0 if $size < $regex->min_size;
+		return 0 if $size < $pattern->min_size;
 		
 		# Adjust the right edge if the size is too large:
-		$size = $regex->max_size if $size > $regex->max_size;
+		$size = $pattern->max_size if $size > $pattern->max_size;
 		$right = $left + $size - 1;
 		
-		my ($consumed, %details) = eval{$regex->_apply($left, $right)};
+		my ($consumed, %details) = eval{$pattern->_apply($left, $right)};
 		
-		# If the regex croaked, emit a death:
+		# If the pattern croaked, emit a death:
 		if ($@ ne '') {
-			my $i = scalar @{$self->{regexes_to_apply}};
+			my $i = scalar @{$self->{patterns_to_apply}};
 			my $name = $self->get_bracketed_name_string;
-			my $child_name = $regex->get_bracketed_name_string;
-			die "In re_seq regex$name, ${i}th regex$child_name failed:\n$@"; 
+			my $child_name = $pattern->get_bracketed_name_string;
+			die "In re_seq pattern$name, ${i}th pattern$child_name failed:\n$@"; 
 		}
 		
-		# Croak if the regex consumed more than it was given:
+		# Croak if the pattern consumed more than it was given:
 		if ($consumed > $size) {
 			my $name = $self->get_bracketed_name_string;
-			my $child_name = $regex->get_bracketed_name_string;
+			my $child_name = $pattern->get_bracketed_name_string;
 			# Make sure i starts counting from 1 in death note:
-			my $i = scalar @{$self->{regexes_to_apply}};
-			die "In re_seq regex$name, ${i}th regex$child_name consumed $consumed\n"
+			my $i = scalar @{$self->{patterns_to_apply}};
+			die "In re_seq pattern$name, ${i}th pattern$child_name consumed $consumed\n"
 				. "but it was only allowed to consume $size\n";
 		}
 		
 		# Save the match if the match succeeded (i.e. '0 but true', or a
 		# positive number):
-		$self->push_match($regex, {left => $left, %details,
+		$self->push_match($pattern, {left => $left, %details,
 				right => $left + $consumed - 1})
 			if $consumed and $consumed >= 0;
 		
@@ -1931,13 +1952,13 @@ sub seq_apply {
 	}
 	
 	# Determine the largest possible size based on the requirements of the
-	# remaining regexes:
+	# remaining patterns:
 	my $max_consumable = $right - $left + 1;
-	$max_consumable -= $_->min_size foreach (@regexes);
+	$max_consumable -= $_->min_size foreach (@patterns);
 	
-	# Fail if the maximum consumable size is smaller than this regex's
+	# Fail if the maximum consumable size is smaller than this pattern's
 	# minimum requirement. working here: this condition may never occurr:
-	my $min_size = $regex->min_size;
+	my $min_size = $pattern->min_size;
 	return 0 if $max_consumable < $min_size;
 	
 	# Set up for the loop:
@@ -1950,26 +1971,26 @@ sub seq_apply {
 	# Start at the maximum possible size:
 	
 	LEFT_SIZE: for (my $size = $max_consumable; $size > $min_size; $size--) {
-		# Apply this regex to this length:
-		($left_consumed, %details) = eval{$regex->_apply($left, $left + $size - 1)};
+		# Apply this pattern to this length:
+		($left_consumed, %details) = eval{$pattern->_apply($left, $left + $size - 1)};
 		# Croak immediately if we encountered a problem:
 		if ($@ ne '') {
-			my $i = scalar @{$self->{regexes_to_apply}} - scalar(@regexes);
+			my $i = scalar @{$self->{patterns_to_apply}} - scalar(@patterns);
 			my $name = $self->get_bracketed_name_string;
-			my $child_name = $regex->get_bracketed_name_string;
-			die "In re_seq regex$name, ${i}th regex$child_name failed:\n$@"; 
+			my $child_name = $pattern->get_bracketed_name_string;
+			die "In re_seq pattern$name, ${i}th pattern$child_name failed:\n$@"; 
 		}
 		
 		# Fail immediately if we get a numeric zero:
 		return 0 unless $left_consumed;
 		
-		# Croak if the regex consumed more than it was given:
+		# Croak if the pattern consumed more than it was given:
 		if ($left_consumed > $size) {
 			my $name = $self->get_bracketed_name_string;
-			my $child_name = $regex->get_bracketed_name_string;
+			my $child_name = $pattern->get_bracketed_name_string;
 			# Make sure i starts counting from 1 in death note:
-			my $i = scalar @{$self->{regexes_to_apply}} - scalar(@regexes);
-			die "In re_seq regex$name, ${i}th regex$child_name consumed $left_consumed\n"
+			my $i = scalar @{$self->{patterns_to_apply}} - scalar(@patterns);
+			die "In re_seq pattern$name, ${i}th pattern$child_name consumed $left_consumed\n"
 				. "but it was only allowed to consume $size\n";
 		}
 		
@@ -1986,10 +2007,10 @@ sub seq_apply {
 		# update $size to compensate:
 		$size = $left_consumed;
 		
-		# If we are here, we know that the current regex matched starting at
+		# If we are here, we know that the current pattern matched starting at
 		# left with a size of $size. Store that and then make sure that the
-		# remaining regexes match:
-		$self->push_match($regex, {left => $left, %details,
+		# remaining patterns match:
+		$self->push_match($pattern, {left => $left, %details,
 				right => $left + $size - 1});
 		
 		$right_consumed = 0;
@@ -1998,8 +2019,8 @@ sub seq_apply {
 			do {
 				# Shrink the current right edge:
 				$curr_right += $right_consumed;
-				# Try the regex:
-				$right_consumed = $self->seq_apply($left + $size, $curr_right, @regexes);
+				# Try the pattern:
+				$right_consumed = $self->seq_apply($left + $size, $curr_right, @patterns);
 			} while ($right_consumed < 0);
 		};
 		
@@ -2009,9 +2030,9 @@ sub seq_apply {
 			die $@;
 		}
 		
-		# At this point, we know that the right regex either matched at the
+		# At this point, we know that the right pattern either matched at the
 		# current value of $curr_right with a width of $right_consumed, or
-		# that it failed. If it failed, clear the left regex's match and
+		# that it failed. If it failed, clear the left pattern's match and
 		# try again at a shorter size:
 		if ($right_consumed == 0) {
 			$self->pop_match;
@@ -2024,7 +2045,7 @@ sub seq_apply {
 		return $left_consumed + $right_consumed;
 	}
 	
-	# We can only be here if the combined regexes failed to match:
+	# We can only be here if the combined patterns failed to match:
 	return 0;
 }
 
@@ -2035,9 +2056,9 @@ sub _minmax {
 	my ($full_min, $full_max) = (0, 0);
 	
 	# Compute the min and max as the sum of the mins and maxes
-	foreach my $regex (@{$self->{regexes_to_apply}}) {
-		$full_min += $regex->min_size;
-		$full_max += $regex->max_size;
+	foreach my $pattern (@{$self->{patterns_to_apply}}) {
+		$full_min += $pattern->min_size;
+		$full_max += $pattern->max_size;
 	}
 	$self->min_size($full_min);
 	$self->max_size($full_max);
@@ -2045,10 +2066,10 @@ sub _minmax {
 
 sub Scrooge::re_seq {
 	# If the first argument is an object, assume no name:
-	return Scrooge::Sequence->new(regexes => \@_) if ref $_[0];
+	return Scrooge::Sequence->new(patterns => \@_) if ref $_[0];
 	# Otherwise assume that the first argument is a name:
 	my $name = shift;
-	return Scrooge::Sequence->new(name => $name, regexes => \@_)
+	return Scrooge::Sequence->new(name => $name, patterns => \@_)
 }
 
 # THE magic value that indicates this module compiled correctly:
@@ -2091,8 +2112,8 @@ from that string. This module is the first of its kind, as far as the author
 is aware, so there is no clear idea of what would constitute a useful or
 smart notation. Furthermore, it is also clear that end users will have all
 sorts of matching criteria that I could never hope to anticipate. Rather
-than try to impose an untested regular expression notation, this module
-simply lets you construct the regular expression object directly.
+than try to impose an untested pattern notation, this module
+simply lets you construct the pattern object directly.
 
 =back
 
@@ -2107,7 +2128,7 @@ at the implementation of this system.
 
 I'm keeping these notes as they explain how things work fairly well:
 
-I believe that multiple copies of the same regex (and an implementation of
+I believe that multiple copies of the same pattern (and an implementation of
 grouping quantifiers that would depend upon this) can be solved by doing
 the following:
 
@@ -2124,20 +2145,20 @@ offsets rather than two integers. Actually, we can be a bit better here: if
 the stack has only a single entry, then return the integers. Otherwise
 return array refs. Or, even better: return piddles with the offsets!
 
-=item Regexes within Rules
+=item patterns within Rules
 
 Even more likely and problematic than the above problem is the possibility
-that a particular regex object is used within a regex as well as B<within
-the condition of neighboring regex>. This is very much a problem since a
-regex used within the condition of another will B<not> be name-clash
+that a particular pattern object is used within a pattern as well as B<within
+the condition of neighboring pattern>. This is very much a problem since a
+pattern used within the condition of another will B<not> be name-clash
 detected and it will fiddle with internal data, including the current piddle
 of interest.
 
 Initially, I thought it would be adequate to implement a stack system on
-C<_prep> and C<_cleanup>. However, named regexes need to be able to return
+C<_prep> and C<_cleanup>. However, named patterns need to be able to return
 their offsets after C<_cleanup> is called, so these must B<not> be
 cleaned-up. To solve this problem, I need to determine some means for the
-regex to realize that it has switched contexts, and then stash or unstash
+pattern to realize that it has switched contexts, and then stash or unstash
 the internal information like the match offsets and the piddle (and anything
 else that's important.)
 
@@ -2145,24 +2166,24 @@ else that's important.)
 
 =head1 TODO
 
-These are items that are very important or even critical to getting the
-regular expression engine to operate properly.
+These are items that are very important or even critical to getting Scrooge to
+operate properly.
 
 =over
 
-=item Testing: Multiple copies of the same regex, nested calls to regex
+=item Testing: Multiple copies of the same pattern, nested calls to pattern
 
 I have implemented a match stack to allow for multiple copies of the same
-regex within a larger regex. I have also implemented a stashing and
-unstashing mechanism to allow for regexes to be called from within other
-regexes without breaking the original. However, the code remains untestd.
+pattern within a larger pattern. I have also implemented a stashing and
+unstashing mechanism to allow for patterns to be called from within other
+patterns without breaking the original. However, the code remains untestd.
 
 =item Proper prep, cleanup, and stash handling on croak
 
 I have added lots of code to handle untimely death at various stages of
-execution of the regular expression engine. I have furthermore added lots
-of lines of explanation for nested and grouped regexes so that pin-pointing
-the exact regex is clearer. At this point, I need to test that all of the
+execution of the pattern engine. I have furthermore added lots
+of lines of explanation for nested and grouped patterns so that pin-pointing
+the exact pattern is clearer. At this point, I need to test that all of the
 deaths do not interfere with proper cleanup and that 
 
 =back
@@ -2171,7 +2192,7 @@ deaths do not interfere with proper cleanup and that
 
 This is the place where I put my ideas that I would like to implement, but
 which are not yet implemented and which are not critical to the sensible
-operation of the regular expression engine.
+operation of the pattern engine.
 
 =over
 
@@ -2179,18 +2200,18 @@ operation of the regular expression engine.
 
 A potential concise syntax might look like this:
 
- $regex = qnre{
+ $pattern = qnre{
     # Comments and whitespace are allowed
     
-    # If there is more than one regex in a row, the grouping
+    # If there is more than one pattern in a row, the grouping
     # is assumed to be a re_seq group.
     
     # ---( Basics )---
     # Perl scalars and lists are properly interpolated:
-    $my_regex_object
-    @my_regex_objects
+    $my_pattern_object
+    @my_pattern_objects
     
-    # barewords are assumed to be regex constructors
+    # barewords are assumed to be pattern constructors
     # and are called with the given args
     reg1(args)
     
@@ -2199,7 +2220,7 @@ A potential concise syntax might look like this:
     reg2( value => $quantitiy, %other_args )
     
     # square bracket notation indicates the min
-    # and max length that a regex can match
+    # and max length that a pattern can match
     reg1(args)[quantifiers]
     
     # ---( Prefixes )---
@@ -2217,7 +2238,7 @@ A potential concise syntax might look like this:
     ::
     
     # ---( Quantifiers )---
-    # You can add square brackets immediately after a regex's args to
+    # You can add square brackets immediately after a pattern's args to
     # indicate the min and max length. This set's reg2 to match between
     # 1 and 50 elements:
     reg2(args)[1, 50]
@@ -2234,7 +2255,7 @@ A potential concise syntax might look like this:
     
     # ---( Grouping )---
     # Grouping is designated with a symbol and angle brackets:
-    &< ... regexes ... >       # AND group
+    &< ... patterns ... >       # AND group
     |< ... >                   # OR group
     %< ... >                   # XOR group
     $< ... >                   # SEQUENCE group
@@ -2253,7 +2274,7 @@ A potential concise syntax might look like this:
     
     # ---( Repeat counts )---
     # In addition to setting quantifiers, you can also set repeat counts.
-    # Repeat count comes before a regex:
+    # Repeat count comes before a pattern:
     *reg1(args)             # zero-or-more copies of reg1
     ?reg2                   # zero-or-one copies of reg2
     +reg3[10%, 50%]         # one-or-more copies of reg3, each of which
@@ -2266,13 +2287,13 @@ A potential concise syntax might look like this:
     
     
     # ---( Naming and Capturing )---
-    # You can name any normal regex by adding .name immediately after the
+    # You can name any normal pattern by adding .name immediately after the
     # constructor name, before any arguments or quantifiers:
     reg2.name
     reg4.name(args)
     reg5.name[5, 20%]
     
-    # You can name any grouped regex by inserting the name between the
+    # You can name any grouped pattern by inserting the name between the
     # symbol and the angle brackets:
     $.my_sequence< ... >
     |.my_or< ... >
@@ -2282,21 +2303,21 @@ A potential concise syntax might look like this:
     # You can name a repetition by putting the name before the colon:
     5.name:reg2
     
-    # You can name both the repetition and the regex, but they must have
+    # You can name both the repetition and the pattern, but they must have
     # different names:
     [4,8].name:reg2.name2
     
-    # Once named, you can insert a previous named regex like so:
+    # Once named, you can insert a previous named pattern like so:
     \name
     
     
     # ---( Clarifications )---
     # Note, this statement is not formatted clearly:
-    regex(args)[repeat, count] 
-        :regex2(args)
+    pattern(args)[repeat, count] 
+        :pattern2(args)
     # It means this:
-    regex(args)
-    [repeat, count]:regex2(args)
+    pattern(args)
+    [repeat, count]:pattern2(args)
     
  };
 
@@ -2316,7 +2337,7 @@ in an optimal fashion using some sort of scoring mechanism?
 
  # Find the optimal division between an exponential drop
  # and a linear fit:
- my $regex = NRE::OPTIMIZE($exponential_drop, $linear)
+ my $pattern = NRE::OPTIMIZE($exponential_drop, $linear)
 
 =back
 
