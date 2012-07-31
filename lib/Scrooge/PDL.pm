@@ -118,11 +118,24 @@ sub re_intersect {
   return Scrooge::PDL::Intersect->new(%args);
 }
 
-sub re_local_extrema {
-     
-  my %args = @_;
+# These next three subroutines are all separate constructors for the Scrooge::Local_Extremum
+# package. They are a more user friendly way to tell the program what match you want.
+sub re_local_extremum () {
+
+  return Scrooge::PDL::Local_Extremum->new(type => 'both');
+
+}
+
+sub re_local_min () {
   
-  # re_local_
+  return Scrooge::PDL::Local_Extremum->new(type => 'min');
+  
+}
+
+sub re_local_max () {
+  
+  return Scrooge::PDL::Local_Extremum->new(type => 'max');
+  
 }
 
 =head21Range Strings
@@ -198,7 +211,7 @@ sub parse_range_strings {
   return $to_return[0];
 }
 
-our @EXPORT = qw(re_intersect);
+our @EXPORT = qw(re_intersect re_local_extremum re_local_min re_local_max);
 
 
 package Scrooge::PDL::Intersect;
@@ -311,16 +324,17 @@ sub _apply {
   return $self->{subref}->(@_);
 }
 
-package Scrooge::PDL::Local_extrema;
+package Scrooge::PDL::Local_Extremum;
 use strict;
 use warnings;
 use Scrooge;
 use Carp;
 use PDL;
 
+our @ISA = qw(Scrooge);
 =head2 NAME
 
-Scrooge::PDL::Local_Extrema - create regex to match the local extrema of a set of data
+Scrooge::PDL::Local_Extremum - create regex to match the local extrema of a set of data
 
 =head2 DESCRIPTION
 
@@ -329,23 +343,25 @@ no noise since it simply compares singe points its immediately adjacent points.
 
 =cut
 
-sub _prep {
-  my ($self, $data) = @_;
-  $data = PDL::Core::topdl($data);
+sub min_size { 1 }
+sub max_size { 1 }
+sub _apply{
+  my ($self, $l_off) = @_;
+  my $type = $self->{type};
+  my $piddle = $self->{data};
+  my $max_element = ($piddle->nelem) - 1;
+  my $location = 1;
   
-  # A local maximum or minimum can only have a length of 1.
-  my ($MIN_SIZE, $MAX_SIZE) = (1,1);
-  
-  $self->{subref} = sub{
-    my ($left, $right) = @_;
-    
-    
-    
-    
-    
-    
+  if ($type eq 'min' or $type eq'both') {
+      return 1 if ((($piddle->at($location)) < ($piddle->at($location + 1))) & 
+                   (($piddle->at($location)) < ($piddle->at($location - 1))));
+
   };
   
+  if ($type eq 'max' or $type eq'both'){
+      return 1 if ( (($piddle->at($location)) > ($piddle->at($location + 1))) & 
+                    (($piddle->at($location)) > ($piddle->at($location - 1))));
+  };
 }
 1;
 
