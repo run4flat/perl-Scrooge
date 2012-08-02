@@ -350,17 +350,21 @@ sub _apply{
   my $type = $self->{type};
   my $piddle = $self->{data};
   my $max_element = ($piddle->nelem) - 1;
-  my $location = 1;
+  
+  # Expand this to handle the edge cases at some point.
+  if ($l_off == 0 or $l_off == $max_element){
+    return 0;
+  };
   
   if ($type eq 'min' or $type eq'both') {
-      return 1 if ((($piddle->at($location)) < ($piddle->at($location + 1))) & 
-                   (($piddle->at($location)) < ($piddle->at($location - 1))));
+      return 1 if ((($piddle->at($l_off)) < ($piddle->at($l_off + 1))) && 
+                   (($piddle->at($l_off)) < ($piddle->at($l_off - 1))));
 
   };
   
   if ($type eq 'max' or $type eq'both'){
-      return 1 if ( (($piddle->at($location)) > ($piddle->at($location + 1))) & 
-                    (($piddle->at($location)) > ($piddle->at($location - 1))));
+      return 1 if ( (($piddle->at($l_off)) > ($piddle->at($l_off + 1))) && 
+                    (($piddle->at($l_off)) > ($piddle->at($l_off - 1))));
   };
 }
 1;
