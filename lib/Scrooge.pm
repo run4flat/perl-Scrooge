@@ -1420,6 +1420,25 @@ use strict;
 use warnings;
 use Carp;
 
+sub parse_location{
+	
+        my ($data, $location_string) = @_;
+        croak('parse_location expects first arg to be a piddle')
+                unless eval{$data->isa('PDL');
+        
+        my $max_index = ($data->nelem) - 1;
+        my $pct = $max_index/100;
+        
+        my $original_location_string = $location_string
+        
+        $location_string =~ s/(\d)\s*\%/$1 * \$pct/;
+        
+        $location = eval{$location_string};
+        croak("parse_location had trouble with location_string $original_location_string")
+                if $@ ne '';
+        return $location;
+}
+
 sub min_size { 0 }
 sub max_size { 0 }
 
