@@ -1,11 +1,19 @@
 use strict;
 use warnings;
-use Test::More tests => 30;
+use Test::More tests => 32;
 use Scrooge;
 
 # Get an anonymous array with our data for testing
 my $data = [1..20];
 my $empty = [];
+
+###########################
+# parse_location tests: 2 #
+###########################
+
+my $pl = \&Scrooge::ZWA::parse_location;
+is($pl->($data, 0), 0, 'parse_location: 0 => 0');
+is($pl->($data, '100%'), 20, 'parse_location: 100% => N');
 
 ########################
 # Constructor tests: 6 #
