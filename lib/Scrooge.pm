@@ -13,7 +13,8 @@ use PDL;
 
 our @ISA = qw(Exporter);
 
-our @EXPORT = qw(re_or re_and re_seq re_sub re_any re_zwa);
+our @EXPORT = qw(re_or re_and re_seq re_sub re_any
+	re_zwa re_anchor_begin re_anchor_end);
 
 =head1 NAME
 
@@ -1328,8 +1329,69 @@ sub _apply {
 	return ($consumed, %details);
 }
 
-package Scrooge::ZeroWidthAssertion;
-use parent -norequire, 'Scrooge::Quantified';
+# Abstract base class for zero-width assertions
+package Scrooge::ZWA;
+our @ISA = ('Scrooge');
+use strict;
+use warnings;
+use Carp;
+
+sub min_size { 0 }
+sub max_size { 0 }
+
+# Matches beginning of the data
+package Scrooge::ZWA::Begin;
+our @ISA = ('Scrooge::ZWA');
+use strict;
+use warnings;
+use Carp;
+
+sub Scrooge::re_anchor_begin {
+	croak("re_anchor_begin takes zero or one argument") if @_ > 1;
+	
+	return Scrooge::ZWA::Begin->new(name => $_[0]) if @_ > 0;
+	return Scrooge::ZWA::Begin->new;
+}
+
+sub _apply {
+	my ($self, $left, $right) = @_;
+	unless ($right < $left) {
+		my $name = $self->get_bracketed_name_string;
+		croak("Internal error in calling re_anchor_begin pattern$name: $right is not "
+			. "less that $left");
+	}
+	
+	return '0 but true' if $left == 0;
+	return 0;
+}
+
+package Scrooge::ZWA::End;
+our @ISA = ('Scrooge::ZWA');
+use strict;
+use warnings;
+use Carp;
+
+sub Scrooge::re_anchor_end {
+	croak("re_anchor_end takes zero or one argument") if @_ > 1;
+	
+	return Scrooge::ZWA::End->new(name => $_[0]) if @_ > 0;
+	return Scrooge::ZWA::End->new;
+}
+
+sub _apply {
+	my ($self, $left, $right) = @_;
+	unless ($right < $left) {
+		my $name = $self->get_bracketed_name_string;
+		croak("Internal error in calling re_anchor_end pattern$name: $right is not "
+			. "less that $left");
+	}
+	
+	return '0 but true' if $left == Scrooge::data_length($self->{data});
+	return 0;
+}
+
+package Scrooge::ZWA::Sub;
+our @ISA = ('Scrooge::ZWA');
 use strict;
 use warnings;
 use Carp;
@@ -1347,8 +1409,8 @@ sub Scrooge::re_zwa {
 		unless ref($subref) eq ref(sub{});
 	
 	# Return the constructed zero-width assertion:
-	my $self = Scrooge::ZeroWidthAssertion->new(quantifiers => [0,0],
-		subref => $subref, defined $name ? (name => $name) : ());
+	my $self = Scrooge::ZeroWidthAssertion->new(subref => $subref
+		, defined $name ? (name => $name) : ());
 	
 }
 
@@ -1914,7 +1976,7 @@ sub seq_apply {
 	
 	# Handle edge case of this being the only pattern:
 	if (@patterns == 0) {
-		# Make sure we don't sent any more or any less than the pattern said
+		# Make sure we don't send any more or any less than the pattern said
 		# it was willing to handle:
 		my $size = $right - $left + 1;
 		return 0 if $size < $pattern->min_size;
@@ -1961,7 +2023,7 @@ sub seq_apply {
 	# minimum requirement. working here: this condition may never occurr:
 	my $min_size = $pattern->min_size;
 	return 0 if $max_consumable < $min_size;
-	
+
 	# Set up for the loop:
 	my $max_offset = $max_consumable - 1 + $left;
 	my $min_offset = $min_size - 1 + $left;
@@ -1971,7 +2033,7 @@ sub seq_apply {
 	
 	# Start at the maximum possible size:
 	
-	LEFT_SIZE: for (my $size = $max_consumable; $size > $min_size; $size--) {
+	LEFT_SIZE: for (my $size = $max_consumable; $size >= $min_size; $size--) {
 		# Apply this pattern to this length:
 		($left_consumed, %details) = eval{$pattern->_apply($left, $left + $size - 1)};
 		# Croak immediately if we encountered a problem:
@@ -2035,7 +2097,7 @@ sub seq_apply {
 		# current value of $curr_right with a width of $right_consumed, or
 		# that it failed. If it failed, clear the left pattern's match and
 		# try again at a shorter size:
-		if ($right_consumed == 0) {
+		if (!$right_consumed) {
 			$self->pop_match;
 			next LEFT_SIZE;
 		}
