@@ -1420,20 +1420,19 @@ use strict;
 use warnings;
 use Carp;
 
+# Parses a location string and return an offset for a given piece of data.
 sub parse_location{
-	
         my ($data, $location_string) = @_;
-        croak('parse_location expects first arg to be a piddle')
-                unless eval{$data->isa('PDL');
         
-        my $max_index = ($data->nelem) - 1;
+        # Get the max index in a cross-container form
+        my $max_index = Scrooge::data_length($data) - 1;
         my $pct = $max_index/100;
         
-        my $original_location_string = $location_string
+        my $original_location_string = $location_string;
         
         $location_string =~ s/(\d)\s*\%/$1 * \$pct/;
         
-        $location = eval{$location_string};
+        my $location = eval($location_string);
         croak("parse_location had trouble with location_string $original_location_string")
                 if $@ ne '';
         return $location;
