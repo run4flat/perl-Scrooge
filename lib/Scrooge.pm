@@ -1420,12 +1420,41 @@ use strict;
 use warnings;
 use Carp;
 
+=pod
+
+behavior for C<parse_location>
+
+Here's a table describing the different locations for a 20-element array.
+
+ string       offset  notes
+ 0            0
+ 1            1
+ 1 + 1        2
+ -1           19
+ 5 - 10       -5      This will never match
+ 10%          10
+ 10% + 20%    6
+ 50% + 3      13
+ 100% + 5     25      This will never match
+ 10% - 5      -3      This will never match
+ 12% + 3.4    6       Rounded from 5.8
+ 14% + 3.4    6       Rounded from 6.2
+
+Positive numbers - use an offset at that location
+percentage - use an offset of length / 100 * $pct
+percentage with arithmetic - normal numeric evaluation
+negative numbers - if the string can be exactly interpreted as a negative
+number, it is taken as a negative offset from the full length. Otherwise, the
+negative value is taken as-is, and it will never match.
+
+=cut
+
 # Parses a location string and return an offset for a given piece of data.
 sub parse_location{
         my ($data, $location_string) = @_;
         
         # Get the max index in a cross-container form
-        my $max_index = Scrooge::data_length($data) - 1;
+        my $max_index = Scrooge::data_length($data);
         my $pct = $max_index/100;
         
         my $original_location_string = $location_string;
@@ -1435,6 +1464,13 @@ sub parse_location{
         my $location = eval($location_string);
         croak("parse_location had trouble with location_string $original_location_string")
                 if $@ ne '';
+        
+        # handle negative offsets
+        if ($location < 0) {
+        	no warnings 'numeric';
+        	$location += $max_index if $location == $location_string;
+        }
+        
         return $location;
 }
 
