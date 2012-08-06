@@ -1471,6 +1471,9 @@ sub parse_location{
         	$location += $max_index if $location == $location_string;
         }
         
+        # Round the result if it's not an integer
+        return int($location + 0.5) if $location != int($location);
+        # otherwise just return the location
         return $location;
 }
 
