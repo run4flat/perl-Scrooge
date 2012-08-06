@@ -1,4 +1,5 @@
-# Make sure that re_any works as advertised.
+# Make sure that re_any works as advertised, and that quantifiers
+# also work as advertised.
 use strict;
 use warnings;
 use Test::More tests => 8;
@@ -30,6 +31,9 @@ is($matched, 1, 'Simple constructor defaults to a single-element match');
 is($offset, 0, 'Simple constructor correctly identified first element as matching');
 
 # ---( Simple Constructor, quantifiers: N )---
+
+# Good handling of quantifiers, including larger-than 100%, less than
+# 0%, too large, too small, etc
 
 # working here
 
