@@ -66,17 +66,19 @@ This documentation is supposed to be for version 0.01 of Scrooge.
  
  # Matches first, then second, then anything, then third
  my ($matched, $offset)
-     = re_seq ( $re_first, $re_second, re_any, $re_third);
+     = re_seq ( $re_first, $re_second, re_any, $re_third )
+               ->apply($data);
 
 =head1 DESCRIPTION
 
-Scrooge creates a set of classes that let you construct numerical regular
-expression objects that you can apply to a container object such as an anonymous
-array, or a piddle. Because the patterns against which you might match are
-limitless, this module provides a means for easily creating your own conditions
-and the glue necessary to put them together in complex ways. It does not offer a
-concise syntax, but it provides the back-end machinery to support such a concise
-syntax for various data containers and applications.
+Scrooge creates a set of classes that let you construct greedy pattern objects
+that you can apply to a container object such as an anonymous array or a piddle.
+Because the patterns you might match are limitless, and the sort of container
+you might want to match is also limitless, this module provides a means for
+easily creating your own patterns and the glue necessary to put them together
+in complex ways. It does not offer a concise syntax, but it provides the
+back-end machinery to support such a concise syntax for various data containers
+and applications.
 
 Let's begin by considering a couple of regular expressions in Perl.
 
@@ -92,15 +94,97 @@ makes use of quantifiers and because it uses a character class (the C<\d>
 matches many characters).
 
 The Scrooge equivalents of these take up quite a bit more space to
-construct. Here is how to build a numerical pattern that checks
-for a positive number followed by a local maximum, or a negative number
-followed by a local minimum. I'll assume that the individual pattern
-pieces (i.e. C<$positive_re>) already exist.
+construct. Here is how to build a pattern that checks for a positive number
+followed by a local maximum, or a negative number followed by a local minimum.
 
+ use Scrooge::PDL;
  my $pattern = re_or(
-     re_seq( $positive_re, $local_max_re ),
-     re_seq( $negative_re, $local_min_re )
+     re_seq( re_greater_than(0), re_local_max ),
+     re_seq( re_less_than(0), re_local_min )
  );
+
+You would then apply that pattern to some data like so:
+
+ do_something() if $pattern->apply($data);
+
+The Scrooge pattern matching library can be conceptually structured into three
+tiers. The top-level tier is a set of functions that help you quickly build
+patterns and contain functions such as C<re_seq> and C<re_any>. The mid-level
+tier is the set of classes that actually implement that functionality such as
+C<Scrooge::Any>, C<Scrooge::Quantified>, and C<Scrooge::And>, along
+with how to create your own classes. The bottom-level tier is the Scrooge base
+class and its internal workings as a pattern matching engine. The documentation
+that follows progresses from top to bottom.
+
+=head1 BUILDING PATTERNS
+
+From the standpoint of basic pattern building, there are two important types of
+patterns: atom patterns and grouping patterns. Atom patterns specify a
+characteristic that you want to match in your series; grouping patterns give you
+the means to assemble collections of atoms into complex groups.
+
+As a simple example, let's examine a hypothetical situation. You are dealt a
+series of cards and you want to examine the actual order of the deal:
+
+ my $deck = My::Deck->new;
+ $deck->shuffle;
+ my @hand = $deck->deal(7);
+
+We now have an array containing seven cards. C<$hand[0]> is the first card
+dealt and C<$hand[6]> is the last card dealt. What sorts of patterns can we ask?
+Let's begin by building a pattern that matches a sequence of cards from the same
+suit. We do this by creating our very own hand-crafted atom using the C<re_sub>
+function, which expects a subroutine reference that will be run to determine if
+the atom should match or not.
+
+ my $same_suit_re = re_sub(
+   # In the two-argument form, the first argument
+   # is the min and max length that this pattern
+   # will match. Here, we indicate that this
+   # pattern can match one card, and can match up
+   # to the whole hand:
+   [1, '100%'], 
+   # Following the quantifiers is the anonymous
+   # subroutine that is run to figure out if the
+   # pattern matches at the given locations.
+   sub {
+     # The arguments are the data to analyze (which
+     # will be an anonymous array with our cards, when
+     # it's eventually run), and the current left and
+     # right array offsets of interest.
+     my ($data, $left_offset, $right_offset) = @_;
+     
+     # Get the suit of the card at the left offset.
+     my $suit = $data->[$left_offset]->suit;
+     
+     # See how many cards match that suit, starting
+     # from the next card:
+     my $N_matched = 1;
+     $N_matched++
+       while $left_offset + $N_matched < $right_offset
+         and $data->[$left_offset + $N_matched]->suit eq $suit;
+     
+     # At this pont, we have the number of cards with
+     # the same suit, starting from $left_offset.
+     return $N_matched;
+   }
+ );
+
+Equipped with our atom, we can now apply it to our hand:
+
+ my $N_matched = $same_suit_re->apply(\@hand);
+ print "The suit of the first card in our hand is ",
+   $hand[0]->suit, " and the first $N_matched cards ",
+   " in our hand have that suit\n";
+
+But, what if we wanted to know number of cards of the same suit at the end of
+the hand? To do that, we need to supply some sort of anchor.
+
+XXX working here
+
+Atoms describe characteristics of your data, which means that they are specific
+to the container and data that you use. In contrast, groupings simply operate
+with other patterns, and work across data containers.
 
 =head1 Examples
 
