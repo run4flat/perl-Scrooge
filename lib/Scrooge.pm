@@ -1620,11 +1620,9 @@ sub _to_stash {
 	return qw(patterns_to_apply positive_matches), $self->SUPER::_to_stash;
 }
 
-# _prep will call _prep on all its children and keep track of those that
-# return true values. Success or failure is based upon the inherited method
-# _prep_success.
-sub _prep {
+sub prep_all {
 	my ($self, $data) = @_;
+	
 	# Call the prep function for each of them, keeping track of all those
 	# that succeed. Notice that I capture errors and continue because every
 	# single pattern needs to run its prep method in order for it to be 
@@ -1648,6 +1646,17 @@ sub _prep {
 	elsif (@errors > 1) {
 		die(join(('='x20) . "\n", 'Multiple Errors', @errors));
 	}
+	
+	return @succeeded;
+}
+
+# _prep will call _prep on all its children and keep track of those that
+# return true values. Success or failure is based upon the inherited method
+# _prep_success.
+sub _prep {
+	my ($self, $data) = @_;
+	
+	my @succeeded = $self->prep_all($data);
 	
 	# Store the patterns to apply. If _prep_success returns zero, we do not
 	# need to call cleanup: that will be called by our parent:
