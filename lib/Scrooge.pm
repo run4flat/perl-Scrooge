@@ -321,7 +321,6 @@ and retrieve sub-match results using C<get_offsets_for>, as discussed below.
 =cut
 
 # User-level method, not to be overridden.
-our %method_table;
 sub apply {
 	croak('Scrooge::apply is a one-argument method')
 		unless @_ == 2;
@@ -1110,105 +1109,59 @@ sub get_bracketed_name_string {
 
 =back
 
-=head2 Cross-Container Accessors
+=head2 Scrooge::data_length
 
 Scrooge is designed to operate on any data container you wish to throw at
-it. However, it needs to know how to get certain information about your
-container. At the moment, at least, it needs to know how to get your container's
-length.
+it. However, it needs to know how to get the length of the information in your
+container. It does this with the generic function C<Scrooge::data_length>. To
+get the length of any known container, you would use the following command:
 
-However, the current API also provides hooks for getting an element at
-a given offset and for taking a slice of the current data's contents. I hope
-that such a general set of functions will make it easier to write
-container-agnostic pattern objects, though the jury is still out on
-whether or not this is a good way of doing it. Part of me suspects that this is
-not really a generically good idea...
+ my $length = Scrooge::data_length($data);
 
-=item %Scrooge::method_table
-
-This holds subroutine references that handle various operations that
-are meant to work cross-container. You should add specially named methods to
-this table for your container so that calls to C<Scrooge::data_length>,
-C<Scrooge::data_at>, and C<Scrooge::data_slice> all work for your
-container.
+But how, you ask, does C<Scrooge::data_length> know how to calculate the length
+of my container? That's easy! Each container that wants to interact with Scrooge
+simply adds a subroutine reference to a table of length subroutines called
+C<%Scrooge::length_method_table>, where the key is the class name.
 
 For example, after doing this:
 
- $Scrooge::method_table{'My::Class::Name'} = {
-     # Required for your container to work with Scrooge
-     length => sub {
-         # Returns the length of its first argument.
-         return $_[0]->length;
-     },
-     # Optional
-     at => sub {
-         # Returns the value at the given location
-         my ($container, $offset) = @_;
-         return $container->at($offset);
-     },
-     # Optional
-     slide => sub {
-         # Returns a class-equivalent slice:
-         my ($container, $left, $right) = @_;
-         return $container->subset($left => $right);
-     },
+ $Scrooge::length_method_table{'My::Class::Name'} = sub {
+     # Returns the length of its first argument.
+     return $_[0]->length;
  };
 
-Then, if C<$object> is an object or C<My::Class::Name>, you can simply use
-C<Scrooge::data_length($object)> to get the length of your class's container.
-See the next item for more details.
+if C<$object> is an object of class C<My::Class::Name>, you can simply use
+C<Scrooge::data_length($object)> to get the length of C<$object>.
+
+This is the only requirement that Scrooge has if you wish to use your class as
+a container for Scrooge patterns.
+
+Note to self: This should almost certainly be documented elsewhere, perhaps even
+in a separate document geared towards data container authors.
 
 =cut
 
-%method_table = (
-	(ref [])  => {
-		length => sub { return scalar(@{$_[0]}) },
-		at     => sub { return $_[0]->[$_[1]] },
-		slice  => sub { return [ @{$_[0]}[$_[1] .. $_[2]] ] },
-	},
-	PDL => {
-		length => sub { return $_[0]->dim(0) },
-		at     => sub { return $_[0]->sclr($_[0]) },
-		slice  => sub { return $_[0]->slice("$_[1]:$_[2]") },
-	},
+our %length_method_table = (
+	''			=> sub { return length $_[0] },
+	(ref [])	=> sub { return scalar(@{$_[0]}) },
+	PDL			=> sub { return $_[0]->dim(0) },
+	(ref {})	=> sub {
+			my $hashref = shift;
+			return $hashref->{length} if exists $hashref->{length};
+			# Didn't supply a length key? I hope the length of the first
+			# "value" in the hashref makes sense!
+			my @values = values %$hashref;
+			return Scrooge::data_length($values[0]);
+		},
 );
-
-=item data_length, data_at, data_slice
-
-These are generic data-container-agnostic wrappers to get the data's length,
-to get an element at a given offset, or to take a slice from a data container.
-They delegate to the methods in C<%method_table>, as discussed next.
-
-working here - decide how I want to export these. They should probably export
-under the tab C<:container-wrappers> or some such. And, they should definitely
-not be documented here but somewhere further down, or even in a separate
-document geared towards data container authors.
-
-=cut
 
 sub data_length {
 	my $data = shift;
-	return $method_table{ref $data}->{length}->($data)
-		if exists $method_table{ref $data};
-	# working here - consider adding some useful error messages.
-	croak("Unable to determine the length of your data\n");
+	return $length_method_table{ref $data}->($data)
+		if exists $length_method_table{ref $data};
+	croak('Scrooge was unable to determine the length of your data, which is of class '
+		. ref($data));
 }
-
-sub data_at {
-	my ($data, $offset) = @_;
-	return $method_table{ref $data}->{at}->($data, $offset);
-	# working here - consider adding some useful error messages.
-}
-
-sub data_slice {
-	my ($data, $left, $right) = @_;
-	return $method_table{ref $data}->{slice}->($data, $left, $right);
-	# working here - consider adding some useful error messages.
-}
-
-=back
-
-=cut
 
 package Scrooge::Quantified;
 use parent -norequire, 'Scrooge';
