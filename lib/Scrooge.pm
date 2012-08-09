@@ -1389,7 +1389,11 @@ Here's a table describing the different locations for a 20-element array.
  10% + 20%    6
  50% + 3      13
  100% + 5     25      This will never match
- 10% - 5      -3      This will never match
+ 10% - 5      -3      This will not match this array
+ [10% - 5]    0       -3 => 0
+ [6 - 10]     -4      This will never match
+ -25          -5      This will not match this array
+ [-25]        0       -25 => -5 => 0
  12% + 3.4    6       Rounded from 5.8
  14% + 3.4    6       Rounded from 6.2
 
@@ -1412,8 +1416,14 @@ sub parse_location{
         
         my $original_location_string = $location_string;
         
+        # Keep track of truncation
+        my $truncate_extreme = 0;
+        $truncate_extreme = 1 if $location_string =~ s/^\[(.*)\]/$1/s;
+        
+        # Replace percentages with evaluatable expressions
         $location_string =~ s/(\d)\s*\%/$1 * \$pct/;
         
+        # Evaluate the string
         my $location = eval($location_string);
         croak("parse_location had trouble with location_string $original_location_string")
                 if $@ ne '';
@@ -1423,6 +1433,10 @@ sub parse_location{
         	no warnings 'numeric';
         	$location += $max_index if $location == $location_string;
         }
+        
+        # Handle truncation
+        $location = 0 if $location < 0 and $truncate_extreme;
+        $location = $max_index if $location > $max_index and $truncate_extreme;
         
         # Round the result if it's not an integer
         return int($location + 0.5) if $location != int($location);

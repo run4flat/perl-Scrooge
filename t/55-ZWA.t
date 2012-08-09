@@ -1,24 +1,33 @@
 use strict;
 use warnings;
-use Test::More tests => 37;
+use Test::More tests => 41;
 use Scrooge;
 
 # Get an anonymous array with our data for testing
 my $data = [1..20];
 my $empty = [];
 
-###########################
-# parse_location tests: 7 #
-###########################
+############################
+# parse_location tests: 11 #
+############################
 
 my $pl = \&Scrooge::ZWA::parse_location;
-is($pl->($data, 0), 0, 'parse_location: 0 => 0');
-is($pl->($data, '100%'), 20, 'parse_location: 100% => N');
-is($pl->($data, '-1'), 19, 'parse_location: -1 => N-1');
-is($pl->($data, '1-4'), -3, 'parse_location: 1-4 => -3');
-is($pl->($data, '1.2'), 1, 'parse_location: 1.2 => 1');
-is($pl->($data, '12% + 3.4'), 6, 'parse_location: 12% + 3.4 => 5.8 => 6');
-is($pl->($data, '14% + 3.4'), 6, 'parse_location: 14% + 3.4 => 6.2 => 6');
+sub do_check {
+	my ($input, $expected, $output_string) = @_;
+	$output_string = $expected if not defined $output_string;
+	is($pl->($data, $input), $expected, "parse_location: $input => $output_string");
+}
+do_check(0 => 0);
+do_check('100%' => 20, 'N');
+do_check(-1 => 19, 'N-1');
+do_check('1 - 4' => -3);
+do_check(1.2 => 1);
+do_check('12% + 3.4' => 6, '5.8 => 6');
+do_check('14% + 3.4' => 6, '6.2 => 6');
+do_check('[-25]', 0, 'truncate(20 - 25) => 0');
+do_check('[-6]', 14, 'truncate(20 - 6) => 14');
+do_check('[0 - 6]', 0, 'truncate(0 - 6) => 0');
+do_check('[25]', 20, 'truncate(25) => N');
 
 ########################
 # Constructor tests: 6 #
