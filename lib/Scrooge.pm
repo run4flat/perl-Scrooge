@@ -1142,7 +1142,7 @@ in a separate document geared towards data container authors.
 =cut
 
 our %length_method_table = (
-	''			=> sub { return length $_[0] },
+#	''			=> sub { return length $_[0] },
 	(ref [])	=> sub { return scalar(@{$_[0]}) },
 	PDL			=> sub { return $_[0]->dim(0) },
 	(ref {})	=> sub {
@@ -1279,7 +1279,11 @@ use Carp;
 
 =head2 re_any
 
-Creates a pattern that matches any value.
+Creates a pattern that matches any value. This is a quantified pattern, which
+means you can specify the minimum and maximum lengths that the pattern should
+match. You can also name the regex:
+
+ re_any([[name], quantifiers])
 
 =cut
 
@@ -1373,38 +1377,87 @@ use strict;
 use warnings;
 use Carp;
 
-=pod
+=head2 re_anchor_begin
 
-behavior for C<parse_location>
+Ensures that the current offset matches at the beginning of the data.
 
-Here's a table describing the different locations for a 20-element array.
+=cut
 
- string       offset  notes
+sub Scrooge::re_anchor_begin {
+	return Scrooge::ZWA->new(position => 0);
+}
+
+=head2 re_anchor_end
+
+Ensures that the current offset matches at the end of the data.
+
+=cut
+
+sub Scrooge::re_anchor_end {
+	return Scrooge::ZWA->new(position => '100%');
+}
+
+=head2 re_zwa_location
+
+This creates a position-based zero-width assertion. Zero-width assertions can
+come in many flavors and assert many things, but the basic zero-width assertion
+lets you make sure that the pattern matches at a particular location or range of
+locations.
+
+Zero-width assertions match B<in between> points. For example, if you have a
+three-point sequence of values (10, 12, 33), there are four locations that a
+zero-width assertion can match: to the left of 10, between 10 and 12, between 
+12 and 33, and to the right of 33.
+
+For example, using the positional assertion, I can match against
+the two points to the left and to the right of the 10% with this pattern:
+
+ my $left_and_right_of_ten_pct = re_seq(
+     re_any([2 => 2]),
+     re_zwa_location('10%'),
+     re_any([2 => 2]),
+ );
+
+To match at one location, pass a single value. To match at a range a locations,
+pass the starting and ending locations:
+
+ re_zwa_location('10% + 1')
+ re_zwa_location('5% - 1' => 20)
+
+You can say quite a bit when specifying a location. To give you an idea,
+here's a table describing different specifications and their resulting locations
+for a 20-element array:
+
+ string       offset     notes
  0            0
  1            1
  1 + 1        2
  -1           19
- 5 - 10       -5      This will never match
+ 5 - 10       -5         This will never match
  10%          10
  10% + 20%    6
  50% + 3      13
- 100% + 5     25      This will never match
- 10% - 5      -3      This will not match this array
- [10% - 5]    0       -3 => 0
- [6 - 10]     -4      This will never match
- -25          -5      This will not match this array
- [-25]        0       -25 => -5 => 0
- 12% + 3.4    6       Rounded from 5.8
- 14% + 3.4    6       Rounded from 6.2
+ 100% + 5     25         This will never match
+ 10% - 5      -3         This will not match this array
+ [10% - 5]    0          -3 => 0
+ [6 - 10]     -4         This will never match
+ -25          -5         This will not match this array
+ [-25]        0          -25 => -5 => 0
+ 12% + 3.4    6          Rounded from 5.8
+ 14% + 3.4    6          Rounded from 6.2
 
-Positive numbers - use an offset at that location
-percentage - use an offset of length / 100 * $pct
-percentage with arithmetic - normal numeric evaluation
-negative numbers - if the string can be exactly interpreted as a negative
-number, it is taken as a negative offset from the full length. Otherwise, the
-negative value is taken as-is, and it will never match.
+Notice in particular that non-integers are rounded to the nearest integer and
+strings wrapped in square brackets are truncated to the minimum or maximum offset
+if the evaluation of the expression for the specific set of data falls outside
+the range of valid offsets.
 
 =cut
+
+sub Scrooge::re_zwa_location {
+	return Scrooge::ZWA->new(position => $_[0]) if @_ == 1;
+	return Scrooge::ZWA->new(position => [@_]) if @_ == 2;
+	croak("re_zwa_location expects either one or two arguments");
+}
 
 # Parses a location string and return an offset for a given piece of data.
 sub parse_location{
@@ -1444,59 +1497,71 @@ sub parse_location{
         return $location;
 }
 
+# Prepares the zero-width assertion; parses the location strings and constructs
+# an anonymous subroutine that can be called against the current left/right
+# position.
+sub prep_zwa {
+	my $self = shift;
+	
+	# Create a location assertion that always matches if no position was
+	# specified.
+	if (not exists $self->{position}) {
+		$self->{zwa_location_subref} = sub { 1 };
+		return 1;
+	}
+	
+	my $position = $self->{position};
+	
+	# Check if they specified an exact position
+	if (ref($position) eq ref('scalar')) {
+		my $match_offset = parse_location($self->{data}, $position);
+		
+		# Fail the prep if the position cannot match
+		return 0 if $match_offset < 0
+			or $match_offset > Scrooge::data_length($self->{data});
+		
+		# Set the match function:
+		$self->{zwa_location_subref} = sub {
+			return $_[0] == $match_offset;
+		};
+		return 1;
+	}
+	# Check if they specified a start and finish position
+	if (ref($position) eq ref([])) {
+		my ($left_string, $right_string) = @$position;
+		
+		# Parse the left and right offsets
+		my $left_offset = parse_location($self->{data}, $left_string);
+		my $right_offset = parse_location($self->{data}, $right_string);
+		
+		# If the left offset is to the right of the right offset, it can never
+		# match so return a value of zero for the prep
+		return 0 if $left_offset > $right_offset;
+		
+		# Otherwise, set up the location match function
+		$self->{zwa_location_subref} = sub {
+			return $left_offset <= $_[0] and $_[0] <= $right_offset;
+		};
+		return 1;
+	}
+	
+	# They didn't specify anything, so match anywhere
+	$self->{zwa_location_subref} = sub { 1 };
+	return 1;
+}
+
+sub _prep {
+	return prep_zwa($_[0]);
+}
+
+sub _apply {
+	my ($self, $left, $right) = @_;
+	return '0 but true' if $self->{zwa_location_subref}->($left);
+	return 0;
+}
+
 sub min_size { 0 }
 sub max_size { 0 }
-
-# Matches beginning of the data
-package Scrooge::ZWA::Begin;
-our @ISA = ('Scrooge::ZWA');
-use strict;
-use warnings;
-use Carp;
-
-sub Scrooge::re_anchor_begin {
-	croak("re_anchor_begin takes zero or one argument") if @_ > 1;
-	
-	return Scrooge::ZWA::Begin->new(name => $_[0]) if @_ > 0;
-	return Scrooge::ZWA::Begin->new;
-}
-
-sub _apply {
-	my ($self, $left, $right) = @_;
-	unless ($right < $left) {
-		my $name = $self->get_bracketed_name_string;
-		croak("Internal error in calling re_anchor_begin pattern$name: $right is not "
-			. "less that $left");
-	}
-	
-	return '0 but true' if $left == 0;
-	return 0;
-}
-
-package Scrooge::ZWA::End;
-our @ISA = ('Scrooge::ZWA');
-use strict;
-use warnings;
-use Carp;
-
-sub Scrooge::re_anchor_end {
-	croak("re_anchor_end takes zero or one argument") if @_ > 1;
-	
-	return Scrooge::ZWA::End->new(name => $_[0]) if @_ > 0;
-	return Scrooge::ZWA::End->new;
-}
-
-sub _apply {
-	my ($self, $left, $right) = @_;
-	unless ($right < $left) {
-		my $name = $self->get_bracketed_name_string;
-		croak("Internal error in calling re_anchor_end pattern$name: $right is not "
-			. "less that $left");
-	}
-	
-	return '0 but true' if $left == Scrooge::data_length($self->{data});
-	return 0;
-}
 
 package Scrooge::ZWA::Sub;
 our @ISA = ('Scrooge::ZWA');
@@ -1504,22 +1569,23 @@ use strict;
 use warnings;
 use Carp;
 
-sub Scrooge::re_zwa {
-	# If two arguments, assume the first is a name and the second is a
-	# subroutine reference:
-	croak("re_zwa takes one or two arguments: re_zwa([name], subref)")
-		if @_ == 0 or @_ > 2;
-	# Pull off the name if it's supplied:
-	my $name = shift if @_ == 2;
-	# Get and check the subref:
-	my $subref = shift;
-	croak("re_zwa requires a subroutine reference")
+sub Scrooge::re_zwa_sub {
+	# This expects a subroutine as the last argument and key/value pairs
+	# otherwise:
+	croak("re_zwa_sub expects one argument and up to two key/value pairs:\n"
+		. "re_zwa_sub ([name => 'name'], [position => 'position'], subref)")
+		if @_ % 2 == 0;
+	
+	# Pop the subref off the end and unpack the args
+	my $subref = pop @_;
+	my %args = @_;
+	
+	# Verify the subref
+	croak("re_zwa_sub requires a subroutine reference as the last argument")
 		unless ref($subref) eq ref(sub{});
 	
-	# Return the constructed zero-width assertion:
-	my $self = Scrooge::ZeroWidthAssertion->new(subref => $subref
-		, defined $name ? (name => $name) : ());
-	
+	# Create and return the zwa:
+	return Scrooge::ZWA->new(subref => $subref, %args);
 }
 
 sub _apply {
@@ -1529,6 +1595,10 @@ sub _apply {
 		croak("Internal error in calling re_zwa pattern$name: $right is not "
 			. "less that $left");
 	}
+	
+	# Make sure the position matches the specification (and if they didn't
+	# indicate a position, it will always match)
+	return 0 unless $self->{zwa_location_subref}->($left);
 	
 	# Evaluate their subroutine:
 	my ($consumed, %details)

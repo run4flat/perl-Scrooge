@@ -1,6 +1,6 @@
 use strict;
 use warnings;
-use Test::More tests => 41;
+use Test::More tests => 39;
 use Scrooge;
 
 # Get an anonymous array with our data for testing
@@ -30,18 +30,16 @@ do_check('[0 - 6]', 0, 'truncate(0 - 6) => 0');
 do_check('[25]', 20, 'truncate(25) => N');
 
 ########################
-# Constructor tests: 6 #
+# Constructor tests: 4 #
 ########################
 
-my $begin = eval{re_anchor_begin('begin anchor')};
+my $begin = eval{re_anchor_begin};
 is($@, '', 'Begin anchor constructor does not croak');
-isa_ok($begin, 'Scrooge::ZWA::Begin');
-is($begin->{name}, 'begin anchor', 'Constructor correctly interprets name');
+isa_ok($begin, 'Scrooge::ZWA');
 
-my $end = eval{re_anchor_end('end anchor')};
+my $end = eval{re_anchor_end};
 is($@, '', 'End anchor constructor does not croak');
-isa_ok($end, 'Scrooge::ZWA::End');
-is($end->{name}, 'end anchor', 'Constructor correctly interprets name');
+isa_ok($end, 'Scrooge::ZWA');
 
 ########################
 # Basic Match tests: 6 #
