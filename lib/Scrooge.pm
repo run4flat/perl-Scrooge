@@ -2345,7 +2345,7 @@ sub Scrooge::re_named_and {
 					);
 }
 
-package Scrooge::Subdata:Or;
+package Scrooge::Subdata::Or;
 use strict;
 use warnings;
 
@@ -2360,15 +2360,18 @@ sub _init {
 }
 
 sub Scrooge::re_named_or {
+	# Check to see if the user supplied a name for the pattern.
 	my @name_args;
 	@name_args = (name => shift @_) if @_ % 2 == 1;
 	
-	my %subsets = @_;
+	my (@subset_names, @patterns);
 	
-	return Scrooge::Subdata::Or->	new(		@name_args,
-					patterns     => [values %subsets],
-					subset_names => [keys %subsets]
-					);
+	while (@_){
+		push @subset_names, shift @_;
+		push @patterns, shift @_;
+	}
+	
+	return Scrooge::Subdata::Or->new(@name_args, subset_names => \@subset_names, patterns => \@patterns);
 }
 
 # THE magic value that indicates this module compiled correctly:
