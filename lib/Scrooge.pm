@@ -2026,7 +2026,8 @@ sub _apply {
 	}
 	
 	# If we've reached here, we have a positive match!
-	return $consumed_length;
+	return $consumed_length if $consumed_length > 0;
+	return '0 but true';
 }
 
 # Called by the _prep method; stores minimum and maximum match sizes in an
