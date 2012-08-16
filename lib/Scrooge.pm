@@ -124,6 +124,8 @@ patterns: atom patterns and grouping patterns. Atom patterns specify a
 characteristic that you want to match in your series; grouping patterns give you
 the means to assemble collections of atoms into complex groups.
 
+=head2 Custom Patterns
+
 As a simple example, let's examine a hypothetical situation. You are dealt a
 series of cards and you want to examine the actual order of the deal:
 
@@ -178,14 +180,148 @@ Equipped with our atom, we can now apply it to our hand:
    $hand[0]->suit, " and the first $N_matched cards ",
    " in our hand have that suit\n";
 
+=head2 Sequences and Anchors
+
 But, what if we wanted to know number of cards of the same suit at the end of
-the hand? To do that, we need to supply some sort of anchor.
+the hand? To do that, we need to supply some sort of anchor that matches based
+on its location. These are common in Perl regular expressions: the regex 
+C</^\s+start/> matches the beginning ofthe string (C<^>) followed by one or more
+whitespace characters (C<\s+>) followed by the text "start". However,
+this introduces two new pieces for Scrooge. First, how do we create a pattern
+that matches one pattern B<followed by> another pattern (called a sequence
+pattern), and second, how do we match the "end" position?
 
-XXX working here
+It turns out that a sequence is a grouping pattern. In contrast to atom
+patterns, grouping patterns take a group of atoms and tries to match them
+in some special way. The matching behavior of the basic grouping patterns is:
 
-Atoms describe characteristics of your data, which means that they are specific
-to the container and data that you use. In contrast, groupings simply operate
-with other patterns, and work across data containers.
+=over
+
+=item C<re_or($pat1, $pat2, $pat3, ...)>
+
+First tries to match C<$pat1> at the current location. If that fails, it tries
+to match C<$pat2>, then C<$pat3>, et cetera. The pattern stops as soon as it
+finds a successful match and fails if it does not match any pattern.
+
+=item C<re_and($pat1, $pat2, $pat3, ...)>
+
+First tries to match C<$pat1> at the current location. If C<$pat1> matches, it
+then tries to match C<$pat2> at the current location. If C<$pat2> matches B<and>
+matches the same length as C<$pat1>, it then tries C<$pat3> at the current
+location. If all three patterns match the same length, it continues to the next
+pattern, et cetera.
+
+=item C<re_seq($pat1, $pat2, $pat3, ...)>
+
+First tries to match C<$pat1> starting at the current location. If that
+succeeds, it tries to match C<$pat2> where C<$pat1> finished matching. If
+C<$pat2> succeeds, it tries to match C<$pat3> where C<$pat2> finished matching.
+Et cetera.
+
+=back
+
+Before I give an example using C<re_seq>, I first want to discuss how to create
+a pattern that matches at the end of the sequence. Scrooge provides a couple of
+specific anchors and a means for creating zero-width pattersn that match at any
+location you want. The specific anchors are C<re_anchor_begin> and
+C<re_anchor_end>; you can match at an arbitrary location using
+C<re_zwa_location>, which is discussed in the L</PATTERNS> section below.
+
+Using the ending anchor and the sequence grouping pattern, we can recycle the
+pattern that we have already created and build a new pattern that identifies the
+number of cards that have the same suit at the end of the hand:
+
+ my $ending_suit_re = re_seq($same_suit_re, re_anchor_end);
+ 
+ my $N_matched = $ending_suit_re->apply(\@hand);
+ print "The suit of the last card in our hand is",
+   $hand[$#hand]->suit, " and the last $N_matched cards ",
+   " in our hand have that suit\n";
+
+At this point we should take a step back and discuss why writing Scrooge
+patterns is better than simply writing for loops to accomplish the same task.
+We have managed to specify a pattern on an array of Card objects, but you could
+easily use this as a template to write more paterns that match other sequences
+of Cards. However, because the patterns are self-contained, you can test and
+verify that each pattern behaves the way it is supposed to behave, independently
+of the other patterns. You can then put them together in whatever combination of
+ways you like, relying on the well-tested and documented Scrooge engine to
+properly execute all the pieces. Compare that sort of behavior with hand
+written for loops: as the complexity of the match increases, for loops become
+harder and harder to test, verify, and maintain. In other words, Scrooge
+provides a simple means for writing patterns and a scalable means to combine
+them into complex patterns.
+
+=head2 Custom Assertions
+
+You've already seen how to write a custom pattern. Let's now consider the case
+of creating a customized zero-width assertion. Besides anchors, Perl regexes
+have zero-width assertions such as C<\b> for a word boundary. In Scrooge, you
+can create a zero-width assertion using C<re_zwa_sub>. For example, here's an
+assertion that matches a change in suit:
+
+ my $changed_suit_zwa = re_zwa_sub ( sub {
+   my ($data, $left_offset) = @_;
+   
+   # A change means that the card to the left of
+   # $left_offset has a different suit from the
+   # card at $left_offset. It's not a change if
+   # we're to the left of the first card or to the
+   # right of the last card:
+   
+   return 0 if $left_offset == 0
+     or $left_offset == Scrooge::data_length($data);
+   
+   return '0 but true'
+     if $data->[$left_offset]->suit != $data->[$left_offset-1]->suit;
+   
+   return 0;
+ });
+
+We can make this even simpler if we specify that this zero-width assertion is
+not allowed to match at the ends by specifying the C<location> key:
+
+ my $changed_suit_zwa = re_zwa_sub (
+   location => [1, -1],
+   sub {
+     my ($data, $left_offset) = @_;
+     return '0 but true'
+       if $data->[$left_offset]->suit != $data->[$left_offset-1]->suit;
+     
+     return 0;
+   }
+ );
+ 
+ # And another to make sure adjacent cards have the same suit
+ my $same_suit_zwa = re_zwa_sub (
+   location => [1, -1],
+   sub {
+   	 my ($data, $left_offset) = @_;
+   	 return '0 but true'
+   	   if $data->[$left_offset]->suit == $data->[$left_offset-1]->suit;
+   	 
+   	 return 0;
+   }
+ );
+
+We can use the changed-suit assertion to see if all of the cards in a hand are
+of the same suit:
+
+ if ($changed_suit_zwa->apply(\@hand)) {
+   print "I see you have multiple suits in your hand.\n";
+ }
+ else {
+   print "Wow, all the cards in your hand have suit ",
+     $hand[0]->suit, "!\n";
+ }
+
+XXX consider creating re_zwa_not, which negates the match of a pattern. Note
+that this must handle the capturing of the sub-regex and discard a capture upon
+a successful match (because it will ultimately be a failed match).
+
+=head2 Capturing
+
+XXX
 
 =head1 Examples
 
