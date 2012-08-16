@@ -1,6 +1,7 @@
 package Scrooge::PDL;
 
 use Exporter 'import';
+our @EXPORT = qw(re_intersect re_local_extremum re_local_min re_local_max);
 use strict;
 use warnings;
 our $VERSION = 0.01;
@@ -211,7 +212,6 @@ sub parse_range_strings {
   return $to_return[0];
 }
 
-our @EXPORT = qw(re_intersect re_local_extremum re_local_min re_local_max);
 
 
 package Scrooge::PDL::Intersect;

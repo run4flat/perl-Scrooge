@@ -14,7 +14,8 @@ use PDL;
 our @ISA = qw(Exporter);
 
 our @EXPORT = qw(re_or re_and re_seq re_sub re_any
-	re_zwa re_anchor_begin re_anchor_end);
+		 re_zwa re_anchor_begin re_anchor_end 
+		 re_named_seq re_named_and re_named_or);
 
 =head1 NAME
 
@@ -2321,6 +2322,141 @@ sub Scrooge::re_seq {
 	# Otherwise assume that the first argument is a name:
 	my $name = shift;
 	return Scrooge::Sequence->new(name => $name, patterns => \@_)
+}
+
+# Base class for situations involving more than one data set.
+package Scrooge::Role::Subdata;
+use strict;
+use warnings;
+use Carp;
+
+# Should only need to override _prep_all
+sub prep_all {
+	my ($self, $data) = @_;
+	
+	# Call the prep function for each of them, keeping track of all those
+	# that succeed. Notice that I capture errors and continue because every
+	# single pattern needs to run its prep method in order for it to be 
+	# safe for it to call its cleanup method.
+	my @succeeded;
+	my @patterns = @{ $self->{ patterns }};
+	my @subset_names = @{ $self->{ subset_names }};
+	my @errors;
+	for my $i (0..$#patterns) {
+		if( not exists $data-> { $subset_names[$i] }) {
+			push @errors, "Subset name $subset_names[$i] not found";
+		}
+		my $successful_prep = eval { $patterns[$i]->prep($data-> { $subset_names[$i] }) };
+		push @errors, $@ if $@ ne '';
+		if ($successful_prep) {
+			# Make sure the min size is not too large:
+			push (@succeeded, $patterns[$i])
+				unless $patterns[$i]->min_size > Scrooge::data_length($data);
+		}
+	}
+	
+	# Rethrow if we caught any exceptions:
+	if (@errors == 1) {
+		die(@errors);
+	}
+	elsif (@errors > 1) {
+		die(join(('='x20) . "\n", 'Multiple Errors', @errors));
+	}
+	
+	return @succeeded;
+}
+
+sub _verify{
+	my $self = shift;
+	# Make sure user supplied subset_names
+	croak("Subset patterns must supply subset_names")
+		unless defined $self-> { subset_names };
+	# number of subset_names == number of patterns
+	croak("Number of subset names must equal the number of patterns")
+		unless @{ $self-> { subset_names }} == @{ $self-> { patterns }};
+}
+
+package Scrooge::Subdata::Sequence;
+use strict;
+use warnings;
+
+our @ISA = qw(Scrooge::Sequence);
+
+*prep_all = \&Scrooge::Role::Subdata::prep_all;
+
+sub _init {
+	my $self = shift;
+	$self->SUPER::_init;
+	Scrooge::Role::Subdata::_verify($self);
+}
+
+sub Scrooge::re_named_seq {
+	# If @_ % 2 == 1, a name was supplied, if @_ % 2 == 0, a name wasn't supplied
+	my @name_args;
+	@name_args = (name => shift @_) if @_ % 2 == 1;
+	
+	# Create a hash to store subset_names and patterns
+	my %subsets = @_;
+	
+	return Scrooge::Subdata::Sequence->new(		   @name_args, 
+					   patterns     => [values %subsets] , 
+					   subset_names => [keys %subsets]
+				);
+}
+
+package Scrooge::Subdata::And;
+use strict;
+use warnings;
+
+our @ISA = qw(Scrooge::And);
+
+*prep_all = \&Scrooge::Role::Subdata::prep_all;
+
+sub _init {
+	my $self = shift;
+	$self->SUPER::_init;
+	Scrooge::Role::Subdata::_verify($self);
+}
+
+sub Scrooge::re_named_and {
+	my @name_args;
+	@name_args = (name => shift @_) if @_ % 2 == 1;
+	
+	my %subsets = @_;
+	
+	return Scrooge::Subdata::And->	new(		@name_args, 
+					patterns     => [values %subsets],
+					subset_names => [keys %subsets]
+					);
+}
+
+package Scrooge::Subdata::Or;
+use strict;
+use warnings;
+
+our @ISA = qw(Scrooge::Or);
+
+*prep_all = \&Scrooge::Role::Subdata::prep_all;
+
+sub _init {
+	my $self = shift;
+	$self->SUPER::_init;
+	Scrooge::Role::Subdata::_verify($self);
+}
+
+sub Scrooge::re_named_or {
+	# Check to see if the user supplied a name for the pattern.
+	my @name_args;
+	@name_args = (name => shift @_) if @_ % 2 == 1;
+	
+	my (@subset_names, @patterns);
+	
+	while (@_){
+		push @subset_names, shift @_;
+		push @patterns, shift @_;
+	}
+	
+	return Scrooge::Subdata::Or->new(@name_args, subset_names => \@subset_names, patterns => \@patterns);
 }
 
 # THE magic value that indicates this module compiled correctly:
