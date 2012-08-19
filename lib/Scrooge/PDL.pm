@@ -33,7 +33,7 @@ This documentation discusses version 0.01 of Scrooge::PDL
 
 =head1 DESCRIPTION 
 
-PDL::Scrooge provides a handful of patterns to match PDL: C<re_range>,
+PDL::Scrooge provides a handful of patterns to match PDL data: C<re_range>,
 C<re_local_max>, C<re_local_min>, and C<re_local_extremum>. C<re_range>
 matches data in a specified range of relative and/or absolute values. The
 other three match any local extrema: max, min, or both, respectively.
@@ -120,10 +120,13 @@ for the C<include> key with values C<first>, C<last>, or C<ends>:
  re_local_min(include => 'first');
  re_local_min(include => 'ends');
 
-  use Scrooge::PDL;
-  my $data = dl(1,2,3,2,1;)
-  my $pattern = re_local_max;
-  my ($matched, $offset) = $pattern->apply($data);
+Here's a more complete example:
+
+ use Scrooge::PDL;
+ my $data = dl(1,2,3,2,1;)
+ my $pattern = re_local_max;
+ my ($matched, $offset) = $pattern->apply($data);
+ #      1         2
 
 
 =cut
@@ -156,7 +159,7 @@ they have a few special cases that are meant to reduce your typing. For
 example this pattern matches within 2 of the average:
 
  re_range(above => 'avg - 1',
-              below => 'avg + 1');
+          below => 'avg + 1');
 
 and this pattern matches data that is between 2% and 50% of the data's total
 range (max - min):
@@ -212,11 +215,6 @@ is shorter and easier to read than this:
 So as a rule, if it's the first element, it means B<standard deviations from
 the mean>, but otherwise refers simply to standard deviations.
 
-At the moment, the parsing of the floating point number for the special case
-does not allow the use of an exponent in the numeric term, so you cannot say
-C<1e-4@>. You can still use the exponent, but you must explicitly mention
-the average: C<avg + 1e-4@>.
-
 =item <number>%
 
 A number followed by the C<%> symbol is considered a per-cent of the data's
@@ -235,16 +233,11 @@ Note that negative percentages as the first entries are B<not> special-cased
 to be C<max - percentage>. That is not nearly as sensible to me as negative
 indices, so it's not special-cased.
 
-At the moment, the parsing of the floating point number for the special case
-does not allow the use of an exponent in the numeric term, so you cannot say
-C<1e-4%>. You can still use the exponent, but you must explicitly mention
-the minimum: C<min + 1e-4%>.
-
 =back
 
-Note that C<50%> does not necessarily equate to C<avg>. This is because
-C<50%> = C<min + (max - min) / 2>. Unless your data follows a linear trend
-exactly, this will not be the same as the average of the data.
+Although 0% == min and 100% == max, 50% does not necessarily equate to
+C<avg>. This is because C<50%> = C<min + (max - min) / 2>. Unless your data
+is exactly linear, this will not be the same as the average of the data.
 
 =head2 parse_range_strings
 
@@ -576,4 +569,5 @@ __END__
 
 =head1 AUTHOR
 
-Jeff Giegold C<j.giegold@gmail.com>
+Jeff Giegold C<j.giegold@gmail.com>,
+David Mertens C<dcmertens.perl@gmail.com>
