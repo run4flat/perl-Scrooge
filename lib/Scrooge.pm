@@ -100,8 +100,8 @@ followed by a local maximum, or a negative number followed by a local minimum.
 
  use Scrooge::PDL;
  my $pattern = re_or(
-     re_seq( re_greater_than(0), re_local_max ),
-     re_seq( re_less_than(0), re_local_min )
+     re_seq( re_range(above => 0), re_local_max ),
+     re_seq( re_range(below => 0), re_local_min )
  );
 
 You would then apply that pattern to some data like so:

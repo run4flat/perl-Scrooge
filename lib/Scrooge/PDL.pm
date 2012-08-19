@@ -1,78 +1,173 @@
 package Scrooge::PDL;
 
 use Exporter 'import';
-our @EXPORT = qw(re_intersect re_local_extremum re_local_min re_local_max);
+our @EXPORT = qw(re_range re_local_extremum re_local_min re_local_max);
 use strict;
 use warnings;
 use Carp;
 our $VERSION = 0.01;
 
+=head1 NAME
+
+Scrooge::PDL - Basic PDL patterns for Scrooge
+
 =head1 VERSION
 
-This documentation discusses version 0.01 of PDL.pm
+This documentation discusses version 0.01 of Scrooge::PDL
 
 =head1 SYNOPSIS
 
-
+ # match numbers between 5 and 10
+ my $five_and_ten = re_range(below => 10, above => 5);
+ 
+ # match 3-10 numbers whose values are between 10% of the
+ # data range from the data's minimum, and two standard
+ # deviations above the mean
+ my $crazy_range = re_range(
+     below => '2@',
+     above => '10%',
+     quantifiers => [3,10],
+ );
+ 
+ # working here - add examples from local extrema
 
 =head1 DESCRIPTION 
 
-This module provides the user with patterns to match data and the classes for each pattern.
-The user is currently supplied with 4 basic patterns to call, their names being re_intersect,
-re_local_max, re_local_min, and re_local_extremum. re_intersect allows the user to match data 
-outside of a range of their choice, and the other three allow the user to find any local extrema
-in a set of data. The re_local_extremum exists so the user can match the first of either local
-extrema. When a pattern is called, it returns an object of the corresponding class that the user
-can then use to match data sets. 
+PDL::Scrooge provides a handful of patterns to match PDL: C<re_range>,
+C<re_local_max>, C<re_local_min>, and C<re_local_extremum>. C<re_range>
+matches data in a specified range of relative and/or absolute values. The
+other three match any local extrema: max, min, or both, respectively.
 
-=head1 PATTERNS AND CLASSES
+=head1 PATTERNS
 
-=head2 re_intersect
+=head2 re_range
 
-This is the short-name constructor for an intersection regex. It takes its
+This creates a pattern that matches a numeric range. It takes its
 arguments as key/value pairs, where the keys are among the following:
 
 =over
 
 =item name
 
-The regex's name, if you wish to later retrieve the matched indices. Default:
+The pattern's name, if you wish to later retrieve the matched indices. Default:
 no name (and thus no storage).
 
 =item below, above
 
-The upper and lower bounds (respectively) for your regex. For example, if you
-want to match a number between 2 and 5, you would say C<above => 2, below => 5>.
+The upper and lower bounds (respectively) for your pattern. For example, if you
+want to match a number between 2 and 5, you would say C<< above => 2,
+below => 5 >>. To match any value below the data's average, you would say
+C<< below => 'avg' >>.
 
 =item quantifiers
 
-The regexes quantifiers, an anonymous two-element array with the min and the
+The pattern's quantifiers, an anonymous two-element array with the min and the
 max quantifiers. (See L<Scrooge> for a discussion about quantifiers.)
 Default: C<[1, 1]>, i.e. matches one and only one element.
 
 =back
 
-The C<name> and C<quantifiers> keys are not new to C<re_intersect>, but C<above>
-and C<below> are. These are the expressions that define the region of values to
-match. Both C<above> and C<below> take either pure numbers:
+For example:
 
- my $two_to_five = re_intersect(above => 2, below => 5);
+ use Scrooge::PDL;
+ my $data = pdl(1,2,3,4,5);
+ my $pattern = re_range(above => 0, below => 4);
+ my ($matched, $offset) = $pattern->appy($data);
 
-or string expressions with a special syntax that I will explain shortly:
+The C<name> and C<quantifiers> keys are basic Scrooge quantified properties,
+but C<above> and C<below> are new. These are the numbers or, more generally,
+L</Range Strings> that define the region of values to match. Both C<above>
+and C<below> are parsed according to C<Scrooge::PDL::parse_range_strings>,
+which is documented below under L</Range Strings>.
 
- my $three_to_five_stdev
-   = re_intersect(above => 'avg + 3@',
-                  below => 'avg + 5@');
+This pattern constructor expects its arguments as key/value pairs, so it will
+croak if you pass an odd number of arguments. If you do not specify values
+for C<above> or C<below>, -inf and +inf are used, respectively, which means
+they will match any values except C<BAD> values and C<nan>.
 
-The strings for C<above> and C<below> can involve arithmetic with numeric values
-and a few specially parsed symbols and strings. For example this regex matches
-within 2 of the average:
+=cut
 
- re_intersect(above => 'avg - 1',
+sub re_range {
+  
+  croak("re_range takes key-value pairs. You gave an odd number of arguments")
+    if @_ % 2 == 1;
+
+  my %args = @_;
+  
+  # XXX add check for valid keys
+  
+  # Defaults to matching 1 element
+  $args{ quantifiers } = [1,1]
+    unless exists $args{ quantifiers };
+    
+  return Scrooge::PDL::Range->new(%args);
+}
+
+=head2 re_local_min, re_local_max, re_local_extremum
+
+These three functions create patterns that match a single local minimum, a
+single local maximum, or a single point that is either a local minimum or a
+local maximum. The resulting patterns match only a single element and do not
+perform any smoothing: they determine which point is a local extremum by
+comparing the the point in question to the values on its left and right. You
+might want to consider smoothing your data using
+L<conv1d|PDL::Primitive/conv1d> if it is exceedingly noisy.
+
+The default behavior does not match the end-points of your data. You can
+indicate that you want to match either or both ends by specifying a string
+for the C<include> key with values C<first>, C<last>, or C<ends>:
+
+ re_local_min(include => 'first');
+ re_local_min(include => 'ends');
+
+  use Scrooge::PDL;
+  my $data = dl(1,2,3,2,1;)
+  my $pattern = re_local_max;
+  my ($matched, $offset) = $pattern->apply($data);
+
+
+=cut
+
+sub re_local_extremum {
+  croak('re_local_extremum expects zero or two arguments')
+    if @_ != 0 and @_ != 2;
+  return Scrooge::PDL::Local_Extremum->new(type => 'both', @_);
+}
+
+sub re_local_min () {
+  croak('re_local_extremum expects zero or two arguments')
+    if @_ != 0 and @_ != 2;
+  return Scrooge::PDL::Local_Extremum->new(type => 'min', @_);
+}
+
+sub re_local_max () {
+  croak('re_local_extremum expects zero or two arguments')
+    if @_ != 0 and @_ != 2;
+  return Scrooge::PDL::Local_Extremum->new(type => 'max', @_);
+  
+}
+
+=head1 Range Strings
+
+Range strings are meant to give you a flexible yet concise means to
+specify numeric ranges. They include notation for data minima and maxima,
+standard deviations, range percentages, raw numbers, and arithmetic, and
+they have a few special cases that are meant to reduce your typing. For
+example this pattern matches within 2 of the average:
+
+ re_range(above => 'avg - 1',
               below => 'avg + 1');
- 
-and this regex matches data that is between 2% and 50% of the data's total
+
+and this pattern matches data that is between 2% and 50% of the data's total
 range (max - min):
+
+ # long-winded
+ re_range(above => 'min + 2%',
+          below => 'min + 50%');
+ 
+ # shorter
+ re_range(above => '2%',
+          below => '50%');
 
 The symbols allowed in these sorts of expressions are as follows:
 
@@ -80,56 +175,171 @@ The symbols allowed in these sorts of expressions are as follows:
 
 =item a number
 
-Any number, taken alone, is simply the value of that number.
+Any number, taken alone or as part of arithmetic, is simply the value of
+that number. For example:
 
-Example:
-
+ above => 2,
  above => '2 + 5'
 
 =item avg
 
-The string C<avg> is replaced with the data's average 
+The string C<avg> is replaced with the data's average. Note this is not the
+same as the value for 50%.
+
+=item min, max
+
+The strings C<min> and C<max> are replaced with the data set's min and max
+values, respectively.
+
+=item <number>@
+
+A number followed by the C<@> symbol is considered a multiple of standard
+deviations. Two standard deviations below the maximum value would be
+C<max - 2@>. 
+
+As a special case, if a standard deviation is expressed as the first element
+of a range string, it is added to the data's mean. As such, C<2@> is the
+same as C<avg + 2@>, but is B<different> from C<2@ + avg>. Although this can
+lead to a confusing lack of symmetry, it generally leads to more concise
+expressions. For example, this:
+
+ above => '-1@', below => '1@'
+
+is shorter and easier to read than this:
+
+ above => 'avg - 1@', below => 'avg + 1@'
+
+So as a rule, if it's the first element, it means B<standard deviations from
+the mean>, but otherwise refers simply to standard deviations.
+
+At the moment, the parsing of the floating point number for the special case
+does not allow the use of an exponent in the numeric term, so you cannot say
+C<1e-4@>. You can still use the exponent, but you must explicitly mention
+the average: C<avg + 1e-4@>.
+
+=item <number>%
+
+A number followed by the C<%> symbol is considered a per-cent of the data's
+width. If the data's min is 50 and the max is 150, 10% would translate to
+10.
+
+As with the standard deviation, there is a special case if the percentage is
+the first element of a range string. In that case, the data's minimum is
+added to the percentage. In this way, C<10% + 3> is the same as C<min + 10%
++ 3>, except that it's more concise. This also means that C<max - 10%> is
+the same as C<90%>. Such special casing suffers from the dilema that, for
+example, C<10% + min> is not the same as C<min + 10%>, but I expect that the
+special cased behavior will prove more helpful than problematic. 
+
+Note that negative percentages as the first entries are B<not> special-cased
+to be C<max - percentage>. That is not nearly as sensible to me as negative
+indices, so it's not special-cased.
+
+At the moment, the parsing of the floating point number for the special case
+does not allow the use of an exponent in the numeric term, so you cannot say
+C<1e-4%>. You can still use the exponent, but you must explicitly mention
+the minimum: C<min + 1e-4%>.
 
 =back
 
- Symbol      Meaning
- ---------------------------
- M           the data's mean
- <number>@   multiples of the data's standard deviation
- <number>%   
+Note that C<50%> does not necessarily equate to C<avg>. This is because
+C<50%> = C<min + (max - min) / 2>. Unless your data follows a linear trend
+exactly, this will not be the same as the average of the data.
 
-At the moment, the expressions for C<above> and C<below> are gently massaged can involve any arithm
+=head2 parse_range_strings
 
+C<Scrooge::PDL::parse_range_strings> is the function that implements the
+Range String parsing. It takes the data of interest as its first argument,
+then as many range strings as you wish to supply. The return values will be
+the evaluations of the range strings. At the moment, the evaluations are
+implemented with actual string evals, which tends to make people uneasy due
+to security reasons. So, if security is a big deal for you (i.e. you allow
+unknown users from the internet supply arbitrary ranges), don't use this
+module.
 
 =cut
 
-sub re_intersect {
-  
-  croak("re_intersect takes key-value pairs. You gave an odd number of arguments")
-    if @_ % 2 == 1;
+###########################################################
+# Name       : parse_range_strings
+# Usage      : parse_range_strings($data, $above, $below, ...)
+# Purpose    : parse range strings for a given piddle
+# Returns    : numeric values for the given range strings
+# Parameters : a piddle, then a collection of range strings
+# Throws     : if the range string is not eval-able after munging
+# Notes      : lots of special casing. See the docs for details
 
-  my %args = @_;
+my $looks_like_float = qr/[-+]?[0-9]*\.?[0-9]+([eE][-+]?[0-9]+)?/;
 
-  # Check to see if 'above' and 'below' exist
-  croak("re_intersect expects an 'above' key.")
-    unless exists $args{ above };
-    
-  croak("re_intersect expects a 'below' key.")
-    unless exists $args{ below };
-    
-  # XXX add check for valid keys
+sub parse_range_strings {
+  my $data = shift;
   
-  # Defaults to matching 1 element
-  $args{ quantifiers } = [1,1]
-    unless exists $args{ quantifiers };
+  # Ensure we have a good input
+  croak('parse_range_strings expects first arg to be a piddle')
+    unless eval {$data->isa('PDL')};
+  
+  my ($mean, $st_dev) = $data->stats;
+  my ($min, $max) = $data->minmax;
+  my $pct = ($max - $min) / 100;
+  my @to_return;
+  
+  # Parse each string in turn
+  while (defined (my $range_string = shift @_)) {
     
-  return Scrooge::PDL::Intersect->new(%args);
+    # Handle infinity parsing up-front
+    if ($range_string =~ /^(-?)inf$/) {
+      push @to_return, 1 * $range_string;
+      next;
+    }
+    
+    # make a copy so we can modify it yet croak the original if there were
+    # errors
+    my $original_string = $range_string;
+    
+    #       Special case handling       #
+    # Standard deviations at the start of the string
+    $range_string =~ s/^\s*($looks_like_float)\@/\$mean + $1 * \$st_dev/;
+    # Percentages at the start of the string
+    $range_string =~ s/^\s*($looks_like_float)\%/$min + $1 * \$pct/;
+    
+    # Replace ... 5@ ... with ... 5 * $st_dev ...
+    $range_string =~ s/(\d)\s*\@/$1 * \$st_dev/g;
+    
+    # Replace ... 5% ... with ... 5 * $pct ...  
+    $range_string =~ s/(\d)\s*\%/$1 * \$pct/g;
+    
+    # Replace ... avg ... with ... $mean ...  
+    $range_string =~ s/avg/\$mean/g;
+    
+    # Replace min and max with $min and $max
+    $range_string =~ s/min/\$min/g;
+    $range_string =~ s/max/\$max/g;
+    
+    # Evaluate the result and store it, croaking if we ran into trouble
+    push @to_return, eval($range_string);
+    croak("parse_range_strings had trouble with range_string $original_string")
+      if $@ ne '';
+  }
+  
+  # return all strings in list context
+  return @to_return if wantarray;
+  
+  # return only the first result in scalar context
+  return $to_return[0];
 }
 
-=head2 Scrooge::PDL::Intersect
+=head1 CLASSES
 
-This is the classes called by the constructor re_intersect. This class overrides
-the _prep and _apply functions of the parent class Scrooge::Quantified.
+The short-name constructors provided above actually create objects of
+various classes, as described below. You should only read this section if you
+are interested in the details necessary for deriving a class from one of
+these classes. If you just wish to use the patterns, the documentation above
+should be sufficient.
+
+=head2 Scrooge::PDL::Range
+
+The class underlying L</re_range> is C<Scrooge::PDL::Range>. This class
+provides its own C<_prep> and C<_apply> methods, but otherwise inherets from
+C<Scrooge::Quantified>.
 
 =over
 
@@ -159,8 +369,8 @@ it a bridge between the user and the _prep method.
 Usage of _apply is quite simple. For example:
 
   my $data = pdl(1,2,3,4,5);
-  my $regex = eval{re_intersect(name => 'test', above => 0, below => 4)};
-  my ($matched, $offset) = $regex->apply($data);
+  my $pattern = eval{re_range(name => 'test', above => 0, below => 4)};
+  my ($matched, $offset) = $pattern->apply($data);
   
 This will return 1 for $matched, since there is ONE value outside the range, and 4 for $offset
 since it is the list index of the location the FIRST match occurred. 
@@ -173,15 +383,15 @@ a range of values that the subroutine finds. If the quantifiers are not defined 
 they default to 1. For example:
 
   $data = pdl(1,2,3,4,5,6,7);
-  $regex = eval{re_intersect(name => 'test', above => 0, below => 4)};
-  my ($matched, $offset) = $regex->apply($data);
+  $pattern = eval{re_range(name => 'test', above => 0, below => 4)};
+  my ($matched, $offset) = $pattern->apply($data);
   
 This will still return 1 for $matched and 4 for $offset since the quantifiers are not specified 
 in the constructor. However, the result is different for the following code:
 
   $data = pdl(1,2,3,4,5,6,7);
-  $regex = eval{re_intersect(name => 'test', above => 0, below => 4, quantifiers => [1,3])};
-  my ($matched, $offset) = $regex->apply($data);
+  $pattern = eval{re_range(name => 'test', above => 0, below => 4, quantifiers => [1,3])};
+  my ($matched, $offset) = $pattern->apply($data);
 
 Now, rather than $matched being 1, $matched is now 3 since the quantifiers signify the user is
 looking for a match that is a minimum of 1 point long and a maximum of 3 points long. The results
@@ -193,14 +403,23 @@ never attempt a match. It will return '0 but true' in the case of a zero-width-a
 are trivially true. It will return 0 and undef if there was no match, or the length of the match and
 the location of the first point that matches if there is a match. This class can only do one match at
 a time, so if multiple sections of the data match, the pattern will return the first one it finds. 
+
 =cut
 
-package Scrooge::PDL::Intersect;
+package Scrooge::PDL::Range;
 use Scrooge;
 use Carp;
 use PDL;
 
 our @ISA = qw(Scrooge::Quantified);
+
+sub _init {
+  my $self = shift;
+  $self->{above} = '-inf' unless defined $self->{above};
+  $self->{below} = 'inf' unless defined $self->{below};
+  
+  $self->SUPER::_init;
+}
 
 ###########################################################
 # Name       : _prep
@@ -220,8 +439,8 @@ sub _prep {
       $data, $self->{above}, $self->{below}
   );
   
-  # It could be the case that the intersection could be null if above is under below.
-  # We retrun false to signify to the Regex Engine that it never needs to evaluate this. 
+  # It could be the case that the range could be null if above is under below.
+  # We retrun false to signify to Scrooge that it never needs to evaluate this. 
   if ($above > $below){
     return '';
   }
@@ -243,8 +462,8 @@ sub _prep {
     return ($right - $left +1) 
         if all ( ($sub_piddle > $above) & ($sub_piddle < $below) );
     
-    # Returns the index of the first point outside the range, which is equal to the length
-    # of the match.
+    # Returns the index of the first point outside the range, which is equal
+    # to the length of the match.
     return which( ($sub_piddle < $above) | ($sub_piddle > $below))->at(0);     
     
   };
@@ -266,216 +485,94 @@ sub _apply {
   return $self->{subref}->(@_);
 }
 
-
-
-=head2 re_local_extremum, re_local_max, re_local_min
-
-=cut
-
-package Scrooge::PDL;
-
-sub re_local_extremum () {
-  return Scrooge::PDL::Local_Extremum->new(type => 'both');
-
-}
-
-sub re_local_min () {
-  
-  return Scrooge::PDL::Local_Extremum->new(type => 'min');
-  
-}
-
-sub re_local_max () {
-  
-  return Scrooge::PDL::Local_Extremum->new(type => 'max');
-  
-}
-
 =head2 Scrooge::PDL::Local_Extremum
+
+This is the class underlying C<re_local_min>, C<re_local_max>, and 
+C<re_local_extremum>. C<Scrooge::PDL::Local_Extremum> is itself derived from
+the Scrooge base class, not C<Scrooge::Quantified>, since it only matches a
+single element. As such, it overrides C<min_size> and C<max_size> to provide
+a fixed size of 1. It overrides C<_init> to verify that there is a value for
+the C<include> key (and that it's a valid value), the C<_prep> method to
+handle never-match situations (like if there is only one point and neither
+end-point is considered to be a local exremum) and ensure that the data is a
+piddle, and the C<_apply> method, obviously, to check if the current point
+of interest is indeed a local minimum or maximum.
 
 =cut
 
 package Scrooge::PDL::Local_Extremum;
-use strict;
-use warnings;
 use Scrooge;
 use Carp;
 use PDL;
 
 our @ISA = qw(Scrooge);
 
+my @allowed_includes = qw(first last ends neither);
+sub _init {
+  my $self = shift;
+  $self->{include} ||= 'neither';
+  croak('include key must be one of ' . join(', ', @allowed_includes)
+    . ' but you gave me ' . $self->{include})
+    unless grep { $self->{include} eq $_ } @allowed_includes;
+}
+
 sub min_size { 1 }
 sub max_size { 1 }
+
+sub _prep {
+  my ($self, $data) = @_;
+  $data = PDL::Core::topdl($data);
+  
+  # Handle edge cases
+  return if $data->nelem == 0;
+  return if $data->nelem == 1 and $self->{include} eq 'neither';
+  
+  $self->{data} = $data;
+  return 1;
+}
+
 sub _apply{
   my ($self, $l_off) = @_;
   my $type = $self->{type};
   my $piddle = $self->{data};
+  my $include = $self->{include};
   my $max_element = ($piddle->nelem) - 1;
   
-  # Expand this to handle the edge cases at some point.
-  if ($l_off == 0 or $l_off == $max_element){
+  # Crazy: what if there's only one point?
+  return 1 if $max_element == 0 and $include ne 'neither';
+  
+  # Handle first/last points
+  if ($l_off == 0) {
+    return 0 if $include eq 'neither' or $include eq 'last';
+    return 1 if $piddle->at(0) < $piddle->at(1);
     return 0;
-  };
-  
-  if ($type eq 'min' or $type eq'both') {
-      return 1 if ((($piddle->at($l_off)) < ($piddle->at($l_off + 1))) && 
-                   (($piddle->at($l_off)) < ($piddle->at($l_off - 1))));
-
-  };
-  
-  if ($type eq 'max' or $type eq'both'){
-      return 1 if ( (($piddle->at($l_off)) > ($piddle->at($l_off + 1))) && 
-                    (($piddle->at($l_off)) > ($piddle->at($l_off - 1))));
-  };
-}
-
-
-
-
-
-
-
-
-=head2 NAME
-
-Scrooge::PDL::Intersect - create regexen to match numbers inside a given numeric range
-
-=head2 SYNOPSIS
-
-At the most basic level, package can be used to find values outside of a range of values
-as simple as 0 to 4, as in the case below.
-
- use Scrooge::PDL;
- my $data = pdl(1,2,3,4,5);
- my $regex = eval{re_intersect(name => 'test regex', above => 0, below => 4)};
- my ($matched, $offset) = $regex->appy($data);
- 
-$matched will have the value of 1 since it found the first value outside the range [0,4]. 
-$offset will have the value 4 since that is the location of the match in the data list. 
- 
- 
- 
- 
-=head2 DESCRIPTION
-
-This package allows the user to match data in sections, rather than just matching the whole set of data. This
-should mainly be used for finding data outside of certain ranges, for example outside 2 standard deviations
-from the mean of the data. 
-
-=cut
-
-
-
-
-=head2 NAME
-
-Scrooge::PDL::Local_Extremum - create regex to match the local extrema of a set of data
-
-=head2 SYNOPSIS
-
-The user should not have to deal directly with this package, but utilize it by calling
-the methods re_local_max, re_local_min and re_local_extremum to operate on the data. Here 
-is a quick example of how this package comes into use.
-
-  use Scrooge::PDL;
-  my $data = dl(1,2,3,2,1;)
-  my $regex = eval{ re_local_max };
-  my ($matched, $offset) = $regex->apply($data);
-  
-$matched will have the value of 1, since the data has a local maximum, and $offset will
-have the value of 2, which is the position of the local maximum in the data list. re_local_max
-will only match the first local maximum found if any exists. Likewise, re_local_min will only 
-match the first local minimum found if any exists. re_local_extremum will match the first 
-local minimum OR the first local maximum, whichever comes first in the list of data. 
-
-=head2 DESCRIPTION
-
-This package lets the user match the local extrema of a set of data. This requires the user to 
-input data with no noise since it simply compares single points its immediately adjacent points.
-The user should never have to deal directly with the code in the package itself, but should user
-one of the three subroutines defined in Scrooge::PDL (re_local_extremum, re_local_min, or re_local_max).
-
-
-
-=cut
-
-
-
-=head2 Range Strings
-
-working here - document more sufficiently.
-
-The following suffixes and strings are converted:
-
-=over
-
-=item num@
-
-=item num%
-
-=item min
-
-=item max
-
-=item avg
-
-=back
-
-=cut
-
-package Scrooge::PDL;
-
-###########################################################
-# Name       : parse_range_strings
-# Usage      : parse_range_strings($data, $above, $below, ...)
-# Purpose    : parse range strings for a given piddle
-# Returns    : numeric values for the given range strings
-# Parameters : a piddle, then a collection of range strings
-# Throws     : if the range string is not eval-able after munging
-# Notes      : none, yet
-
-sub parse_range_strings {
-  my $data = shift;
-  
-  # Ensure we have a good input
-  croak('parse_range_strings expects first arg to be a piddle')
-    unless eval {$data->isa('PDL')};
-  
-  my ($mean, $st_dev) = $data->stats;
-  my ($min, $max) = $data->minmax;
-  my $pct = ($max - $min) / 100;
-  my @to_return;
-  
-  # Parse each string in turn; make a copy so we can modify it
-  while (defined (my $range_string = shift @_)) {
-    my $original_string = $range_string;
-    
-    # Replace ... 5@ ... with ... 5 * $st_dev ...
-    $range_string =~ s/(\d)\s*\@/$1 * \$st_dev/g;
-    
-    # Replace ... 5% ... with ... 5 * $pct ...  
-    $range_string =~ s/(\d)\s*\%/$1 * \$pct/g;
-    
-    # Replace ... avg ... with ... $mean ...  
-    $range_string =~ s/avg/\$mean/g;
-    
-    # Replace min and max with $min and $max
-    $range_string =~ s/min/\$min/g;
-    $range_string =~ s/max/\$max/g;
-    
-    # Evaluate the result and store it, croaking if we ran into trouble
-    push @to_return, eval($range_string);
-    croak("parse_range_strings had trouble with range_string $original_string")
-      if $@ ne '';
+  }
+  if ($l_off == $max_element) {
+    return 0 if $include eq 'neither' or $include eq 'first';
+    return 1 if $piddle->at(-1) > $piddle->at(-2);
+    return 0;
   }
   
-  # return all strings in list context
-  return @to_return if wantarray;
+  # Look for a local min
+  if ($type eq 'min' or $type eq 'both') {
+      return 1 if $piddle->at($l_off) < $piddle->at($l_off + 1) and 
+                  $piddle->at($l_off) < $piddle->at($l_off - 1);
+
+  }
   
-  # return only the first result in scalar context
-  return $to_return[0];
+  # Look for a local max
+  if ($type eq 'max' or $type eq 'both'){
+      return 1 if $piddle->at($l_off) > $piddle->at($l_off + 1) and
+                  $piddle->at($l_off) > $piddle->at($l_off - 1);
+  }
+  
+  # Failed
+  return 0;
 }
+
 1;
+
+__END__
 
 =head1 AUTHOR
 
