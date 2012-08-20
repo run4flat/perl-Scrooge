@@ -35,7 +35,7 @@ my ($avg, $st_dev) = $data->stats;
 my $got = Scrooge::PDL::parse_range_strings($data, '1@');
 ok(($avg + 0.99 * $st_dev < $got and $got < $avg + 1.01 * $st_dev),
 	"parse_range_strings: '1\@' => mean + 1 st-dev = $got");
-my $got = Scrooge::PDL::parse_range_strings($data, '5 - 2@');
+$got = Scrooge::PDL::parse_range_strings($data, '5 - 2@');
 ok((5 - 2.01 * $st_dev < $got and $got < 5 - 1.99 * $st_dev),
 	"parse_range_strings: '5 - 2\@' => 5 - 2 * st-dev = $got");
 

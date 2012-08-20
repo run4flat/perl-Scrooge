@@ -43,5 +43,5 @@ my ($matched, $offset) = eval{$regex->apply({x => $data_3})};
 isnt($matched, undef, 'Pattern found match.');
 is($offset, $test_offset, 'Matched same value as re_or');
 
-$regex = eval{re_named_or(x = $local_min, x => $local_max, y => $local_min, y => $local_max)};
+$regex = eval{re_named_or(x => $local_min, x => $local_max, y => $local_min, y => $local_max)};
 ($matched, $offset) = eval{$regex->apply({x => $data_2, y => $data_3})};

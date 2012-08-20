@@ -1,15 +1,9 @@
-package Scrooge;
 use strict;
 use warnings;
+package Scrooge;
 use Carp;
 use Exporter;
 use PDL;
-
-# working here - check the latest switch to 'details' instead of left+right
-# and modify MSER to pass details back as part of the results. Modify the
-# test suite to make use of these details. Also update the testing of the
-# order of operations since the call structure may have changed a fair
-# amount.
 
 our @ISA = qw(Exporter);
 
@@ -19,7 +13,7 @@ our @EXPORT = qw(re_or re_and re_seq re_sub re_any
 
 =head1 NAME
 
-Scrooge - a greedy pattern engine for arbitrary objects, like PDLs
+Scrooge - a greedy pattern engine for more than just strings
 
 =cut
 
@@ -27,15 +21,15 @@ our $VERSION = 0.01;
 
 =head1 VERSION
 
-This documentation is supposed to be for version 0.01 of Scrooge.
+This documentation is for version 0.01 of Scrooge.
 
 =head1 SYNOPSIS
 
  use Scrooge;
  
  # Build the pattern object first. This one
- # matches positive values and assumes it is working with
- # piddles.
+ # matches positive values and assumes it is
+ # working with piddles.
  my $positive_re = re_sub(sub {
      # Supplied args (for re_sub, specifically) are the
      # object (in this case assumed to be a piddle), the
@@ -70,18 +64,28 @@ This documentation is supposed to be for version 0.01 of Scrooge.
      = re_seq ( $re_first, $re_second, re_any, $re_third )
                ->apply($data);
 
+=head1 GETTING STARTED
+
+If you are new to Scrooge, I recommend reading L<Scrooge::Tutorial>, which
+walks you through building Scrooge patterns, both from standard patterns and
+from easily written customizable ones.
+
 =head1 DESCRIPTION
 
 Scrooge creates a set of classes that let you construct greedy pattern objects
 that you can apply to a container object such as an anonymous array or a piddle.
 Because the patterns you might match are limitless, and the sort of container
-you might want to match is also limitless, this module provides a means for
-easily creating your own patterns and the glue necessary to put them together
-in complex ways. It does not offer a concise syntax, but it provides the
-back-end machinery to support such a concise syntax for various data containers
-and applications.
+you might want to use is also limitless, this module provides a means for
+easily creating your own patterns, the glue necessary to put them together
+in complex ways, and the engine to match those patterns against your data.
+It does not offer a concise syntax (as you get with regular expressions),
+but it provides the engine to do the work. You could create a module to parse
+a concise syntax into the engine's pattern structures using
+L<Regexp::Grammars> or a similar parsing module, if you want something like
+that.
 
-Let's begin by considering a couple of regular expressions in Perl.
+To get warmed up, let's look at some Perl regular expressions (which perform
+greedy matching on strings):
 
  do_something()      if $string =~ /(ab)|(cd)/;
  do_something_else() if $string =~ /(a?b+)|(c*\d{3,})/;
@@ -91,11 +95,13 @@ followed by 'b', or if it matches 'c' followed by 'd'. The second expression
 does something else if the string matches zero or one 'a' followed by one or
 more 'b', or if it matches zero or more 'c' followed by at least three
 digits. The second regular expression differs from the first because it
-makes use of quantifiers and because it uses a character class (the C<\d>
-matches many characters).
+makes use of quantifiers and because it uses a character class (the C<\d>).
 
 The Scrooge equivalents of these take up quite a bit more space to
-construct. Here is how to build a pattern that checks for a positive number
+construct because as already mentioned there is no concise syntax for
+creating Scrooge patterns. Also, Scrooge does not match against strings by
+default, but against other sorts of containers like anonymous arrays. Here
+is how to build a pattern that checks a PDL object for a positive number
 followed by a local maximum, or a negative number followed by a local minimum.
 
  use Scrooge::PDL;
@@ -110,282 +116,386 @@ You would then apply that pattern to some data like so:
 
 The Scrooge pattern matching library can be conceptually structured into three
 tiers. The top-level tier is a set of functions that help you quickly build
-patterns and contain functions such as C<re_seq> and C<re_any>. The mid-level
+patterns such as C<re_seq> and C<re_any>, as well as the Scrooge methods
+that enable you to run patters on data and retrieve the results. The mid-level
 tier is the set of classes that actually implement that functionality such as
 C<Scrooge::Any>, C<Scrooge::Quantified>, and C<Scrooge::And>, along
 with how to create your own classes. The bottom-level tier is the Scrooge base
 class and its internal workings as a pattern matching engine. The documentation
 that follows progresses from top to bottom.
 
-=head1 BUILDING PATTERNS
+=head1 PATTERNS
 
-From the standpoint of basic pattern building, there are two important types of
-patterns: atom patterns and grouping patterns. Atom patterns specify a
-characteristic that you want to match in your series; grouping patterns give you
-the means to assemble collections of atoms into complex groups.
+These are the usable short-name pattern constructors provided by C<Scrooge>.
+The user-level methods that work across all C<Scrooge> patterns are discussed
+below, in the L</METHODS> section.
 
-=head2 Custom Patterns
+=head2 re_any
 
-As a simple example, let's examine a hypothetical situation. You are dealt a
-series of cards and you want to examine the actual order of the deal:
+Matches any value. This is a quantified pattern, which
+means you can specify the minimum and maximum lengths that the pattern should
+match. You can also name the regex.
 
- my $deck = My::Deck->new;
- $deck->shuffle;
- my @hand = $deck->deal(7);
-
-We now have an array containing seven cards. C<$hand[0]> is the first card
-dealt and C<$hand[6]> is the last card dealt. What sorts of patterns can we ask?
-Let's begin by building a pattern that matches a sequence of cards from the same
-suit. We do this by creating our very own hand-crafted atom using the C<re_sub>
-function, which expects a subroutine reference that will be run to determine if
-the atom should match or not.
-
- my $same_suit_re = re_sub(
-   # In the two-argument form, the first argument
-   # is the min and max length that this pattern
-   # will match. Here, we indicate that this
-   # pattern can match one card, and can match up
-   # to the whole hand:
-   [1, '100%'], 
-   # Following the quantifiers is the anonymous
-   # subroutine that is run to figure out if the
-   # pattern matches at the given locations.
-   sub {
-     # The arguments are the data to analyze (which
-     # will be an anonymous array with our cards, when
-     # it's eventually run), and the current left and
-     # right array offsets of interest.
-     my ($data, $left_offset, $right_offset) = @_;
-     
-     # Get the suit of the card at the left offset.
-     my $suit = $data->[$left_offset]->suit;
-     
-     # See how many cards match that suit, starting
-     # from the next card:
-     my $N_matched = 1;
-     $N_matched++
-       while $left_offset + $N_matched < $right_offset
-         and $data->[$left_offset + $N_matched]->suit eq $suit;
-     
-     # At this pont, we have the number of cards with
-     # the same suit, starting from $left_offset.
-     return $N_matched;
-   }
- );
-
-Equipped with our atom, we can now apply it to our hand:
-
- my $N_matched = $same_suit_re->apply(\@hand);
- print "The suit of the first card in our hand is ",
-   $hand[0]->suit, " and the first $N_matched cards ",
-   " in our hand have that suit\n";
-
-=head2 Sequences and Anchors
-
-But, what if we wanted to know number of cards of the same suit at the end of
-the hand? To do that, we need to supply some sort of anchor that matches based
-on its location. These are common in Perl regular expressions: the regex 
-C</^\s+start/> matches the beginning ofthe string (C<^>) followed by one or more
-whitespace characters (C<\s+>) followed by the text "start". However,
-this introduces two new pieces for Scrooge. First, how do we create a pattern
-that matches one pattern B<followed by> another pattern (called a sequence
-pattern), and second, how do we match the "end" position?
-
-It turns out that a sequence is a grouping pattern. In contrast to atom
-patterns, grouping patterns take a group of atoms and tries to match them
-in some special way. The matching behavior of the basic grouping patterns is:
-
-=over
-
-=item C<re_or($pat1, $pat2, $pat3, ...)>
-
-First tries to match C<$pat1> at the current location. If that fails, it tries
-to match C<$pat2>, then C<$pat3>, et cetera. The pattern stops as soon as it
-finds a successful match and fails if it does not match any pattern.
-
-=item C<re_and($pat1, $pat2, $pat3, ...)>
-
-First tries to match C<$pat1> at the current location. If C<$pat1> matches, it
-then tries to match C<$pat2> at the current location. If C<$pat2> matches B<and>
-matches the same length as C<$pat1>, it then tries C<$pat3> at the current
-location. If all three patterns match the same length, it continues to the next
-pattern, et cetera.
-
-=item C<re_seq($pat1, $pat2, $pat3, ...)>
-
-First tries to match C<$pat1> starting at the current location. If that
-succeeds, it tries to match C<$pat2> where C<$pat1> finished matching. If
-C<$pat2> succeeds, it tries to match C<$pat3> where C<$pat2> finished matching.
-Et cetera.
-
-=back
-
-Before I give an example using C<re_seq>, I first want to discuss how to create
-a pattern that matches at the end of the sequence. Scrooge provides a couple of
-specific anchors and a means for creating zero-width pattersn that match at any
-location you want. The specific anchors are C<re_anchor_begin> and
-C<re_anchor_end>; you can match at an arbitrary location using
-C<re_zwa_location>, which is discussed in the L</PATTERNS> section below.
-
-Using the ending anchor and the sequence grouping pattern, we can recycle the
-pattern that we have already created and build a new pattern that identifies the
-number of cards that have the same suit at the end of the hand:
-
- my $ending_suit_re = re_seq($same_suit_re, re_anchor_end);
+ # Matches a single element:
+ my $anything = re_any;
  
- my $N_matched = $ending_suit_re->apply(\@hand);
- print "The suit of the last card in our hand is",
-   $hand[$#hand]->suit, " and the last $N_matched cards ",
-   " in our hand have that suit\n";
-
-At this point we should take a step back and discuss why writing Scrooge
-patterns is better than simply writing for loops to accomplish the same task.
-We have managed to specify a pattern on an array of Card objects, but you could
-easily use this as a template to write more paterns that match other sequences
-of Cards. However, because the patterns are self-contained, you can test and
-verify that each pattern behaves the way it is supposed to behave, independently
-of the other patterns. You can then put them together in whatever combination of
-ways you like, relying on the well-tested and documented Scrooge engine to
-properly execute all the pieces. Compare that sort of behavior with hand
-written for loops: as the complexity of the match increases, for loops become
-harder and harder to test, verify, and maintain. In other words, Scrooge
-provides a simple means for writing patterns and a scalable means to combine
-them into complex patterns.
-
-=head2 Custom Assertions
-
-You've already seen how to write a custom pattern. Let's now consider the case
-of creating a customized zero-width assertion. Besides anchors, Perl regexes
-have zero-width assertions such as C<\b> for a word boundary. In Scrooge, you
-can create a zero-width assertion using C<re_zwa_sub>. For example, here's an
-assertion that matches a change in suit:
-
- my $changed_suit_zwa = re_zwa_sub ( sub {
-   my ($data, $left_offset) = @_;
-   
-   # A change means that the card to the left of
-   # $left_offset has a different suit from the
-   # card at $left_offset. It's not a change if
-   # we're to the left of the first card or to the
-   # right of the last card:
-   
-   return 0 if $left_offset == 0
-     or $left_offset == Scrooge::data_length($data);
-   
-   return '0 but true'
-     if $data->[$left_offset]->suit != $data->[$left_offset-1]->suit;
-   
-   return 0;
- });
-
-We can make this even simpler if we specify that this zero-width assertion is
-not allowed to match at the ends by specifying the C<location> key:
-
- my $changed_suit_zwa = re_zwa_sub (
-   location => [1, -1],
-   sub {
-     my ($data, $left_offset) = @_;
-     return '0 but true'
-       if $data->[$left_offset]->suit != $data->[$left_offset-1]->suit;
-     
-     return 0;
-   }
- );
+ # Matches 2-5 elements:
+ my $some_stuff = re_any([2 => 5]);
  
- # And another to make sure adjacent cards have the same suit
- my $same_suit_zwa = re_zwa_sub (
-   location => [1, -1],
-   sub {
-   	 my ($data, $left_offset) = @_;
-   	 return '0 but true'
-   	   if $data->[$left_offset]->suit == $data->[$left_offset-1]->suit;
-   	 
-   	 return 0;
-   }
- );
+ # Named capture matching between 15 and 100% of the data:
+ my $stored_stuff = re_any('recall_me', [15 => '100%']);
 
-We can use the changed-suit assertion to see if all of the cards in a hand are
-of the same suit:
+=cut
 
- if ($changed_suit_zwa->apply(\@hand)) {
-   print "I see you have multiple suits in your hand.\n";
+sub re_any {
+	croak("Scrooge::re_any takes one or two optional arguments: re_any([[name], quantifiers])")
+		if @_ > 2;
+	
+	# Get the arguments:
+	my $name = shift if @_ == 2;
+	my $quantifiers = shift if @_ == 1;
+	$quantifiers = [1,1] unless defined $quantifiers;
+	
+	# Create the subroutine pattern:
+	return Scrooge::Any->new(quantifiers => $quantifiers
+		, defined $name ? (name => $name) : ());
+}
+
+
+=head2 re_sub
+
+Evaluates the supplied subroutine on the current subset of data, optinally
+taking a capture name and a set of quantifiers. If not quantifiers are
+specified, they default to C<[1, 1]>, that is, it matches one and only one
+value.
+
+The three arguments supplied to the function are (1) original data container
+under consideration, (2) the left index offset under consideration, and (3)
+the right index offset.
+
+If the match succeeds, your subroutine should return the number of matched
+values. If the match succeeds but it consumed zero values (i.e. a zero-width
+assertion), return the string "0 but true", which is a magical value in Perl
+that evaluates to true in boolean context, yet which is numerically zero in
+numeric context and does not gripe when converted from a string value
+to a numeric value (even when you've activated warnings). If the match will
+always fail for the given left offset, you should return 0. Otherwise, if it
+fails for the given value of the right offset but might succeed for a smaller
+right offset, return -1. For more details about custom matching return values,
+see L</RETURN VALUES>.
+
+ # Create a match sub to use (you can also supply an anonymous sub
+ # directly to re_sub, if you wish)
+ sub my_match_sub {
+     my ($data, $l_off, $r_off) = @_;
+     
+     # Fail if can't match at $l_off
+     return 0 if $data->can_never_match_at($l_off);
+     
+     # Return the matched length if it succeeds:
+     return ($r_off - $l_off + 1)
+         if $data->matches(from => $l_off, to => $r_off);
+     
+     # Not sure, return -1 to try a different value of $r_off
+     return -1;
  }
- else {
-   print "Wow, all the cards in your hand have suit ",
-     $hand[0]->suit, "!\n";
- }
-
-XXX consider creating re_zwa_not, which negates the match of a pattern. Note
-that this must handle the capturing of the sub-regex and discard a capture upon
-a successful match (because it will ultimately be a failed match).
-
-=head2 Capturing
-
-XXX
-
-=head1 Examples
-
-Here is a pattern that checks for a value that is positive and
-which is a local maximum, but which is flanked by at least one negative
-number on both sides. All of these assume that the data container is a piddle.
-
- my $is_local_max = re_sub( [1,1],  # quantifiers, exactly one
-     sub {
-         my ($piddle, $left, $right) = @_;
-         
-         # Since this only takes one value, right == left
-         my $index = $left;
-         
-         # The first or last element of the piddle cannot qualify
-         # as local maxima for purposes of this pattern:
-         return 0 if $index == 0 or $index == $piddle->dim(0) - 1;
-         
-         return 1 if $piddle->at($index - 1) < $piddle->at($index)
-             and $piddle->at($index + 1) < $piddle->at($index);
-         
-         return 0;
-  });
  
- my $is_negative = re_sub( [1,'100%'],
-     sub {
-         my ($piddle, $left, $right) = @_;
-         
-         # This cannot match if the first value is positive:
-         return 0 if $piddle->at($left) >= 0;
-         
-         my $sub_piddle = $piddle->slice("$left:$right");
-         
-         # Is the whole range negative?
-         return $right - $left + 1 if all ($sub_piddle < 0);
-         
-         # At this point, we know that the first element
-         # is negative, but part of the range is positive.
-         # Find the first non-negative value and return its
-         # offset, which is identical to the number of negative
-         # elements to the left of it:
-         return which($sub_piddle >= 0)->at(0);
- });
+ # Match one value with the custom sub
+ my $custom_match = re_sub(\&my_match_sub);
  
- # Build up the sequence:
- my $pattern = re_seq(
-     $is_negative, $is_local_max, $is_negative
+ # Match between two and ten values with the custom sub
+ my $quantified_custom_match
+     = re_sub([2 => 10], \&my_match_sub);
+
+=cut
+
+
+# This builds a subroutine pattern object:
+sub re_sub {
+	croak("re_sub takes one, two, or three arguments: re_sub([[name], quantifiers], subref)")
+		if @_ == 0 or @_ > 3;
+	
+	# Get the arguments:
+	my $name = shift if @_ == 3;
+	my $quantifiers = shift if @_ == 2;
+	my $subref = shift;
+	
+	# Check that they actually supplied a subref:
+	croak("re_sub requires a subroutine reference")
+		unless ref($subref) eq ref(sub {});
+	
+	$quantifiers = [1,1] unless defined $quantifiers;
+	
+	# Create the subroutine pattern:
+	return Scrooge::Sub->new(quantifiers => $quantifiers, subref => $subref
+		, defined $name ? (name => $name) : ());
+}
+
+=head2 re_anchor_begin
+
+Matches at the beginning of the data.
+
+=cut
+
+sub re_anchor_begin {
+	return Scrooge::ZWA->new(position => 0);
+}
+
+=head2 re_anchor_end
+
+Matches at the end of the data.
+
+=cut
+
+sub re_anchor_end {
+	return Scrooge::ZWA->new(position => '100%');
+}
+
+=head2 re_zwa_position
+
+Creates a position-based zero-width assertion. Zero-width assertions can
+come in many flavors and assert many things, but the basic zero-width assertion
+lets you make sure that the pattern matches at a particular position or range of
+positions.
+
+Zero-width assertions match B<in between> points. For example, if you have a
+three-point sequence of values (10, 12, 33), there are four positions that a
+zero-width assertion can match: to the left of 10, between 10 and 12, between 
+12 and 33, and to the right of 33.
+
+For example, using the positional assertion, I can match against
+the two points to the left and to the right of the 10% with this pattern:
+
+ my $left_and_right_of_ten_pct = re_seq(
+     re_any([2 => 2]),
+     re_zwa_position('10%'),
+     re_any([2 => 2]),
  );
- 
- # Match it against some data:
- if ($pattern->apply($data)) {
-     # Do something
- }
+
+To match at one position, pass a single value. To match at a range a positions,
+pass the starting and ending positions:
+
+ re_zwa_position('10% + 1')
+ re_zwa_position('5% - 1' => 20)
+
+You can say quite a bit when specifying a position. To give you an idea,
+here's a table describing different specifications and their resulting positions
+for a 20-element array:
+
+ string       offset     notes
+ 0            0
+ 1            1
+ 1 + 1        2
+ -1           19
+ 5 - 10       -5         This will never match
+ 10%          10
+ 10% + 20%    6
+ 50% + 3      13
+ 100% + 5     25         This will never match
+ 10% - 5      -3         This will not match this array
+ [10% - 5]    0          -3 => 0
+ [6 - 10]     -4         This will never match
+ -25          -5         This will not match this array
+ [-25]        0          -25 => -5 => 0
+ 12% + 3.4    6          Rounded from 5.8
+ 14% + 3.4    6          Rounded from 6.2
+
+Notice in particular that non-integers are rounded to the nearest integer and
+strings wrapped in square brackets are truncated to the minimum or maximum offset
+if the evaluation of the expression for the specific set of data falls outside
+the range of valid offsets.
+
+=cut
+
+sub re_zwa_position {
+	return Scrooge::ZWA->new(position => $_[0]) if @_ == 1;
+	return Scrooge::ZWA->new(position => [@_]) if @_ == 2;
+	croak("re_zwa_position expects either one or two arguments");
+}
+
+=head2 re_zwa_sub
+
+Creates a zero-width assertion that matches at a position (if specified) and
+matches against your supplied subroutine. This takes between one and three
+arguments. In the one-argument form, it expects a subroutine that it will
+test for a match. In the two-argument form, it expects a position specification
+followed by the subroutine to match. In the three-argument form, it expects
+a capture name, a position, and a subroutine.
+
+The subroutine that you provide should accept two arguments: the data to match and the
+left offset of the current match location. If the assertion succeeds, your
+function should return the string '0 but true', and if the assertion fails,
+your function should return a false value, such as the empty string.
+
+=cut
+
+sub re_zwa_sub {
+	# This expects a subroutine as the last argument and key/value pairs
+	# otherwise:
+	croak("re_zwa_sub takes one, two, or three arguments: re_zwa_sub([[name], position], subref")
+		if @_ == 0 or @_ > 3;
+	
+	# Pop the subref off the end and unpack the args
+	my %args;
+	$args{name} = shift if @_ == 3;
+	$args{position} = shift if @_ == 2;
+	$args{subref} = shift;
+	
+	# Verify the subref
+	croak("re_zwa_sub requires a subroutine reference as the last argument")
+		unless ref($args{subref}) eq ref(sub{});
+	
+	# Create and return the zwa:
+	return Scrooge::ZWA->new(%args);
+}
+
+=head2 re_or
+
+Takes a collection of pattern objects and evaluates all of
+them until it finds one that succeeds. This does not take any quantifiers.
+
+=cut
+
+sub re_or {
+	# If the first argument is an object, assume no name:
+	return Scrooge::Or->new(patterns => \@_) if ref $_[0];
+	# Otherwise assume that the first argument is a name:
+	my $name = shift;
+	return Scrooge::Or->new(name => $name, patterns => \@_);
+}
+
+=head2 re_and
+
+Takes a collection of pattern objects and evaluates all of
+them, returning true if all succeed. This does not take any quantifiers.
+
+=cut
+
+sub re_and {
+	# If the first argument is an object, assume no name:
+	return Scrooge::And->new(patterns => \@_) if ref $_[0];
+	# Otherwise assume that the first argument is a name:
+	my $name = shift;
+	return Scrooge::And->new(name => $name, patterns => \@_);
+}
+
+=head2 re_seq
+
+Applies a sequence of patterns in the order supplied.
+
+This operates recursively thus:
+
+ 1) If the (i-1)th pattern succeeded, attempt to apply the ith pattern at its
+    full quantifier range. If that fails, decrement the range until it it
+    succeeds. If that fails, consider it a failure of the (i-1th) pattern at
+    its current range. If it succeeds, move to the next pattern.
+ 2) If the ith pattern fails, the match fails.
+ 3) If the Nth pattern succeeds, return success.
+
+=cut
+
+sub re_seq {
+	# If the first argument is an object, assume no name:
+	return Scrooge::Sequence->new(patterns => \@_) if ref $_[0];
+	# Otherwise assume that the first argument is a name:
+	my $name = shift;
+	return Scrooge::Sequence->new(name => $name, patterns => \@_)
+}
+
+=head2 SIMULTANEOUSLY MATCHING ON MULTIPLE DATASETS
+
+You may very well have multiple sequences of data against which you want to
+write a pattern. For example, if you have both position and velocity data
+for a trajectory, you may want to find the first velocity maximum that
+occurs B<after> a maximum in position. The three grouping regexes that follow
+are similar to the grouping regexes that came before, except that they let
+you specify the name of the dataset against which to match.
+
+Name of the dataset? What name? To match against multiple datasets, C<apply>
+a pattern on an anonymous hash with key/value pairs in which the keys are
+the names of the different data sets and the values are the actual data sets,
+the things you'd normally send to C<apply>.
+
+=cut
+
+sub _build_named_data_group_pattern {
+	my $class_name = shift;
+	my @name_args = (name => shift @_) if @_ % 2 == 1;
+	my (@patterns, @names);
+	while(@_ > 0 ) {
+		push @names, (shift @_);
+		push @patterns, (shift @_);
+	}
+	
+	return $class_name->new(
+		@name_args,
+		subset_names => \@names,
+		patterns => \@patterns,
+	);
+}
+
+=head2 re_named_or
+
+Applies a collections of patterns just like re_or, except that the data
+applied to each pattern is based on the given name. The sequence can take an
+optional first name, so the calling convention is:
+
+ re_named_or( [name],
+     set_name_1 => data_1,
+     set_name_2 => data_2,
+     ...
+ );
+
+=cut 
+
+sub re_named_or {
+	return _build_named_data_group_pattern('Scrooge::Subdata::Or', @_);
+}
+
+=head2 re_named_and
+
+Applies a collections of patterns just like re_and, except that the data
+applied to each pattern is based on the given name. The sequence can take an
+optional first name, so the calling convention is:
+
+ re_named_and( [name],
+     set_name_1 => data_1,
+     set_name_2 => data_2,
+     ...
+ );
+
+=cut
+
+sub re_named_and {
+	return _build_named_data_group_pattern('Scrooge::Subdata::And', @_);
+}
+
+=head2 re_named_seq
+
+Applies a sequence of patterns on the associated data sets in the order
+supplied. The sequence can take an optional first name, so the calling 
+convention is:
+
+ re_named_seq( [name],
+     set_name_1 => data_1,
+     set_name_2 => data_2,
+     ...
+ );
+
+=cut
+
+sub re_named_seq {
+	return _build_named_data_group_pattern('Scrooge::Subdata::Sequence', @_);
+}
 
 =head1 METHODS
 
 These are the user-level methods that each pattern provides. Note that this
-section does not discuss subclassing or constructors; those are discussed below.
-In other words, if you have pattern objects and you want to use them this is the
-public API that you can use.
+section does not discuss subclassing or constructors; those are discussed 
+further below under L</SUBCLASSING>. This section is the reference manual
+for using your patterns once you've built them.
 
-=over
-
-=item apply ($data)
+=head2 apply ($data)
 
 This method applies the pattern object on the given container. The
 return value is a bit complicated to explain, but in general it Does What You
@@ -431,7 +541,7 @@ or
      print "Matched $matched elements\n";
  }
 
-Note that if your pattern matches, you will get the empty list, so, if this fails:
+Note that you will get the empty list if your pattern fails, so if this fails:
 
  my ($matched, $offset) = $pattern->apply($data);
 
@@ -449,11 +559,15 @@ second pattern will be stored in C<$first_matched> and C<$first_off>. So, do
 not use the return values from a pattern in a large list
 assignment like this.
 
-working here - discuss known types and how unknown types throw errors (or should
-they silently fail instead? I think not.)
-
 If you only want to know where a sub-pattern matches, you can name that sub-pattern
 and retrieve sub-match results using C<get_offsets_for>, as discussed below.
+
+This method can croak for a few reasons. If any of the patterns croak
+during the preparation or matching stage, C<apply> will do its best to
+package the error message in a useful way and rethrow the error. Also, if
+you are trying to use a data container for which Scrooge does not know how
+to compute the length, C<apply> will die saying as much. (See L</data_length>
+to learn how to teach Scrooge about your data container.)
 
 =cut
 
@@ -487,13 +601,14 @@ sub apply {
 		return;
 	}
 	
-	# Note change in local state:
-	$self->is_applying;
-	
 	# Get the data's length
 	my $N = data_length($data);
 	croak("Could not get length of the supplied data")
 		if not defined $N or $N eq '';
+	
+	# Note change in local state:
+	$self->is_applying;
+	
 	my $min_diff = $self->min_size - 1;
 	my $max_diff = $self->max_size - 1;
 
@@ -560,7 +675,7 @@ sub apply {
 	return;
 }
 
-=item get_details_for ($name)
+=head2 get_details_for ($name)
 
 After running a successful pattern, you can use this method to query the match
 details for named patterns. This method returns an anonymous hash containing
@@ -606,7 +721,9 @@ less than the value of left.
 
 Finally, note that you can call this method on container patterns such as
 C<re_and>, C<re_or>, and C<re_seq> to get the information for named sub-patterns
-within the containers.
+within the containers. That's probably exactly what you expected, so if this
+last paragraph seems a bit confusing, you're probably best off just ignoring 
+it.
 
 =cut
 
@@ -631,7 +748,7 @@ sub get_details_for {
 	return $self->get_details;					# scalar context
 }
 
-=item get_details
+=head2 get_details
 
 Returns the match details for the current pattern, as described under
 C<get_details_for>. The difference between this method and the previous one is
@@ -659,8 +776,6 @@ sub get_details {
 	# Return the first match details in scalar context
 	return $self->{final_details}->[0];
 }
-
-=back
 
 =head1 Return Values
 
@@ -751,7 +866,7 @@ should return a numeric 0 to indicate that it is not possible for this condition
 to match.
 
 Remember: if all you can say is that the condition does not match for the range
-C<$left. to C<$right>, but it might match for the same value for C<$left> and a
+C<$left> to C<$right>, but it might match for the same value for C<$left> and a
 smaller value for C<$right>, you should return a negative value instead of zero.
 
 =item Negative Values
@@ -1409,34 +1524,8 @@ sub _prep {
 # provided by the derived classes.
 
 package Scrooge::Any;
-use parent -norequire, 'Scrooge::Quantified';
-use strict;
-use warnings;
+our @ISA = qw(Scrooge::Quantified);
 use Carp;
-
-=head2 re_any
-
-Creates a pattern that matches any value. This is a quantified pattern, which
-means you can specify the minimum and maximum lengths that the pattern should
-match. You can also name the regex:
-
- re_any([[name], quantifiers])
-
-=cut
-
-sub Scrooge::re_any {
-	croak("Scrooge::re_any takes one or two optional arguments: re_any([[name], quantifiers])")
-		if @_ > 2;
-	
-	# Get the arguments:
-	my $name = shift if @_ == 2;
-	my $quantifiers = shift if @_ == 1;
-	$quantifiers = [1,1] unless defined $quantifiers;
-	
-	# Create the subroutine pattern:
-	return Scrooge::Any->new(quantifiers => $quantifiers
-		, defined $name ? (name => $name) : ());
-}
 
 # apply (the non-overrideable method) will store the saved values:
 sub _apply {
@@ -1445,46 +1534,8 @@ sub _apply {
 }
 
 package Scrooge::Sub;
-use parent -norequire, 'Scrooge::Quantified';
-use strict;
-use warnings;
+our @ISA = qw(Scrooge::Quantified);
 use Carp;
-
-=head2 re_sub
-
-This evaluates the supplied subroutine on the current subset of data. The
-three arguments supplied to the function are (1) original data container under
-consideration, (2) the left index offset under consideration, and (3) the
-right index offset. If the match succeeds, return the number of matched
-values. If the match succeeds but it consumed zero values (i.e. a zero-width
-assertion), return the string "0 but true", which is a magical value in Perl
-that evaluates to true in boolean context, which is numerically zero in
-numeric context, and which does not gripe when converted from a string value
-to a numeric value, even when you've activated warnings.
-
-=cut
-
-
-# This builds a subroutine pattern object:
-sub Scrooge::re_sub {
-	croak("re_sub takes one, two, or three arguments: re_sub([[name], quantifiers], subref)")
-		if @_ == 0 or @_ > 3;
-	
-	# Get the arguments:
-	my $name = shift if @_ == 3;
-	my $quantifiers = shift if @_ == 2;
-	my $subref = shift;
-	
-	# Check that they actually supplied a subref:
-	croak("re_sub requires a subroutine reference")
-		unless ref($subref) eq ref(sub {});
-	
-	$quantifiers = [1,1] unless defined $quantifiers;
-	
-	# Create the subroutine pattern:
-	return Scrooge::Sub->new(quantifiers => $quantifiers, subref => $subref
-		, defined $name ? (name => $name) : ());
-}
 
 sub _apply {
 	my ($self, $left, $right) = @_;
@@ -1510,140 +1561,56 @@ sub _apply {
 # Abstract base class for zero-width assertions
 package Scrooge::ZWA;
 our @ISA = ('Scrooge');
-use strict;
-use warnings;
 use Carp;
 
-=head2 re_anchor_begin
-
-Ensures that the current offset matches at the beginning of the data.
-
-=cut
-
-sub Scrooge::re_anchor_begin {
-	return Scrooge::ZWA->new(position => 0);
-}
-
-=head2 re_anchor_end
-
-Ensures that the current offset matches at the end of the data.
-
-=cut
-
-sub Scrooge::re_anchor_end {
-	return Scrooge::ZWA->new(position => '100%');
-}
-
-=head2 re_zwa_location
-
-This creates a position-based zero-width assertion. Zero-width assertions can
-come in many flavors and assert many things, but the basic zero-width assertion
-lets you make sure that the pattern matches at a particular location or range of
-locations.
-
-Zero-width assertions match B<in between> points. For example, if you have a
-three-point sequence of values (10, 12, 33), there are four locations that a
-zero-width assertion can match: to the left of 10, between 10 and 12, between 
-12 and 33, and to the right of 33.
-
-For example, using the positional assertion, I can match against
-the two points to the left and to the right of the 10% with this pattern:
-
- my $left_and_right_of_ten_pct = re_seq(
-     re_any([2 => 2]),
-     re_zwa_location('10%'),
-     re_any([2 => 2]),
- );
-
-To match at one location, pass a single value. To match at a range a locations,
-pass the starting and ending locations:
-
- re_zwa_location('10% + 1')
- re_zwa_location('5% - 1' => 20)
-
-You can say quite a bit when specifying a location. To give you an idea,
-here's a table describing different specifications and their resulting locations
-for a 20-element array:
-
- string       offset     notes
- 0            0
- 1            1
- 1 + 1        2
- -1           19
- 5 - 10       -5         This will never match
- 10%          10
- 10% + 20%    6
- 50% + 3      13
- 100% + 5     25         This will never match
- 10% - 5      -3         This will not match this array
- [10% - 5]    0          -3 => 0
- [6 - 10]     -4         This will never match
- -25          -5         This will not match this array
- [-25]        0          -25 => -5 => 0
- 12% + 3.4    6          Rounded from 5.8
- 14% + 3.4    6          Rounded from 6.2
-
-Notice in particular that non-integers are rounded to the nearest integer and
-strings wrapped in square brackets are truncated to the minimum or maximum offset
-if the evaluation of the expression for the specific set of data falls outside
-the range of valid offsets.
-
-=cut
-
-sub Scrooge::re_zwa_location {
-	return Scrooge::ZWA->new(position => $_[0]) if @_ == 1;
-	return Scrooge::ZWA->new(position => [@_]) if @_ == 2;
-	croak("re_zwa_location expects either one or two arguments");
-}
-
-# Parses a location string and return an offset for a given piece of data.
-sub parse_location{
-        my ($data, $location_string) = @_;
+# Parses a position string and return an offset for a given piece of data.
+sub parse_position{
+        my ($data, $position_string) = @_;
         
         # Get the max index in a cross-container form
         my $max_index = Scrooge::data_length($data);
         my $pct = $max_index/100;
         
-        my $original_location_string = $location_string;
+        my $original_position_string = $position_string;
         
         # Keep track of truncation
         my $truncate_extreme = 0;
-        $truncate_extreme = 1 if $location_string =~ s/^\[(.*)\]/$1/s;
+        $truncate_extreme = 1 if $position_string =~ s/^\[(.*)\]/$1/s;
         
         # Replace percentages with evaluatable expressions
-        $location_string =~ s/(\d)\s*\%/$1 * \$pct/;
+        $position_string =~ s/(\d)\s*\%/$1 * \$pct/;
         
         # Evaluate the string
-        my $location = eval($location_string);
-        croak("parse_location had trouble with location_string $original_location_string")
+        my $position = eval($position_string);
+        croak("parse_position had trouble with position_string $original_position_string")
                 if $@ ne '';
         
         # handle negative offsets
-        if ($location < 0) {
+        if ($position < 0) {
         	no warnings 'numeric';
-        	$location += $max_index if $location == $location_string;
+        	$position += $max_index if $position == $position_string;
         }
         
         # Handle truncation
-        $location = 0 if $location < 0 and $truncate_extreme;
-        $location = $max_index if $location > $max_index and $truncate_extreme;
+        $position = 0 if $position < 0 and $truncate_extreme;
+        $position = $max_index if $position > $max_index and $truncate_extreme;
         
         # Round the result if it's not an integer
-        return int($location + 0.5) if $location != int($location);
-        # otherwise just return the location
-        return $location;
+        return int($position + 0.5) if $position != int($position);
+        # otherwise just return the position
+        return $position;
 }
 
-# Prepares the zero-width assertion; parses the location strings and constructs
+# Prepares the zero-width assertion; parses the position strings and constructs
 # an anonymous subroutine that can be called against the current left/right
 # position.
 sub prep_zwa {
 	my $self = shift;
 	
-	# Create a location assertion that always matches if no position was
+	# Create a position assertion that always matches if no position was
 	# specified.
 	if (not exists $self->{position}) {
-		$self->{zwa_location_subref} = sub { 1 };
+		$self->{zwa_position_subref} = sub { 1 };
 		return 1;
 	}
 	
@@ -1651,14 +1618,14 @@ sub prep_zwa {
 	
 	# Check if they specified an exact position
 	if (ref($position) eq ref('scalar')) {
-		my $match_offset = parse_location($self->{data}, $position);
+		my $match_offset = parse_position($self->{data}, $position);
 		
 		# Fail the prep if the position cannot match
 		return 0 if $match_offset < 0
 			or $match_offset > Scrooge::data_length($self->{data});
 		
 		# Set the match function:
-		$self->{zwa_location_subref} = sub {
+		$self->{zwa_position_subref} = sub {
 			return $_[0] == $match_offset;
 		};
 		return 1;
@@ -1668,22 +1635,22 @@ sub prep_zwa {
 		my ($left_string, $right_string) = @$position;
 		
 		# Parse the left and right offsets
-		my $left_offset = parse_location($self->{data}, $left_string);
-		my $right_offset = parse_location($self->{data}, $right_string);
+		my $left_offset = parse_position($self->{data}, $left_string);
+		my $right_offset = parse_position($self->{data}, $right_string);
 		
 		# If the left offset is to the right of the right offset, it can never
 		# match so return a value of zero for the prep
 		return 0 if $left_offset > $right_offset;
 		
-		# Otherwise, set up the location match function
-		$self->{zwa_location_subref} = sub {
+		# Otherwise, set up the position match function
+		$self->{zwa_position_subref} = sub {
 			return $left_offset <= $_[0] and $_[0] <= $right_offset;
 		};
 		return 1;
 	}
 	
 	# They didn't specify anything, so match anywhere
-	$self->{zwa_location_subref} = sub { 1 };
+	$self->{zwa_position_subref} = sub { 1 };
 	return 1;
 }
 
@@ -1693,7 +1660,7 @@ sub _prep {
 
 sub _apply {
 	my ($self, $left, $right) = @_;
-	return '0 but true' if $self->{zwa_location_subref}->($left);
+	return '0 but true' if $self->{zwa_position_subref}->($left);
 	return 0;
 }
 
@@ -1702,28 +1669,7 @@ sub max_size { 0 }
 
 package Scrooge::ZWA::Sub;
 our @ISA = ('Scrooge::ZWA');
-use strict;
-use warnings;
 use Carp;
-
-sub Scrooge::re_zwa_sub {
-	# This expects a subroutine as the last argument and key/value pairs
-	# otherwise:
-	croak("re_zwa_sub expects one argument and up to two key/value pairs:\n"
-		. "re_zwa_sub ([name => 'name'], [position => 'position'], subref)")
-		if @_ % 2 == 0;
-	
-	# Pop the subref off the end and unpack the args
-	my $subref = pop @_;
-	my %args = @_;
-	
-	# Verify the subref
-	croak("re_zwa_sub requires a subroutine reference as the last argument")
-		unless ref($subref) eq ref(sub{});
-	
-	# Create and return the zwa:
-	return Scrooge::ZWA->new(subref => $subref, %args);
-}
 
 sub _apply {
 	my ($self, $left, $right) = @_;
@@ -1735,7 +1681,7 @@ sub _apply {
 	
 	# Make sure the position matches the specification (and if they didn't
 	# indicate a position, it will always match)
-	return 0 unless $self->{zwa_location_subref}->($left);
+	return 0 unless $self->{zwa_position_subref}->($left);
 	
 	# Evaluate their subroutine:
 	my ($consumed, %details)
@@ -1759,9 +1705,7 @@ sub _apply {
 
 package Scrooge::Grouped;
 # Defines grouped patterns, like re_or, re_and, and re_seq
-use parent -norequire, 'Scrooge';
-use strict;
-use warnings;
+our @ISA = qw(Scrooge);
 use Carp;
 
 sub _init {
@@ -1960,19 +1904,8 @@ sub add_name_to {
 	}
 }
 
-
-
-=head2 re_or
-
-This takes a collection of pattern objects and evaluates all of
-them until it finds one that succeeds. This does not take any quantifiers.
-
-=cut
-
 package Scrooge::Or;
-use parent -norequire, 'Scrooge::Grouped';
-use strict;
-use warnings;
+our @ISA = qw(Scrooge::Grouped);
 use Carp;
 
 # Called by the _prep method; sets the internal minimum and maximum match
@@ -2077,25 +2010,8 @@ sub _apply {
 	return 0;
 }
 
-sub Scrooge::re_or {
-	# If the first argument is an object, assume no name:
-	return Scrooge::Or->new(patterns => \@_) if ref $_[0];
-	# Otherwise assume that the first argument is a name:
-	my $name = shift;
-	return Scrooge::Or->new(name => $name, patterns => \@_);
-}
-
-=head2 re_and
-
-This takes a collection of pattern objects and evaluates all of
-them, returning true if all succeed. This does not take any quantifiers.
-
-=cut
-
 package Scrooge::And;
-use parent -norequire, 'Scrooge::Grouped';
-use strict;
-use warnings;
+our @ISA = qw(Scrooge::Grouped);
 use Carp;
 
 # Return false if any of them fail or if they disagree on the matched length
@@ -2184,34 +2100,8 @@ sub _minmax {
 	$self->max_size($full_max);
 }
 
-sub Scrooge::re_and {
-	# If the first argument is an object, assume no name:
-	return Scrooge::And->new(patterns => \@_) if ref $_[0];
-	# Otherwise assume that the first argument is a name:
-	my $name = shift;
-	return Scrooge::And->new(name => $name, patterns => \@_);
-}
-
-=head2 re_seq
-
-Applies a sequence of patterns in the order supplied. Obviously
-this needs elaboration, but I'll ignore that for now. :-)
-
-This operates recursively thu:
-
- 1) If the (i-1)th pattern succeeded, attempt to apply the ith pattern at its
-    full quantifier range. If that fails, decrement the range until it it
-    succeeds. If that fails, consider it a failure of the (i-1th) pattern at
-    its current range. If it succeeds, move to the next pattern.
- 2) If the ith pattern fails, the match fails.
- 3) If the Nth pattern succeeds, return success.
-
-=cut
-
 package Scrooge::Sequence;
-use parent -norequire, 'Scrooge::Grouped';
-use strict;
-use warnings;
+our @ISA = qw(Scrooge::Grouped);
 use Carp;
 
 # make sure that temp_matches is stashed:
@@ -2452,18 +2342,8 @@ sub _minmax {
 	$self->max_size($full_max);
 }
 
-sub Scrooge::re_seq {
-	# If the first argument is an object, assume no name:
-	return Scrooge::Sequence->new(patterns => \@_) if ref $_[0];
-	# Otherwise assume that the first argument is a name:
-	my $name = shift;
-	return Scrooge::Sequence->new(name => $name, patterns => \@_)
-}
-
-# Base class for situations involving more than one data set.
+# Role for situations involving more than one data set.
 package Scrooge::Role::Subdata;
-use strict;
-use warnings;
 use Carp;
 
 # Should only need to override _prep_all
@@ -2513,9 +2393,6 @@ sub _verify{
 }
 
 package Scrooge::Subdata::Sequence;
-use strict;
-use warnings;
-
 our @ISA = qw(Scrooge::Sequence);
 
 *prep_all = \&Scrooge::Role::Subdata::prep_all;
@@ -2526,24 +2403,7 @@ sub _init {
 	Scrooge::Role::Subdata::_verify($self);
 }
 
-sub Scrooge::re_named_seq {
-	# If @_ % 2 == 1, a name was supplied, if @_ % 2 == 0, a name wasn't supplied
-	my @name_args;
-	@name_args = (name => shift @_) if @_ % 2 == 1;
-	
-	# Create a hash to store subset_names and patterns
-	my %subsets = @_;
-	
-	return Scrooge::Subdata::Sequence->new(		   @name_args, 
-					   patterns     => [values %subsets] , 
-					   subset_names => [keys %subsets]
-				);
-}
-
 package Scrooge::Subdata::And;
-use strict;
-use warnings;
-
 our @ISA = qw(Scrooge::And);
 
 *prep_all = \&Scrooge::Role::Subdata::prep_all;
@@ -2554,22 +2414,7 @@ sub _init {
 	Scrooge::Role::Subdata::_verify($self);
 }
 
-sub Scrooge::re_named_and {
-	my @name_args;
-	@name_args = (name => shift @_) if @_ % 2 == 1;
-	
-	my %subsets = @_;
-	
-	return Scrooge::Subdata::And->	new(		@name_args, 
-					patterns     => [values %subsets],
-					subset_names => [keys %subsets]
-					);
-}
-
 package Scrooge::Subdata::Or;
-use strict;
-use warnings;
-
 our @ISA = qw(Scrooge::Or);
 
 *prep_all = \&Scrooge::Role::Subdata::prep_all;
@@ -2578,21 +2423,6 @@ sub _init {
 	my $self = shift;
 	$self->SUPER::_init;
 	Scrooge::Role::Subdata::_verify($self);
-}
-
-sub Scrooge::re_named_or {
-	# Check to see if the user supplied a name for the pattern.
-	my @name_args;
-	@name_args = (name => shift @_) if @_ % 2 == 1;
-	
-	my (@subset_names, @patterns);
-	
-	while (@_){
-		push @subset_names, shift @_;
-		push @patterns, shift @_;
-	}
-	
-	return Scrooge::Subdata::Or->new(@name_args, subset_names => \@subset_names, patterns => \@patterns);
 }
 
 # THE magic value that indicates this module compiled correctly:

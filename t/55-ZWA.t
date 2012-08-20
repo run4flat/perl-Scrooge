@@ -8,14 +8,14 @@ my $data = [1..20];
 my $empty = [];
 
 ############################
-# parse_location tests: 11 #
+# parse_position tests: 11 #
 ############################
 
-my $pl = \&Scrooge::ZWA::parse_location;
+my $pl = \&Scrooge::ZWA::parse_position;
 sub do_check {
 	my ($input, $expected, $output_string) = @_;
 	$output_string = $expected if not defined $output_string;
-	is($pl->($data, $input), $expected, "parse_location: $input => $output_string");
+	is($pl->($data, $input), $expected, "parse_position: $input => $output_string");
 }
 do_check(0 => 0);
 do_check('100%' => 20, 'N');
