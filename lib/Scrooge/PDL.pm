@@ -331,10 +331,19 @@ should be sufficient.
 =head2 Scrooge::PDL::Range
 
 The class underlying L</re_range> is C<Scrooge::PDL::Range>. This class
-provides its own C<_prep> and C<_apply> methods, but otherwise inherets from
+provides its own C<_init>, C<_prep>, and C<_apply> methods, but otherwise inherets from
 C<Scrooge::Quantified>.
 
 =over
+
+=item _init
+
+The purpose of overwriting _init is so we can have the class parse values for above and 
+below if they are not explicitly defined in the constructor. This is so you do not have
+to define an upper or lower boundary if you do not need to. _init will keep the value of
+any defined above or below, but if above is undefined, _init sets its value to '-inf',
+and if below is undefined, _init sets its value to 'inf'. This can then be sent to prep,
+with valid syntax for parse_range_strings. 
 
 =item _prep
 
