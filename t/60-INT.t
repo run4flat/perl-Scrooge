@@ -32,7 +32,7 @@ is(prs($data, 'max - 2'), 8, 'parse_range_strings correctly interprets max - 2')
 
 my $two_to_five = eval{re_intersect(name => 'test regex', above => '2', below => '5')};
 is($@, '', 'Basic constructor does not croak');
-isa_ok($two_to_five, 'Scrooge::PDL::Intersect');
+isa_ok($two_to_five, 'Scrooge::PDL::Range');
 is($two_to_five->{name}, 'test regex', 'Constructor correctly interprets name');
 
 #########################
