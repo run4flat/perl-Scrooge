@@ -8,7 +8,8 @@ use PDL;
 our @ISA = qw(Exporter);
 
 our @EXPORT = qw(re_or re_and re_seq re_sub re_any
-		 re_zwa re_anchor_begin re_anchor_end 
+		 re_zwa_position re_zwa_sub
+		 re_anchor_begin re_anchor_end 
 		 re_named_seq re_named_and re_named_or);
 
 =head1 NAME

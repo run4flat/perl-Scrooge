@@ -100,9 +100,9 @@ isnt($matched, undef, 'two_to_five matched piddle');
 is($matched, 1, 'default quantifier is a single match');
 is($offset, 9, 'identifies first matching element');
 
-#############################
+##############################
 # Quantified Match Tests: 12 #
-#############################
+##############################
 
 $data->slice('10') .= -11;
 $data->slice('11') .= -12;
