@@ -577,9 +577,16 @@ to learn how to teach Scrooge about your data container.)
 
 # User-level method, not to be overridden.
 sub apply {
-	croak('Scrooge::apply is a one-argument method')
-		unless @_ == 2;
-	my ($self, $data) = @_;
+	my $self = shift;
+	if (@_ == 1) {
+		my $data = shift;
+	}
+	elsif (@_ % 2 == 0) {
+		my $data = {@_};
+	}
+	else {
+		croak('Scrooge::apply expects either a data argument or key/value data pairs');
+	}
 	
 	# Prepare the pattern for execution. This may involve computing low and
 	# high quantifier limits, keeping track of $data, stashing
@@ -3048,15 +3055,17 @@ operate properly.
 I have implemented a match stack to allow for multiple copies of the same
 pattern within a larger pattern. I have also implemented a stashing and
 unstashing mechanism to allow for patterns to be called from within other
-patterns without breaking the original. However, the code remains untestd.
+patterns without breaking the original. This may, or may not, be tested. (This
+comment was written a long time ago, and I may have written the tests for this
+issue in the interim.)
 
 =item Proper prep, cleanup, and stash handling on croak
 
 I have added lots of code to handle untimely death at various stages of
 execution of the pattern engine. I have furthermore added lots
 of lines of explanation for nested and grouped patterns so that pin-pointing
-the exact pattern is clearer. At this point, I need to test that all of the
-deaths do not interfere with proper cleanup.
+the exact pattern is clearer. At this point, I need to ensure that these are
+indeed tested.
 
 =back
 
