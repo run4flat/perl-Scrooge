@@ -578,11 +578,12 @@ to learn how to teach Scrooge about your data container.)
 # User-level method, not to be overridden.
 sub apply {
 	my $self = shift;
+	my $data;
 	if (@_ == 1) {
-		my $data = shift;
+		$data = shift;
 	}
 	elsif (@_ % 2 == 0) {
-		my $data = {@_};
+		$data = {@_};
 	}
 	else {
 		croak('Scrooge::apply expects either a data argument or key/value data pairs');
