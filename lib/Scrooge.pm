@@ -30,7 +30,7 @@ This documentation is for version 0.01 of Scrooge.
  # Build the pattern object first. This one
  # matches positive values and assumes it is
  # working with piddles.
- my $positive_re = re_sub(sub {
+ my $positive_pattern = re_sub(sub {
      # Supplied args (for re_sub, specifically) are the
      # object (in this case assumed to be a piddle), the
      # left slice offset, and the right slice offset:
@@ -119,10 +119,10 @@ tiers. The top-level tier is a set of functions that help you quickly build
 patterns such as C<re_seq> and C<re_any>, as well as the Scrooge methods
 that enable you to run patters on data and retrieve the results. The mid-level
 tier is the set of classes that actually implement that functionality such as
-C<Scrooge::Any>, C<Scrooge::Quantified>, and C<Scrooge::And>, along
-with how to create your own classes. The bottom-level tier is the Scrooge base
-class and its internal workings as a pattern matching engine. The documentation
-that follows progresses from top to bottom.
+C<Scrooge::Quantified> and C<Scrooge::Seq>, along with how to create your own
+classes. The bottom-level tier is the Scrooge base class and its internal
+workings as a pattern matching engine. The documentation that follows progresses
+from top to bottom.
 
 =head1 PATTERNS
 
@@ -157,15 +157,15 @@ sub re_any {
 	$quantifiers = [1,1] unless defined $quantifiers;
 	
 	# Create the subroutine pattern:
-	return Scrooge::Any->new(quantifiers => $quantifiers
+	return Scrooge::Quantified->new(quantifiers => $quantifiers
 		, defined $name ? (name => $name) : ());
 }
 
 
 =head2 re_sub
 
-Evaluates the supplied subroutine on the current subset of data, optinally
-taking a capture name and a set of quantifiers. If not quantifiers are
+Evaluates the supplied subroutine on the current subset of data, optionally
+taking a capture name and a set of quantifiers. If no quantifiers are
 specified, they default to C<[1, 1]>, that is, it matches one and only one
 value.
 
@@ -181,8 +181,8 @@ numeric context and does not gripe when converted from a string value
 to a numeric value (even when you've activated warnings). If the match will
 always fail for the given left offset, you should return 0. Otherwise, if it
 fails for the given value of the right offset but might succeed for a smaller
-right offset, return -1. For more details about custom matching return values,
-see L</RETURN VALUES>.
+right offset, return -1. Return values are discussed in detail under the
+documentation for L<_apply|/_apply ($left, $right)>.
 
  # Create a match sub to use (you can also supply an anonymous sub
  # directly to re_sub, if you wish)
@@ -219,10 +219,6 @@ sub re_sub {
 	my $name = shift if @_ == 3;
 	my $quantifiers = shift if @_ == 2;
 	my $subref = shift;
-	
-	# Check that they actually supplied a subref:
-	croak("re_sub requires a subroutine reference")
-		unless ref($subref) eq ref(sub {});
 	
 	$quantifiers = [1,1] unless defined $quantifiers;
 	
@@ -416,6 +412,12 @@ a pattern on an anonymous hash with key/value pairs in which the keys are
 the names of the different data sets and the values are the actual data sets,
 the things you'd normally send to C<apply>.
 
+The semantics of multiple, named data sets is still in flux and will change in
+the future. For now, feel free to use these B<only if each object works with one
+data set>. Calling the same pattern on multiple data sets will result in matches
+being run only on the first dataset. If you need to run the same pattern on
+multiple data sets, create multiple copies of the pattern.
+
 =cut
 
 sub _build_named_data_group_pattern {
@@ -488,12 +490,14 @@ sub re_named_seq {
 	return _build_named_data_group_pattern('Scrooge::Subdata::Sequence', @_);
 }
 
-=head1 METHODS
+=head1 USER METHODS
 
 These are the user-level methods that each pattern provides. Note that this
 section does not discuss subclassing or constructors; those are discussed 
-further below under L</SUBCLASSING>. This section is the reference manual
-for using your patterns once you've built them.
+further below under L</SUBCLASSING> XXX. This section is the reference manual
+for using your patterns once you've built them. Class authors should B<not>
+override these methods, but instead should override methods with leading
+underscores discussed under L</AUTHOR METHODS>.
 
 =head2 apply ($data)
 
@@ -777,17 +781,192 @@ sub get_details {
 	return $self->{final_details}->[0];
 }
 
-=head1 Return Values
+=head1 AUTHOR METHODS
 
-This needs to be moved down below the sections that describe specific classes
-(like C<re_any>). Ah well, must be fixed later.
+This section documents the basic class structure of Scrooge for those interested
+in writing pattern classes. If your goal is to simply build and apply patterns
+to data then this section is not for you.
 
-working here
+There are many methods provided by Scrooge. Some of them are explicitly meant to
+be overridden; others are explicitly not meant to be overridden. In general,
+methods that begin with an underscore are overridable; methods that do B<not>
+begin with an underscore should be left alone.
 
-=head2 When writing a condition
+=head2 _init
 
-In short, if the condition matches for the given length, you should return
-the number of elements matched, which is C<$right - $left + 1>. If it
+This method is invoked during the construction of the pattern. The object is
+hash-based and contains whichever key/value pairs were sent to the C<new> class
+method. It will also indicate that its state is C<'not running'>, though you
+should not change that unless you know what you're doing.
+
+This method is meant to be overloaded by derived classes and should do whatever
+constructor initialization stuff needs to happen. Remember that at this stage,
+you do not have access to the data that you will match. That comes later. This
+stage should primarily focus on argument validation and initialization. Once
+your C<_init> code has finished, your object should be ready to have its
+C<_prep> method invoked.
+
+=cut
+
+# Default init does nothing:
+sub _init {
+	croak('Scrooge::_init is a method that takes no arguments')
+		unless @_ == 1;
+}
+
+=head2 _prep ($data)
+
+
+The very last stage of C<prep> is calling this method, C<_prep>, whose name
+differs from C<prep> only in the presence of the leading underscore. As a class
+author, you should override this method. This function is called before the
+pattern hammers on the supplied data. If you have any data-specific setup to do,
+do it in this function. You should perform as much pre-calculation and
+preparation as possible in this code so as to minimize repeated calculations in
+your C<_apply> method.
+
+If you are not deriving your class from L</Scrooge::Quantified>,
+L</Scrooge::ZWA>, or L</Scrooge::Grouped> and you intend for your pattern to
+run, you must either set C<< $self->{min_size} >> and C<< $self->{max_size} >>
+at this point or you must override the related internal functions so that they
+operate correctly without having values associated with those keys. The
+C<min_size> and C<max_size> methods operate both as setters and as getters, so
+the following code is an appropriate means to set these variables in your
+C<_prep> method:
+
+ $self->min_size($some_size);
+ $self->max_size($some_size);
+
+Having examined the data, if you know that this pattern will not match 
+you should return zero. This guarantees that the following functions
+will not be called on your pattern during this run: C<_apply>, C<_min_size>,
+C<_max_size>, and C<_store_match>. Put a little bit
+differently, it is safe for any of those functions to assume that C<_prep>
+has been called and was able to set up internal data that might be required
+for their operation. Furthermore, if you realize in the middle of C<_prep>
+that your pattern cannot run, it is safe to return 0 immediately and expect
+the parent pattern to call C<_cleanup> for you. (working here - make sure the
+documentation for Scrooge::Grouped details what Grouped patterns are supposed to
+do with C<_prep> return values.)
+
+Your pattern may still be querried afterwards for a match by
+C<get_details_for> or C<get_details>, regardless of the return value of
+C<_prep>. In both of those cases, returning the undefined value,
+indicating a failed match, would be the proper thing to do.
+
+NOTE: Support for multiple data sets
+will likely require that the name of the data be passed. In the future, it is
+likely that the sub-dataset's name, if supplied, will be the second argument. At
+any rate, consider the interfae of this function to be in alpha, and that
+changes may occurr in the not-distant future. For the time being, as was
+mentioned above under L</SIMULTANEOUSLY MATCHING ON MULTIPLE DATASETS>,
+your users will have to stick with one dataset per pattern object. If they stick
+with that, then everything mentioned above will work fine.
+
+=cut
+
+# Default _prep simply returns true, meaning a successful prep:
+sub _prep {	return 1 }
+
+=head2 _to_stash
+
+In the discussion on L</_prep>, I mentioned calculation of internal data. If you
+store any internal data, you should override C<_to_stash> and include the names
+of those keys.
+
+Stashing is a means of storing the pattern's internal state in the middle of a
+match. This will happen in the following series of events. First, you create a
+stand-alone pattern, say, C<my $complex_pattern>. Then you build a grouped
+pattern (such as a sequence) that includes C<$complex pattern> as well as a
+subroutine pattern. Finally, within that subroutine pattern, you C<apply> the same
+C<$complex_pattern> to a sub-slice of the data. In that case, C<$complex_pattern>
+will have internal data from the outer grouped pattern that needs to be stored
+so that the internal pattern match can run and return its values.
+
+Even if you didn't follow what I just explained, the point is that Scrooge will
+handle the saving and restoring your pattern's internal data at the right times
+so that everything works without any intervention on your part. To get this to
+work, all you need to do is tell Scrooge which keys to back-up. To do this, you
+overload the C<_to_stash> method with something like this:
+
+ sub _to_stash {
+     return 'velocity', 'acceleration', $self->SUPER::_to_stash;
+ }
+
+This will ensure that if you or your users try to do that crazy call-from-inside
+thing that I described above, the internal values of the pattern's engine, along
+with the keys C<velocity> and C<acceleration>, will be exactly what you asked
+them to be.
+
+What should you have stashed? Basically, you should stash anything that you set
+in C<_prep>, or which you generally expect to remain unchanged before, during,
+and after the application of your pattern. The default keys that are stashed
+include C<data>, C<min_size>, C<max_size>, and C<match_details>. The first three
+are set during the prep stage and the last one is set after a successful match.
+Hopefully that gives you some idea of what to stash. In general, stashing data
+is relatively cheap but having sub-patterns destroy the internal state of your
+pattern is impossible to recover from. When in doubt, if you put data into one
+of your hash's keys, you should stash it.
+
+=cut
+
+# The internal keys with values that we want to protect in case of
+# recursive usage:
+sub _to_stash {
+	croak('Scrooge::_to_stash is a method that takes no arguments')
+		unless @_ == 1;
+	return qw (data min_size max_size match_details);
+}
+
+=head2 min_size, max_size
+
+These are getters and setters for the current lengths that indicate the
+minimum and maximum number of elements that your pattern is capable of
+matching. Scrooge expects these values to be set before or during L</_prep>
+and afterwards consults whatever was stored there.
+
+Unlike other non-underscore methods, you can override these if you like.
+
+Note that at the moment, C<min_size> and C<max_size> are not querried
+during the actual operation of the pattern, only at the beginning. In other
+words, overriding these methods so that their return value changes throughout
+the course of the pattern match (with a hope of reporting a more precise value,
+perhaps) will not work.
+
+You are guaranteed that C<_prep> will have been run before these methods are
+run, and they will not be run if C<_prep> returned a false value. If you
+call the base class's prep, you are also guaranteed that if C<min_size> or
+C<max_size> are keys in the object, they will be the default values.
+
+=cut
+
+sub min_size {
+	return $_[0]->{min_size} if @_ == 1;
+	return $_[0]->{min_size} = $_[1] if @_ == 2;
+	croak('Scrooge::min_size is an accessor method');
+}
+
+sub max_size {
+	return $_[0]->{max_size} if @_ == 1;
+	return $_[0]->{max_size} = $_[1] if @_ == 2;
+	croak('Scrooge::max_size is an accessor method');
+}
+
+=head2 _apply ($left, $right)
+
+This method is called when it comes time to apply the pattern to see if it
+matches at the current left and right offsets, which are the two arguments
+supplied to the method. The data is not included becaus it was cached under the
+C<data> key during L</prep>; you can retrieve it under that key if you need it.
+
+If your pattern encloses another, it should call the enclosed pattern's C<_apply>
+method and take its return value into consideration with its own, unless
+it returned 0 when you called C<_prep>. In that case, you should not call it.
+
+There are actually many different return values, all with different meanings.
+In short, if the condition matches, you should return the number of items matched
+and any details that you wish the user to get when they call L</get_details_for>
+on your pattern (assuming it's named), as key/value pairs. If it
 does not match for this range but B<might> match for a shorter range (if
 C<$right> were moved a little bit to the left), return -1. If it cannot
 match starting at C<$left>, return numeric zero. Those are the basics. However,
@@ -800,12 +979,13 @@ Here is a rundown of what to return when:
 
 =item More than the Full Length
 
-You should never return more than the full length, and if you do, the pattern
-engine will croak saying
+You should never return more than the full length that was given to you (which
+is C<$right - $left + 1>), and if you do, Scrooge will croak saying
 
  Internal error: pattern of class <class> consumed more than it was given
 
-doc working here - add this to the list of errors reported.
+=for details
+XXX add this to the list of errors reported.
 
 =item Full Length
 
@@ -814,12 +994,12 @@ against the full length.
 
 =item Less than the Full Length
 
-If your condition does not match against the entire object range but it is easy
+If your condition does not match against the entire range but it is easy
 to check against shorter lengths, you can return the number of elements that it
 matches. In terms of Perl arrays, if the match fails against the slice
 C<@data[$left .. $right]> but it's easy to find some C<$less_than_right> for
 which the match succeeds (against C<@data[$left .. $less_than_right]>), then
-you can return the legnth of that match, which would be
+you can return the length of that match, which would be
 C<$less_than_right - $left + 1>.
 
 Note that you should only do this if it is easy to check shorter lengths.
@@ -842,6 +1022,9 @@ matching elements, you can legitimately say that the match was successful
 and it matched zero elements. Note that if your quantifiers do not allow
 a match of zero length, you should probably return the numeric value of 0,
 instead.
+
+=for details
+XXX - make sure PDL's range pattern handles this correctly
 
 Zero-width assertions are a different sort of match of zero elements. In
 numerical patterns, this could be a condition on the slope between
@@ -894,95 +1077,75 @@ pattern, for example. You might have a pattern such as C<re_or ($first, $second)
 Suppose C<$first> fails at C<$right> but will succeed at C<$right - 1>, and
 C<$second> fails at C<$right> but will succeed at C<$right - 2>. It would be
 inefficient for C<$second> to evaluate its truth condition at C<$right - 2>
-since the result will never be used.
+since the result will never be used: C<$first> will match at C<$right - 1> before
+C<$second> gets a chance.
 
 =back
 
+Again, any positive match should also return pertinent details as key/value
+pairs. The quintesential example is, say, a linear fit. If the data "looks"
+linear (using, say, MSER or a Durbin-Watson statistic), you could return the
+number of items included in that linear fit, along with they slope and the
+intercept. Such a return statement might look like this:
 
+ #       number matched                   details
+ return ($right - $left + 1, slope => $slope, intercept => $intercept);
 
+The details are stored via the C<store_match> method. In addition to the
+key/value pairs returned by C<_apply>, the left and right offsets of the match
+are stored under the keys C<left> and C<right>.
 
-=head1 Creating your own Pattern Class
+Note that the data and pre-calculation caching is a major tripping point of
+multiple dataset matching, so the arguments to C<_apply> may change in the
+future. The most likely situation is that the name of the dataset will be
+included as a third argument. Stay tuned.
 
-The heierarchy of numerical patterns have two basic flavors:
-Quantified patterns and Grouped patterns. If you are
-trying to write a rule to apply to data, you are almost certainly interested
-in creating a new Quantified pattern. That's also the easier one
-of the two to create, so I'll discuss subclassing that first.
+=head2 _cleanup
 
-To subclass C<Scrooge::Quantified> (argh... not finished, but see the
-next section as it discusses most of this anyway).
+The overridable method C<_cleanup> allows you to clean up any resources at the
+end of a match. Apart from stash management by grouping patterns (which have to
+call C<cleanup> on their sub-patterns), I have not yet used C<_cleanup> in my
+patterns. However, it is conceivable that you might want to allocate some
+resource in the C<prep> stage, and then unallocate that resource at the end of
+of the match. In that case, this overridable method is precisely what you will
+want to use.
 
+C<cleanup> (and therefore C<_cleanup> should only be called once, but your code
+needs to be flexible enough to accomodate multiple calls to C<_cleanup> without
+dying.
 
-=head1 Internals
+=cut
 
-All pattern classes must inheret from C<Scrooge> or a class derived from
-it. This section of documentation discusses how you might go about doing
-that. You are encouraged to override any of the methods of C<Scrooge> or
-its derivatives, except for the C<apply> method.
+# Default _cleanup does nothing
+sub _cleanup { }
 
-=head2 Required Methods
+=head1 DEEP METHODS
 
-If your class derives directly from Scrooge, Scrooge::Quantified, or
-Scrooge::Grouped, you must supply the C<_apply> internal method. However,
-you can override other methods as you see fit. The only methods you should
-not override are the Internal methods documented at the end of this section.
+These are methods that the general Scrooge subclass writer won't need, but are
+still needed sometimes.
 
-=over
-
-=item _apply
-
-This function is called when it comes time to apply the pattern to see if it
-matches the current range. That arguments to the apply function are the left
-and right offsets, respectively. (The data is not included, and you should
-make sure that you've cached a reference to the container during the C<_prep>
-phase.)
-
-If your pattern encloses another, it should call the enclosed pattern's C<_apply>
-function and take its return value into consideration with its own, unless
-it returned 0 when you called C<_prep>. In that case, you should not call it.
-
-working here - find and move the documentation about return values to this
-position in the documentation.
-
-If the match succeeds, you should return the number of elements matched. If
-it matched, but you do not consume anything, you should return "0 but true".
-If it failed, you should return the numeric value 0.
-
-=back
-
-=head2 Optional Methods
-
-The base class provides a number of methods that you can override if you
-wish. Here is what each of those methods are supposed to do:
-
-=over
-
-=item new ($class, %args)
+=head2 new ($class, %args)
 
 The role of the constructor is to create a blessed hash with any internal
-data representations.
+data representations. This method name does not begin with an underscore, which
+means that class authors should not override it. It is also a bit odd: typically
+it is neither invoked by the user nor overridden by class authors. In general, a
+class author supplies a short-form constructor that invokes C<new>, which
+prepares a few bits and pieces of the internal state before calling L<_init>. If
+you need to override initialization, you should override L</_init>.
 
-From the standpoint of sub-classing, you should not override this method. It
-performs quite a bit of initialization for stack management that you will
-not want to deal with. Overrider C<_init> instead, which is called as a
-method at the end of C<new>.
+This method croaks if, after the class name, there is not an even number of 
+remaining arguments since it blesses the hash of key/value pairs into the
+supplied class.
 
-Note also that user-level constructors tend to wrap around the C<new>
-function and often perform their own data validation and internal
-data construction, so that is another place to put construction code.
-
-This method croaks if, after the class name, there is not an
-even number of remaining arguments since it blesses the hash of key => value
-pairs into the supplied class.
-
-Between C<new>, C<_init>, and the user-level constructor, the object that
-comes out must be capable of running its C<prep> method.
+The basic chain is user-level-constructor -> C<new> -> C<_init>. The resulting
+object at the end of this chaing must be capable of running its C<prep> method.
 
 =cut
 
 sub new {
 	my $class = shift;
-	croak("Internal Error: args to Scrooge::new must have a class name and then key => value pairs")
+	croak("Internal Error: args to Scrooge::new must have a class name and then key/value pairs")
 		unless @_ % 2 == 0;
 	my $self = bless {@_}, $class;
 	
@@ -995,56 +1158,67 @@ sub new {
 	return $self;
 }
 
-=item _init
+=head2 add_name_to ($hashref)
 
-working here - document this method
+This method is called called during the initialization stage of grouping
+patterns. It takes the given anonymous hash and, if it is named, adds itself
+under its name to the hash. This is used to build a quick look-up table for
+pattern names, which is handy both for retrieval of results after a successful
+match and for ensuring that named patterns do not clash when building complex
+patterns.
+
+If you are writing a new grouping pattern, in addition to adding your own name,
+you should check for and add all of your childrens' names. (This behavior is
+handled for you by L</Scrooge::Grouped>.) Note that if your pattern's name
+is already taken, you should croak with a meaningful message, like
+
+ croak("Found multiple patterns named $name.");
 
 =cut
 
-# Default init does nothing:
-sub _init {
-	croak('Scrooge::_init is a method that takes no arguments')
-		unless @_ == 1;
+sub add_name_to {
+	croak('Scrooge::add_name_to is a one-argument method')
+		unless @_ == 2;
+	my ($self, $hashref) = @_;
+	return unless exists $self->{name};
+	
+	my $name = $self->{name};
+	# check if the name exists:
+	croak("Found multiple patterns named $name")
+		if exists $hashref->{$name} and $hashref->{$name} != $self;
+	# Add self to the hashref under $name:
+	$hashref->{$name} = $self;
 }
-=item prep ($data)
 
-This function is called before the pattern hammers on the supplied
-data. If you have any data-specific setup to do, do it in this function.
+=head2 get_bracketed_name_string
 
-From the standpoint of internals, you need to know two things: what this
-function should prepare and what this function should return. (For a
-discussion on intepreting return values from C<_prep>, see Scrooge::Grouped.)
+This returns a string to be used in error messages. It returns an empty string
+if the pattern does not have a name, or ' [name]' if it does have a name. This
+is useful for constructing error messages of the following form:
 
-If you are not deriving your class from Scrooge::Quantified or Scrooge::Grouped and
-you intend for your pattern to run, you must either set C<< $self->{min_size} >>
-and C<< $self->{max_size} >> at this point or you must override the
-related internal functions so that they operate correctly without having
-values associated with those keys.
+ my $name = $self->get_bracketed_name_string;
+ croak("Pattern$name tried to frobnosticate!")
 
-If, having examined the data, you know that this pattern will not match, 
-you should return zero. This guarantees that the following functions
-will not be called on your pattern during this run: C<_apply>, C<_min_size>,
-C<_max_size>, and C<_store_match>. Put a little bit
-differently, it is safe for any of those functions to assume that C<_prep>
-has been called and was able to set up internal data that might be required
-for their operation. Furthermore, if you realize in the middle of C<_prep>
-that your pattern cannot run, it is safe to return 0 immediately and expect
-the parent pattern to call C<_cleanup> for you. (working here - make sure the
-documentation for Scrooge::Grouped details what Grouped patterns are supposed to
-do with C<_prep> return values.)
-
-Your pattern may still be querried afterwards for a match by
-C<get_details_for> or C<get_details>, regardless of the return value of
-C<_prep>. In both of those cases, returning the undefined value,
-indicating a failed match, would be the proper thing to do.
-
-The C<_prep> method is called as the very first step in C<apply>.
-
-
+You shouldn't override this unless you want more detailed error messages.
 
 =cut
 
+sub get_bracketed_name_string {
+	croak('Scrooge::get_bracketed_name_string is a method that takes no arguments')
+		unless @_ == 1;
+	my $self = shift;
+	if (defined $self->{name}) {
+		return ' [' . $self->{name} . ']';
+	}
+	return '';
+}
 
+=head2 is_prepping
+
+This is a setter method that changes the internal state of the pattern just
+before L<prep|/prep ($data)> gets called.
+
+=cut
 
 # The first phase. Back up the old state and clear the current state. The
 # state is required to be 'not running' before the pattern starts, and it
@@ -1062,29 +1236,31 @@ sub is_prepping {
 	}
 }
 
-sub is_applying {
-	$_[0]->{state} = 'apply';
-}
+=head2 prep ($data)
 
-# As with is_prepping, do *not* set the state since cleaning's short-
-# circuiting depends on this being clear:
-sub is_cleaning {
-	delete $_[0]->{state};
-}
+This method is neither user-level nor overridable. It is called as the first
+stage of C<apply>. It handles the messy business of handling the pattern's
+internal state and stashing the to-be-matched data in the C<data> key of the
+(hash-based) object before calling C<_prep>.
 
-# Make sure this only gets run once per call to apply:
+As a class author, you should overload C<_prep> to control how your class
+prepares for being matched.
+
+=cut
+
 sub prep {
 	croak('Scrooge::prep is a one-argument method')
 		unless @_ == 2;
 	my ($self, $data) = @_;
 	
+	# Make sure this only gets run once per call to apply:
 	return 1 if $self->{state};
 	$self->{state} = 'prepping';
 	
 	# Stash everything. Note that under repeated invocations of a pattern, there
 	# may be values that we traditionally stash that have lingered from the
 	# previous invocation.
-	# I would like to remove those values, but that causes troubles. :-(
+	# I would like to remove those values, but that causes troubles. XXX :-(
 #	my @to_stash = $self->_to_stash;
 	if (defined $self->{data}) {
 		push @{$self->{"old_$_"}}, $self->{$_} foreach $self->_to_stash;
@@ -1094,102 +1270,140 @@ sub prep {
 		#delete $self->{$_} foreach @to_stash;
 	}
 	
-	# working here - make sure to document that min_size and max_size must
-	# be set by the derived class's _prep method
 	$self->{data} = $data;
-	
 	return $self->_prep($data);
 }
 
-# Default _prep simply returns true, meaning a successful prep:
-sub _prep {	return 1 }
+# Note: right now the pattern knows that it is being prepped inside a 
 
-=item _to_stash
+=head2 is_applying
 
-Stashing is a means of storing the pattern's internal state in the middle of a
-match. This will happen in the following series of events. First, you create a
-stand-alone pattern, say, C<my $complex_pattern>. Then you build a grouped
-pattern (such as a sequence) that includes C<$complex pattern> as well as a
-subroutine pattern. Finally, within that subroutine pattern, you C<apply> the same
-C<$complex_pattern> to a sub-slice of the data. In that case, C<$complex_pattern>
-will have internal data from the outer grouped pattern that needs to be stored
-so that the internal pattern match can run and return its values.
-
-Even if you didn't follow what I just explained, the point is that Scrooge will
-handle the saving and restoring your pattern's internal data at the right times
-so that everything works without any intervention on your part. To get this to
-work, all you need to do is tell Scrooge which keys to back-up. To do this, you
-overload the C<_to_stash> method with something like this:
-
- sub _to_stash {
-     return 'velocity', 'acceleration', $self->SUPER::_to_stash;
- }
-
-This will ensure that if you or your users try to do that crazy call-from-inside
-thing that I described above, the internal values of the pattern's engine, along
-with the keys C<velocity> and C<acceleration>, will be exactly what you asked
-them to be.
-
-What should you have stashed? You should stash anything that you expect to
-remain unchanged. For example, anything that you compute once during the _prep
-stage and expect to remain unchanged is exactly the sort of thing that should
-be stashed. The default keys that are stashed include C<data>, C<min_size>,
-C<max_size>, and C<match_details>.
+This is a setter method that changes the internal state of the pattern just
+before L</_apply> gets called.
 
 =cut
 
-# The internal keys with values that we want to protect in case of
-# recursive usage:
-sub _to_stash {
-	croak('Scrooge::_to_stash is a method that takes no arguments')
+sub is_applying {
+	$_[0]->{state} = 'apply';
+}
+
+=head2 store_match ($hashref)
+
+This method stores the match details under the C<match_details> key if the
+pattern is named. Match details include the left and right offsets of the match
+along with whatever key/value pairs are returned by the successful call to
+L</_apply>. The results are actually stored in an anonymous array so that
+multiple occurrances of the same pattern can match without overwriting each
+other.
+
+=cut
+
+sub store_match {
+	croak('Scrooge::store_match is a one-argument method')
+		unless @_ == 2;
+	my ($self, $details) = @_;
+	
+	# Only store the match if this is named
+	return unless exists $self->{name};
+	push @{$self->{match_details}}, $details;
+}
+
+=head2 clear_stored_match
+
+Grouping patterns like L</re_and> and L</re_seq> need to have some way of
+clearing a stored match when something goes wrong, and they do this by
+calling C<clear_stored_match>. In the base class's behavior, this function
+only does anything when there is a name associated with the pattern, and even
+then only clears the most recently stored match. Grouping pattern objects should
+clear their children patterns in addition to clearing their own values.
+
+=cut
+
+sub clear_stored_match {
+	croak('Scrooge::_stored_match is a method that takes no arguments')
 		unless @_ == 1;
-	return qw (data min_size max_size match_details);
+	my $self = shift;
+	
+	return 0 unless exists $self->{name};
+	pop @{$self->{match_details}};
+	return 0;
 }
 
-=item _min_size, _max_size
+=head2 Scrooge::data_length
 
-These are getters and setters for the current lengths that indicate the
-minimum and maximum number of elements that your pattern is capable of
-matching. The base class expects these to be set during the C<_prep> phase
-after afterwards consults whatever was stored there. Because of the
-complicated stack management, you would be wise to stick with the base class
-implementations of these functions.
+Scrooge is designed to operate on any data container you wish to throw at
+it. However, it needs to know how to get the length of the information in your
+container. It does this with the generic function C<Scrooge::data_length>. To
+get the length of any known container, you would use the following command:
 
-working here - make sure grouped patterns properly set these during the
-_prep phase.
+ my $length = Scrooge::data_length($data);
 
-Note that at the moment, C<_min_size> and C<_max_size> are not querried
-during the actual operation of the pattern, only at the beginning. In other
-words, overriding these methods so that their return value changes throughout
-the course of the pattern match (with a hope of reporting a more precise value,
-perhaps) will not work.
+But how, you ask, does C<Scrooge::data_length> know how to calculate the length
+of my container? That's easy! Each container that wants to interact with Scrooge
+simply adds a subroutine reference to a table of length subroutines called
+C<%Scrooge::length_method_table>, where the key is the class name.
 
-You are guaranteed that C<_prep> will have been run before these methods are
-run, and they will not be run if C<_prep> returned a false value. If you
-call the base class's prep, you are also guaranteed that if min_size or
-max_size are keys in the object, they will be the default values.
+For example, after doing this:
+
+ $Scrooge::length_method_table{'My::Class::Name'} = sub {
+     # Returns the length of its first argument.
+     return $_[0]->length;
+ };
+
+if C<$object> is an object of class C<My::Class::Name>, you can simply use
+C<Scrooge::data_length($object)> to get the length of C<$object>.
+
+This is the only requirement that Scrooge has if you wish to use your class as
+a container for Scrooge patterns.
+
+Note to self: This should almost certainly be documented elsewhere, perhaps even
+in a separate document geared towards data container authors.
 
 =cut
 
-sub min_size {
-	return $_[0]->{min_size} if @_ == 1;
-	return $_[0]->{min_size} = $_[1] if @_ == 2;
-	croak('Scrooge::min_size is an accessor method');
+our %length_method_table = (
+#	''			=> sub { return length $_[0] },
+	(ref [])	=> sub { return scalar(@{$_[0]}) },
+	PDL			=> sub { return $_[0]->dim(0) },
+	(ref {})	=> sub {
+			my $hashref = shift;
+			return $hashref->{length} if exists $hashref->{length};
+			# Didn't supply a length key? I hope the length of the first
+			# "value" in the hashref makes sense!
+			my @values = values %$hashref;
+			return Scrooge::data_length($values[0]);
+		},
+);
+
+sub data_length {
+	my $data = shift;
+	return $length_method_table{ref $data}->($data)
+		if exists $length_method_table{ref $data};
+	croak('Scrooge was unable to determine the length of your data, which is of class '
+		. ref($data));
 }
 
-sub max_size {
-	return $_[0]->{max_size} if @_ == 1;
-	return $_[0]->{max_size} = $_[1] if @_ == 2;
-	croak('Scrooge::max_size is an accessor method');
+=head2 is_cleaning
+
+This is a setter method that changes the internal state of the pattern just
+before L</cleanup> gets called.
+
+=cut
+
+# As with is_prepping, do *not* set the state since cleaning's short-
+# circuiting depends on this being clear:
+sub is_cleaning {
+	delete $_[0]->{state};
 }
 
-=item _cleanup
+=head2 cleanup
 
 This method is called in one of two situations: (1) if you just returned 
 zero from C<_prep> and (2) after the engine is done, regardless of whether
-the engine matched or not. C<_cleanup> should only be called once, but your
-code needs to be flexible enough to accomodate multiple calls to C<_cleanup>
-without dying.
+the engine matched or not. As with other methods that have an associated
+underscore-prefixed variant, you should not override this method as it performs
+various stashed-value restoration. This method eventually calls the
+underscore method L</_cleanup>, which you can override.
 
 =cut
 
@@ -1257,177 +1471,73 @@ sub cleanup {
 	die $err_string if $err_string ne '';
 }
 
-# Default _cleanup does nothing
-sub _cleanup { }
+=head1 CLASSES
 
-=back
+The heierarchy of basic Scrooge patterns have three basic flavors:
+quantified patterns, zero-width assertions, and grouped patterns. If you are
+trying to write a rule to apply to data, you are almost certainly interested
+in creating a new quantified pattern or zero-width assertion.
 
-=head2 Matching
+=cut
 
-A number of functions facilitate homogeneous behavior for named regular
-expressions, which are supposed to keep track of the indices that matched.
-These functions do that:
+package Scrooge::Quantified;
+our @ISA = qw(Scrooge);
+use Carp;
+
+=head2 Scrooge::Quantified
+
+The Scrooge::Quantified class inherits directly from Scrooge and provides
+functionality for handling quantifiers, including parsing. It also matches any
+input that agrees with its desired size and is the class that implements the
+behavior for C</re_any>.
+
+This class uses the C<min_quant> and C<max_quant> keys and works by setting the
+C<min_size> and C<max_size> keys during the C<prep> stage. It provides its own
+C<_init>, C<_prep>, and C<_apply> methods. If you need a pattern object that
+handles quantifiers but you do not care how it works, you should inheret from
+this base class and override the C<_apply> method.
+
+Scrooge::Quantified provdes overrides for the following methods:
 
 =over
 
-=item store_match ({detail => hash})
+=item _init
 
-This is a function provided by the base class that stores the details under
-the C<match_details> key if the pattern is named.
+Scrooge::Quantified provides an C<_init> function that removes the C<quantifiers>
+key from the pattern object, validates the quantifier strings, and stores them
+under the C<min_quant> and C<max_quant> keys.
 
-=cut
+This method can croak for many reasons. If you do not pass in an anonymous array
+with two arguments, you will get either this error:
 
-sub store_match {
-	croak('Scrooge::store_match is a one-argument method')
-		unless @_ == 2;
-	my ($self, $details) = @_;
-	
-	# Only store the match if this is named
-	return unless exists $self->{name};
-	push @{$self->{match_details}}, $details;
-}
+ Quantifiers must be specified a defined value associated with key [quantifiers]
 
-=item clear_stored_match
+or this error:
 
-Grouping patterns like re_and and re_seq need to have some way of
-clearing a stored match when something goes wrong, and they do this by
-calling C<clear_stored_match>. In the base class's behavior, this function
-only runs when there is a name associated with the pattern. Grouping pattern
-objects should clear their children patterns, in addition to clearing their
-own values.
+ Quantifiers must be supplied as a two-element anonymous array
 
-=cut
+If you specify a percentage quantifier for which the last character is not '%'
+(like '5% '), you will get this sort of error:
 
-sub clear_stored_match {
-	croak('Scrooge::_stored_match is a method that takes no arguments')
-		unless @_ == 1;
-	my $self = shift;
-	
-	return 0 unless exists $self->{name};
-	pop @{$self->{match_details}};
-	return 0;
-}
+ Looks like a mal-formed percentage quantifier: [$quantifier]
 
-=item add_name_to ($hashref)
+If a percentage quantifier does not have any digits in it, you will see this:
 
-This method adds this pattern's name (along with a reference to itself) to the
-supplied hashref. This serves two purposes: first, it gives the owner a fast
-way to look up named references if either of the above accessors are called.
-Second, it provides a means at construction time (as opposed to evaluation
-time) to check that no two patterns share the same name. If you overload this
-method, you should be sure to add your name and reference to the list (if
-your pattern is named) and if yours is a grouping pattern, you should also check
-for and add all of your childrens' names. Note that if your pattern's name is
-already taken, you should croak with a meaningful message, like
+ Percentage quantifier must be a number; I got [$quantifier]
 
- Found multiple patterns named $name.
+If a percentage quantifier is less than zero or greater than 100, you will see
+this:
 
-working here - discuss more in the group discussion; also, should I weaken these
-references?
+ Percentage quantifier must be >= 0; I got [$quantifier]
+ Percentage quantifier must be <= 100; I got [$quantifier]
 
-=cut
+A non-percentage quantifier should be an integer, and if not you will get this
+error:
 
-sub add_name_to {
-	croak('Scrooge::add_name_to is a one-argument method')
-		unless @_ == 2;
-	my ($self, $hashref) = @_;
-	return unless exists $self->{name};
-	
-	my $name = $self->{name};
-	# check if the name exists:
-	croak("Found multiple patterns named $name")
-		if exists $hashref->{$name} and $hashref->{$name} != $self;
-	# Add self to the hashref under $name:
-	$hashref->{$name} = $self;
-}
+ Non-percentage quantifiers must be integers; I got [$quantifier]
 
-=item _get_bracketed_name_string
-
-This returns a string to be used in error messages. It should return an
-empty string if the pattern does not have a name, or ' [name]' if it does
-have a name. You shouldn't override this except for debugging purposes.
-
-=cut
-
-sub get_bracketed_name_string {
-	croak('Scrooge::get_bracketed_name_string is a method that takes no arguments')
-		unless @_ == 1;
-	my $self = shift;
-	if (defined $self->{name}) {
-		return ' [' . $self->{name} . ']';
-	}
-	return '';
-}
-
-=back
-
-=head2 Scrooge::data_length
-
-Scrooge is designed to operate on any data container you wish to throw at
-it. However, it needs to know how to get the length of the information in your
-container. It does this with the generic function C<Scrooge::data_length>. To
-get the length of any known container, you would use the following command:
-
- my $length = Scrooge::data_length($data);
-
-But how, you ask, does C<Scrooge::data_length> know how to calculate the length
-of my container? That's easy! Each container that wants to interact with Scrooge
-simply adds a subroutine reference to a table of length subroutines called
-C<%Scrooge::length_method_table>, where the key is the class name.
-
-For example, after doing this:
-
- $Scrooge::length_method_table{'My::Class::Name'} = sub {
-     # Returns the length of its first argument.
-     return $_[0]->length;
- };
-
-if C<$object> is an object of class C<My::Class::Name>, you can simply use
-C<Scrooge::data_length($object)> to get the length of C<$object>.
-
-This is the only requirement that Scrooge has if you wish to use your class as
-a container for Scrooge patterns.
-
-Note to self: This should almost certainly be documented elsewhere, perhaps even
-in a separate document geared towards data container authors.
-
-=cut
-
-our %length_method_table = (
-#	''			=> sub { return length $_[0] },
-	(ref [])	=> sub { return scalar(@{$_[0]}) },
-	PDL			=> sub { return $_[0]->dim(0) },
-	(ref {})	=> sub {
-			my $hashref = shift;
-			return $hashref->{length} if exists $hashref->{length};
-			# Didn't supply a length key? I hope the length of the first
-			# "value" in the hashref makes sense!
-			my @values = values %$hashref;
-			return Scrooge::data_length($values[0]);
-		},
-);
-
-sub data_length {
-	my $data = shift;
-	return $length_method_table{ref $data}->($data)
-		if exists $length_method_table{ref $data};
-	croak('Scrooge was unable to determine the length of your data, which is of class '
-		. ref($data));
-}
-
-package Scrooge::Quantified;
-use parent -norequire, 'Scrooge';
-use strict;
-use warnings;
-use Carp;
-
-=head1 Scrooge::Quantified
-
-The Quantified abstract base class inherets from the Scrooge abstract base class
-and provides functionality for handling quantifiers, including parsing the
-quantifier argument. If you need a pattern object that handles quantifiers but
-you do not care how it works, you should inheret from this base class and
-override the C<_apply> method.
+If you need to perform your own initialization in a derived class, you should
+call this class's C<_init> method to handle the quantifier parsing for you.
 
 =cut
 
@@ -1471,8 +1581,18 @@ sub _init {
 	return $self;
 }
 
-# Default minimum length is zero:
-sub _min_length { 0 }
+=item _prep
+
+Given a set of data, this method calculates the minimum and maximum number of
+elements that will match based on the quantifiers stored in C<min_quant> and
+C<max_quant>. If it turns out that the minimum size is larger than the maximum
+size, this method returns 0 to indicate that this pattern will never match. It
+also does not set the min and max sizes in that case. That means that if you
+inheret from this method, you should invoke this C<_prep> method; if the return
+value is zero, your own C<_prep> method should also be zero, and if the return
+value is 1, you should proceed with your own C<_prep> work.
+
+=cut
 
 # Prepare the current quantifiers:
 sub _prep {
@@ -1489,7 +1609,7 @@ sub _prep {
 	elsif ($min_quant < 0) {
 		$min_size = int($N + $min_quant);
 		# Set to a reasonable value if min_quant was too negative:
-		$min_size = 0 if $min_size < $self->_min_length;
+		$min_size = 0 if $min_size < 0;
 	}
 	else {
 		$min_size = int($min_quant);
@@ -1502,7 +1622,7 @@ sub _prep {
 	elsif ($max_quant < 0) {
 		$max_size = int($N + $max_quant);
 		# Stop now if the max quantifier was too negative:
-		return 0 if $max_size < $self->_min_length;
+		return 0 if $max_size < 0;
 	}
 	else {
 		$max_size = int($max_quant);
@@ -1519,23 +1639,78 @@ sub _prep {
 	return 1;
 }
 
-# I don't need to override _stash or _cleanup because they already handle
-# the size information. Also, I do not supply an _apply because that must be
-# provided by the derived classes.
+=item _apply
 
-package Scrooge::Any;
-our @ISA = qw(Scrooge::Quantified);
-use Carp;
+This very simple method returns the full length as a successful match. It does
+not provide any extra match details.
 
-# apply (the non-overrideable method) will store the saved values:
+=cut
+
+# apply (the non-overridable method) will store the saved values:
 sub _apply {
 	my (undef, $left, $right) = @_;
 	return $right - $left + 1;
 }
 
+=back
+
+=cut
+
+# I don't need to override _stash or _cleanup because they already handle
+# the size information.
+
 package Scrooge::Sub;
 our @ISA = qw(Scrooge::Quantified);
 use Carp;
+
+=head2 Scrooge::Sub
+
+The Scrooge::Sub class is the class that underlies the L</re_sub> pattern
+constructor. This is a fairly simple class that inherits from
+L</Scrooge::Quantified> and expects to have a C<subref> key supplied in the call
+to its constructor. Scrooge::Sub overrides the following Scrooge methods:
+
+=over
+
+=item _init
+
+The initialization method verifies that you did indeed provide a subroutine
+under the C<subref> key. If you did not, you will get this error:
+
+ Scrooge::Sub pattern [$name] requires a subroutine reference
+
+or, if your pattern is not named,
+
+ Scrooge::Sub pattern requires a subroutine reference
+
+It also calls the initialization code for C<Scrooge::Quantified> to make sure
+that the quantifiers are valid.
+
+=cut
+
+sub _init {
+	my $self = shift;
+	
+	# Check that they actually supplied a subref:
+	if (not exists $self->{subref} or ref($self->{subref}) ne ref(sub {})) {
+		my $name = $self->get_bracketed_name_string;
+		croak("Scrooge::Sub pattern$name requires a subroutine reference")
+	}
+	
+	# Perform the quantifier initialization
+	$self->SUPER::_init;
+}
+
+=item _apply
+
+Scrooge::Sub's C<_apply> method that evaluates the supplied subroutine at the
+left and right offsets of current interest. See the documentation for L</re_sub>
+for details about the arguments passed to the subroutine and return values. In
+particular, if you return any match details, they will be included in the saved
+match details if your pattern is a named pattern (and if it's not a named
+pattern, you can still return extra match details though there's no point).
+
+=cut
 
 sub _apply {
 	my ($self, $left, $right) = @_;
@@ -1558,53 +1733,66 @@ sub _apply {
 	return ($consumed, %details);
 }
 
-# Abstract base class for zero-width assertions
+=back
+
+=cut
+
 package Scrooge::ZWA;
 our @ISA = ('Scrooge');
 use Carp;
 
-# Parses a position string and return an offset for a given piece of data.
-sub parse_position{
-        my ($data, $position_string) = @_;
-        
-        # Get the max index in a cross-container form
-        my $max_index = Scrooge::data_length($data);
-        my $pct = $max_index/100;
-        
-        my $original_position_string = $position_string;
-        
-        # Keep track of truncation
-        my $truncate_extreme = 0;
-        $truncate_extreme = 1 if $position_string =~ s/^\[(.*)\]/$1/s;
-        
-        # Replace percentages with evaluatable expressions
-        $position_string =~ s/(\d)\s*\%/$1 * \$pct/;
-        
-        # Evaluate the string
-        my $position = eval($position_string);
-        croak("parse_position had trouble with position_string $original_position_string")
-                if $@ ne '';
-        
-        # handle negative offsets
-        if ($position < 0) {
-        	no warnings 'numeric';
-        	$position += $max_index if $position == $position_string;
-        }
-        
-        # Handle truncation
-        $position = 0 if $position < 0 and $truncate_extreme;
-        $position = $max_index if $position > $max_index and $truncate_extreme;
-        
-        # Round the result if it's not an integer
-        return int($position + 0.5) if $position != int($position);
-        # otherwise just return the position
-        return $position;
-}
+=head2 Scrooge::ZWA
+
+Scrooge::ZWA is a base class for zero-width assertions. It is derived directly
+from C<Scrooge>, not C<Scrooge::Quantified>. It provides the means to indicate
+positions at which it should match, although you are not required to specify
+match B<positions> to use this class.
+
+This class overrides C<min_size> and C<max_size> to always return zero, since
+that's what zero-width assertions do. It also overrides C<_prep> and C<_apply>
+so that its basic behavior is sensible and useful. During the C<prep> stage,
+if there is a C<position> key, it creates a subroutine cached under the key
+C<zwa_position_subref> that evaluates the position assertion codified by the
+one or two values asssociated with the C<position> key and returns boolean
+values indicating matching or failing to match the position.
+
+For a discussion of the strings allowed in positional asertions, see
+L</re_zwa_position>.
+
+=over
+
+=item min_size, max_size
+
+Scrooge::ZWA overrides min_size and max_size to both return zero.
+
+=cut
+
+sub min_size { 0 }
+sub max_size { 0 }
+
+=item _prep
+
+Scrooge::ZWA provides a C<_prep> method that evaluates the value associated
+with the C<position> key. If that value is a scalar then the exact positiion
+indicated by that scalar must match. If that value is an
+anonymous array with two values, the two values indicate a range of positions
+at which the assertion can match. Either way, if there is such a
+C<position> key with values as described, the C<_prep> method will create
+an anonymous subroutine under the key C<zwa_position_subref> that accepts a
+single argument and returns a true or false value indicating whether the
+position is matched. If there is no such C<position> key, there will still
+be a subroutine under C<zwa_position_subref>, but it will always return a
+true value. Thus, if you derive a class from C<Scrooge::ZWA>, running
+C<< $self->SUPER::_prep >> will ensure that C<< $self->{zwa_position_subref} >>
+is a subroutine that will give you a meaningful evaluation for any given
+(left) offset.
+
+=cut
 
 # Prepares the zero-width assertion; parses the position strings and constructs
 # an anonymous subroutine that can be called against the current left/right
 # position.
-sub prep_zwa {
+sub _prep {
 	my $self = shift;
 	
 	# Create a position assertion that always matches if no position was
@@ -1654,9 +1842,14 @@ sub prep_zwa {
 	return 1;
 }
 
-sub _prep {
-	return prep_zwa($_[0]);
-}
+=item _apply
+
+The default C<_apply> for Scrooge::ZWA simply applies the subroutine under
+C<< $self->{zwa_position_subref} >>, which asserts the positional request
+codified under the key C<position>. If there is no such key/value pair,
+then any position matches.
+
+=cut
 
 sub _apply {
 	my ($self, $left, $right) = @_;
@@ -1664,12 +1857,114 @@ sub _apply {
 	return 0;
 }
 
-sub min_size { 0 }
-sub max_size { 0 }
+=back
+
+Scrooge::ZWA also provides a useful utility for parsing positions:
+
+=over
+
+=item parse_position
+
+C<Scrooge::ZWA::parse_position> takes a data container and a position string
+and evaluates the position. The allowed strings are documented under
+L</re_zwa_position>; the data container must be something that 
+L</Scroge::data_length> knows how to handle.
+
+=cut
+
+# Parses a position string and return an offset for a given piece of data.
+sub parse_position{
+        my ($data, $position_string) = @_;
+        
+        # Get the max index in a cross-container form
+        my $max_index = Scrooge::data_length($data);
+        my $pct = $max_index/100;
+        
+        my $original_position_string = $position_string;
+        
+        # Keep track of truncation
+        my $truncate_extreme = 0;
+        $truncate_extreme = 1 if $position_string =~ s/^\[(.*)\]/$1/s;
+        
+        # Replace percentages with evaluatable expressions
+        $position_string =~ s/(\d)\s*\%/$1 * \$pct/;
+        
+        # Evaluate the string
+        my $position = eval($position_string);
+        croak("parse_position had trouble with position_string $original_position_string")
+                if $@ ne '';
+        
+        # handle negative offsets
+        if ($position < 0) {
+        	no warnings 'numeric';
+        	$position += $max_index if $position == $position_string;
+        }
+        
+        # Handle truncation
+        $position = 0 if $position < 0 and $truncate_extreme;
+        $position = $max_index if $position > $max_index and $truncate_extreme;
+        
+        # Round the result if it's not an integer
+        return int($position + 0.5) if $position != int($position);
+        # otherwise just return the position
+        return $position;
+}
+
+=back
+
+=cut
 
 package Scrooge::ZWA::Sub;
 our @ISA = ('Scrooge::ZWA');
 use Carp;
+
+=head2 Scrooge::ZWA::Sub
+
+As Scrooge::Sub is to Scrooge::Quantified, so Scrooge::ZWA::Sub is to
+Scrooge::ZWA. This class provides a means for overriding the C<_apply>
+method of zero-width assertions by allowing you to provide an anonymous
+subroutine reference that will be evaluated to determine if the zero-width
+assertion should hold at the given position. It expects the subroutine to be
+associated with the C<subref> key.
+
+This class overrides the following methods:
+
+=over
+
+=item _init
+
+The C<_init> method of Scrooge::ZWA::Sub ensures that you provided a
+subroutine associated with the C<subref> key, and it calls Scrooge::ZWA::_init
+as well, to handle the position key (if any).
+
+=cut
+
+sub _init {
+	my $self = shift;
+	
+	# Verify the subref
+	croak("Scrooge::ZWA::Sub requires a subroutine reference associated with key 'subref'")
+		unless exists $self->{subref} and ref($self->{subref}) eq ref(sub{});
+	
+	$self->SUPE::_init;
+}
+
+=item _apply
+
+The C<_apply> method of Scrooge::ZWA::Sub proceeds in two stages. First it
+evaluates the positional subroutine, returning false if the position does
+not match the position spec. Recall that the position subroutine will return
+a true value if there was no position spec. At any rate, if the position
+subroutine returns true, C<_apply> evaluates the subroutine under the 
+C<subref> key, passing the routine C<$data, $left, $right> (though C<$right>
+will always equal C<$left - 1>).
+
+The subroutine associated with C<subref> must return a value that evaluates
+to zero in numeric context, either the string C<'0 but true'> for a true value
+or the numeric value 0. It can also return details as key/value pairs upon a
+successful match.
+
+=cut
 
 sub _apply {
 	my ($self, $left, $right) = @_;
@@ -1696,22 +1991,85 @@ sub _apply {
 	# Make sure they only consumed zero elements:
 	unless ($consumed == 0) {
 		my $name = $self->get_bracketed_name_string;
-		die("Zero-width assertion$name consumed more than zero elements\n");
+		die("Zero-width assertion$name did not consume zero elements\n");
 	}
 	
 	# Return the result:
 	return ($consumed, %details);
 }
 
+=back
+
+=cut
+
 package Scrooge::Grouped;
-# Defines grouped patterns, like re_or, re_and, and re_seq
 our @ISA = qw(Scrooge);
 use Carp;
 
+=head2 Scrooge::Grouped
+
+Scrooge::Grouped is an abstract base class for grouped patterns, patterns
+whose primary purpose is to take a collection of patterns and apply them all
+to a set of data in one way or another. The canonical grouped patters are
+L</re_or>, L</re_and>, and L</re_seq>.
+
+This class provides quite a bit of functionality shared between all grouping
+classes. The big challenge for grouped patterns is ensuring that all stages
+of the pattern process touch each pattern at the right time. This includes
+the nitty-gritty of things like storing matches, unstoring (failed) matches,
+stashing and unstashing values, and other things. This base class exists so
+that you can (mostly) ignore these details.
+
+Scrooge::Grouped is derived directly from Scrooge and provides methods for
+the basic methods of C<_init>, C<_prep>, and C<_to_stash>, in addition to
+some of the lower-level methods. It also utilizes many new group-specific
+methods that only make sense in the context of gouped patterns, and which
+can be overridden in derived classes. It is an abstract base class, however,
+and derived classes must supply their own C<_apply> method.
+
+Scrooge::Grouped checks that all of its patterns are derived from Scrooge at
+construction time, so you canot create recursive patterns with code like this:
+
+ my $recursive;
+ $recursive = re_seq($something_else, $recursive);
+
+This is considered to be a Good Thing (because getting the internals right
+is Really Hard). However, it is possible to create recursive patterns by a
+different means by using L</re_sub>.
+
+The methods that Scrooge::Grouped overrides include:
+
+=over
+
+=item _init
+
+This method provides basic verification of the input. In particular, it
+verifies that the there is a C<patterns> key that holds an array of
+patterns which are themselves derived from C<Scrooge>. It also adds all
+named patterns to is collection of names and ensures that there are no name
+conflicts between two unrelated patterns.
+
+This method will croak for one of three reasons. If you do not provide a
+pattern key or if the associated value is not an anonymous array, you will
+get the error
+
+ Grouped patterns must supply a key [patterns] with an array of patterns
+
+If you supply an empty array, you will get the error 
+
+ You must give me at least one pattern in your group
+
+and if any of the elements in that array are not patterns, you will get this
+error:
+
+ Invalid pattern
+
+=cut
+
 sub _init {
 	my $self = shift;
-	croak("Grouped patterns must supply a key [patterns]")
-		unless defined $self->{patterns};
+	croak("Grouped patterns must supply a key [patterns] with an array of patterns")
+		unless exists $self->{patterns} and ref($self->{patterns}) eq ref([]);
 	
 	croak("You must give me at least one pattern in your group")
 		unless @{$self->{patterns}} > 0;
@@ -1730,13 +2088,218 @@ sub _init {
 	return $self;
 }
 
-# Derivatives must supply their own _apply
+=item add_name_to ($hashref)
+
+This method is called by grouping methods on their enclosed patterns during
+the initialization stage. If a grouping pattern is a child of a larger
+grouping pattern, it needs to ensure that both its own name and its chilren's
+names are added to the given hash, hence this overload.
+
+=cut
+
+# This is only called by patterns that *hold* this one, in the process of
+# building their own name tables. Add this and all children to the hashref.
+# Structures like ABA should pass this, but recursive structures will go
+# into deep recursion.
+# XXX recursive check this
+sub add_name_to {
+	my ($self, $hashref) = @_;
+	# Go through each named value in this group's collection of names:
+	while( my ($name, $ref) = each %{$self->{names}}) {
+		croak("Found multiple patterns named $name")
+			if defined $hashref->{$name} and $hashref->{$name} != $ref;
+		
+		$hashref->{$name} = $ref;
+	}
+}
+
+=item _to_stash
+
+In addition to the base class items that need to be stashed, this method
+indicates that the keys C<patterns_to_apply> and C<positive_matches> are to
+be stashed and unstashed.
+
+=cut
 
 # Some state information that will need to be stashed:
 sub _to_stash {
 	my $self = shift;
 	return qw(patterns_to_apply positive_matches), $self->SUPER::_to_stash;
 }
+
+=item _prep
+
+The C<_prep> method calls C<prep> on all the children patterns (via the
+C<prep_all> method). The patterns that succeeded are associated with the key
+C<patterns_to_apply> and success is determined by the result of the
+C<_prep_success> method. The result of that last method will depend on the
+sort of grouping pattern: 'or' patterns will consider it a successful prep
+if any of the patterns were successful, but 'and' and 'sequence' patterns
+will only be happy if all the patterns had successful preps. Of course, the
+prep could still fail if the accumulated minimum size is larger than the
+data's length. Otherwise, this method returns true.
+
+=cut
+
+# _prep will call _prep on all its children and keep track of those that
+# return true values. Success or failure is based upon the inherited method
+# _prep_success.
+sub _prep {
+	my ($self, $data) = @_;
+	
+	my @succeeded = $self->prep_all($data);
+	
+	# Store the patterns to apply. If _prep_success returns zero, we do not
+	# need to call cleanup: that will be called by our parent:
+	$self->{patterns_to_apply} = \@succeeded;
+	return 0 unless $self->_prep_success;
+	
+	# Cache the minimum and maximum number of elements to match:
+	$self->_minmax;
+	my $data_size = Scrooge::data_length($data);
+	$self->max_size($data_size) if $self->max_size > $data_size;
+	# Check those values for sanity:
+	if ($self->max_size < $self->min_size or $self->min_size > $data_size) {
+		return 0;
+	}
+
+	# If we're here, then all went well, so return as much:
+	return 1;
+}
+
+=item _cleanup
+
+The C<_cleanup> method is responsible for calling C<_cleanup> on B<all> the
+patterns. The patterns can croak in their C<_cleanup> stage, if they think
+that's a good idea: all such deaths will be captured and stored until all
+patterns have had a chance to C<_cleanup>, at which point they will be
+rethrown in agregate.
+
+=cut
+
+sub _cleanup {
+	my $self = shift;
+	# Call the cleanup method for *all* child patterns:
+	my @errors;
+	foreach (@{$self->{patterns}}) {
+		eval {$_->cleanup};
+		push @errors, $@ if $@ ne '';
+	}
+	
+	# Rethrow if we caught any exceptions:
+	if (@errors == 1) {
+		die(@errors);
+	}
+	elsif (@errors > 1) {
+		die(join(('='x20) . "\n", 'Multiple Errors', @errors));
+	}
+}
+
+=item clear_stored_match
+
+This calls the C<clear_stored_match> method on all the children that
+reported successful matches, as well as this grouping pattern.
+
+=cut
+
+# Clear stored match assumes that all the patterns matched, so this will
+# need to be overridden for re_or:
+sub clear_stored_match {
+	my $self = shift;
+	# Call the parent's method:
+	$self->SUPER::clear_stored_match;
+	
+	# Call all the positively matched patterns' clear function:
+	foreach my $pattern (@{$self->{positive_matches}}) {
+		$pattern->clear_stored_match;
+	}
+	
+	# Always return zero:
+	return 0;
+}
+
+=item is_prepping, is_applying, is_cleaning
+
+Each of these methods ensure that the base Scrooge method is called on the
+current Grouping pattern and that the C<is_I<method>>s are called on all of
+the children patterns. Note that these methods are called on B<all> the
+patterns, whether or not they reported a successful C<_prep>.
+
+=cut
+
+# State functions need to be called on all children.
+sub is_prepping {
+	my $self = shift;
+	$self->SUPER::is_prepping;
+	foreach my $pattern (@{$self->{patterns}}) {
+		$pattern->is_prepping;
+	}
+}
+
+sub is_applying {
+	my $self = shift;
+	$self->SUPER::is_applying;
+	foreach my $pattern (@{$self->{patterns}}) {
+		$pattern->is_applying;
+	}
+}
+
+# As with is_prepping, do *not* set the state since cleaning's short-
+# circuiting depends on this being clear:
+sub is_cleaning {
+	my $self = shift;
+	$self->SUPER::is_cleaning;
+	foreach my $pattern (@{$self->{patterns}}) {
+		$pattern->is_cleaning;
+	}
+}
+
+=item get_details_for
+
+This method overloads the base Scrooge method to check if this pattern or 
+any children patterns have the requested name and returning the match
+details for that pattern. (The base class just checks if the this pattern
+has the requested name; it has no notion of children and, thus, no notion
+of checking for them.)
+
+The return values in scalar and list context are the same as for the base
+L</get_details_for>.
+
+=cut
+
+sub get_details_for {
+	my ($self, $name) = @_;
+	# This is a user-level function. Croak if the name does not exist.
+	croak("Unknown pattern name $name") unless exists $self->{names}->{$name};
+	
+	# Propogate the callin context:
+	return ($self->{names}->{$name}->get_details) if wantarray;
+	return $self->{names}->{$name}->get_details;
+}
+
+=back
+
+In addition, Scrooge::Grouped provides many new overridable methods,
+including:
+
+=over
+
+=item prep_all
+
+The C<prep_all> method of Scrooge::Grouped calls the C<prep> method on each
+sub-pattern, tracking the success or failure, as well as any exceptions. Even
+if one of the pattern throws an exception, C<prep_all> continues C<prep>ing
+the remainder of the patterns because they cannot have their C<_cleanup>
+methods called if they have not already been C<prep>ed.
+
+If there were no exceptions, C<prep_all> returns a list of patterns whose
+C<_prep> methods returned true values. Even a successful C<prep> does not
+guarantee that the pattern will be returned as successful: if the
+successfully prepped pattern has a minimum size that consumes more data than
+is available, it's a failed prep overall and cannot lead to a successful
+match.
+
+=cut
 
 sub prep_all {
 	my ($self, $data) = @_;
@@ -1768,31 +2331,17 @@ sub prep_all {
 	return @succeeded;
 }
 
-# _prep will call _prep on all its children and keep track of those that
-# return true values. Success or failure is based upon the inherited method
-# _prep_success.
-sub _prep {
-	my ($self, $data) = @_;
-	
-	my @succeeded = $self->prep_all($data);
-	
-	# Store the patterns to apply. If _prep_success returns zero, we do not
-	# need to call cleanup: that will be called by our parent:
-	$self->{patterns_to_apply} = \@succeeded;
-	return 0 unless $self->_prep_success;
-	
-	# Cache the minimum and maximum number of elements to match:
-	$self->_minmax;
-	my $data_size = Scrooge::data_length($data);
-	$self->max_size($data_size) if $self->max_size > $data_size;
-	# Check those values for sanity:
-	if ($self->max_size < $self->min_size or $self->min_size > $data_size) {
-		return 0;
-	}
+=item _prep_success
 
-	# If we're here, then all went well, so return as much:
-	return 1;
-}
+The C<_prep_success> method is an overridable method that is supposed to
+analyze the contents of the C<patterns> and C<patterns_to_apply> keys to
+determine if the the group's prep was successful. 'or' patterns will be happy
+if there is at least one pattern to apply, but 'and' and 'seq' patterns will
+want all of their patterns to have succeeded. The base-class behavior follows
+the latter case and returns false unless there are as many patterns to apply
+as their are patterns in the group.
+
+=cut
 
 # The default success happens when we plan to apply *all* the patterns
 sub _prep_success {
@@ -1800,67 +2349,21 @@ sub _prep_success {
 	return @{$self->{patterns}} == @{$self->{patterns_to_apply}};
 }
 
-sub _cleanup {
-	my $self = shift;
-	# Call the cleanup method for *all* child patterns:
-	my @errors;
-	foreach (@{$self->{patterns}}) {
-		eval {$_->cleanup};
-		push @errors, $@ if $@ ne '';
-	}
-	
-	# Rethrow if we caught any exceptions:
-	if (@errors == 1) {
-		die(@errors);
-	}
-	elsif (@errors > 1) {
-		die(join(('='x20) . "\n", 'Multiple Errors', @errors));
-	}
-}
+=item push_match
 
+Successful matches are tracked with a call to C<push_match>, which stores a
+reference to the pattern in the array associated with C<positive_matches>,
+and invokes the C<store_match> method on the pattern. This method expects
+two arguments: the pattern object and a reference to a hash of match details.
 
-# State functions need to be called on all children.
-sub is_prepping {
-	my $self = shift;
-	$self->SUPER::is_prepping;
-	foreach my $pattern (@{$self->{patterns}}) {
-		$pattern->is_prepping;
-	}
-}
+Because the same grouping pattern can appear multiple times as part of a 
+larger pattern, and because all such appearances share the same match stac,
+it is critical that any and all patterns added with C<push_match> be tracked,
+somehow, so that if something fails and they must be removed, corresponding
+calls to C<pop_match> only pop off the matches associated with the matches
+at the current appearance, and not with previous appearances of the pattern.
 
-sub is_applying {
-	my $self = shift;
-	$self->SUPER::is_applying;
-	foreach my $pattern (@{$self->{patterns}}) {
-		$pattern->is_applying;
-	}
-}
-
-# As with is_prepping, do *not* set the state since cleaning's short-
-# circuiting depends on this being clear:
-sub is_cleaning {
-	my $self = shift;
-	$self->SUPER::is_cleaning;
-	foreach my $pattern (@{$self->{patterns}}) {
-		$pattern->is_cleaning;
-	}
-}
-
-# Clear stored match assumes that all the patterns matched, so this will
-# need to be overridden for re_or:
-sub clear_stored_match {
-	my $self = shift;
-	# Call the parent's method:
-	$self->SUPER::clear_stored_match;
-	
-	# Call all the positively matched patterns' clear function:
-	foreach my $pattern (@{$self->{positive_matches}}) {
-		$pattern->clear_stored_match;
-	}
-	
-	# Always return zero:
-	return 0;
-}
+=cut
 
 sub push_match {
 	croak('Scrooge::Grouped::push_match is a method that expects two arguments')
@@ -1870,47 +2373,74 @@ sub push_match {
 	$pattern->store_match($details);
 }
 
+=item pop_match
+
+The C<pop_match> method removes the most recent addition to the
+C<positive_matches> stack and calls its C<clear_stored_match> method. This
+only marks a bad match on a single pattern, not all the patterns on the
+stack of C<positive_matches>.
+
+=cut
+
 # This should only be called when we know that something is on the
-# positive_matches stack. recursive check this
+# positive_matches stack. recursive check this XXX
 sub pop_match {
 	my $self = shift;
 	$self->{positive_matches}->[-1]->clear_stored_match;
 	pop @{$self->{positive_matches}};
 }
 
-sub get_details_for {
-	my ($self, $name) = @_;
-	# This is a user-level function. Croak if the name does not exist.
-	croak("Unknown pattern name $name") unless exists $self->{names}->{$name};
-	
-	# Propogate the callin context:
-	return ($self->{names}->{$name}->get_details) if wantarray;
-	return $self->{names}->{$name}->get_details;
-}
+=back
 
-# This is only called by patterns that *hold* this one, in the process of
-# building their own name tables. Add this and all children to the hashref.
-# Structures like ABA should pass this, but recursive structures will go
-# into deep recursion.
-# recursive check this
-sub add_name_to {
-	my ($self, $hashref) = @_;
-	# Go through each named value in this group's collection of names:
-	while( my ($name, $ref) = each %{$self->{names}}) {
-		croak("Found multiple patterns named $name")
-			if defined $hashref->{$name} and $hashref->{$name} != $ref;
-		
-		$hashref->{$name} = $ref;
-	}
-}
+Finally, this class has a couple of requirements for derived classes.
+Classes that inherit from Scrooge::Grouped must implement these methods:
+
+=over
+
+=item _minmax
+
+Scrooge::Grouped calls the method C<_minmax> during the C<prep> stage. This
+method is supposed to calculate the grouping pattern's minimum and maximum
+lengths and store them using the class setters
+C<< $self->min_size($new_min) >> and C<< $self->max_size($new_max) >>. The
+minimum match size for an Or group will be very different from the minimum
+match size for a Sequence group, for example.
+
+=item _apply
+
+Scrooge::Grouped does not provide an C<_apply> method, so derived classes
+must provide one of their own.
+
+=back
+
+=cut
 
 package Scrooge::Or;
 our @ISA = qw(Scrooge::Grouped);
 use Carp;
 
+=head2 Scrooge::Or
+
+This is the class that provides the functionality behind L</re_or>. This
+class defines a grouping pattern that looks for a successful match on any
+of its patterns, consuming as many elements as the successfully matched
+child pattern.
+
+Scrooge::Or does not need to provide any new methods and simply overrides
+methods from the parent classes. The overrides include 
+
+=over
+
+=item _minmax
+
+For Or groups, the minimum possible match size is the smallest minimum
+reported by all the children, and thel maximum possible match size is the
+largest maximum reported by all the children.
+
+=cut
+
 # Called by the _prep method; sets the internal minimum and maximum match
 # sizes.
-# recursive check this
 sub _minmax {
 	my $self = shift;
 	my ($full_min, $full_max);
@@ -1926,28 +2456,30 @@ sub _minmax {
 	$self->max_size($full_max);
 }
 
+=item _prep_success
+
+Or groups consider a C<prep> to be successful if any one of is children
+succeeds, which differs from the base class implementation in which all the
+children are expected to succeed.
+
+=cut
+
 # Must override the default _prep_success method. If we have *any* patterns
 # that will run, that is considered a success.
 sub _prep_success {
 	return @{$_[0]->{patterns_to_apply}} > 0;
 }
 
-# This only needs to clear out the current matching pattern:
-# recursive check this
-sub clear_stored_match {
-	my $self = shift;
-	# Call the Scrooge's method:
-	Scrooge::clear_stored_match($self);
-	
-	# Only pop off the latest match:
-	$self->pop_match;
-	
-	# Always return zero:
-	return 0;
-}
+=item _apply
 
-# Run all the patterns (that said they wanted to run). Return the first
-# success that we find:
+The C<_apply> method of Scrooge::Or takes all the patterns that returned a
+successful C<prep> and tries to match each of them in turn. Order matters in
+so far as the successful match is the first match in the list that returns a
+successful match. A pattern is tried on the full range of right offsets
+before moving to the next pattern.
+
+=cut
+
 sub _apply {
 	my ($self, $left, $right) = @_;
 	my @patterns = @{$self->{patterns_to_apply}};
@@ -2010,9 +2542,77 @@ sub _apply {
 	return 0;
 }
 
+=item clear_stored_match
+
+Scrooge::Or only stores a single matched pattern at a time, so it only needs
+to clear the last match if its parent tells it to clear its stored match.
+
+=cut
+
+# This only needs to clear out the current matching pattern:
+# recursive check this
+sub clear_stored_match {
+	my $self = shift;
+	# Call the Scrooge's method:
+	Scrooge::clear_stored_match($self);
+	
+	# Only pop off the latest match:
+	$self->pop_match;
+	
+	# Always return zero:
+	return 0;
+}
+
+=back
+
+=cut
+
 package Scrooge::And;
 our @ISA = qw(Scrooge::Grouped);
 use Carp;
+
+=head2 Scrooge::And
+
+This class provides the functionality for matching all of its children
+patterns at the exact same left and right offsets and underlies C</re_and>.
+Most of the functionality provided by Scrooge::Grouped is sufficient, but
+this class overrides two methods:
+
+=over
+
+=item _minmax
+
+The minimum and maximum sizes reported by Scrooge::And must correspond with
+the most restricted possible combination of options. If one child pattern
+requires at least five elements and the next pattern requires at least ten
+elements, the pattern can only match at least ten elements. Similarly, if
+the one pattern can match no more than 20 elements and another can match no
+more than 30, the two can only match at most 20 elements.
+
+=cut
+
+# Called by the _prep method; stores minimum and maximum match sizes in an
+# internal cache:
+sub _minmax {
+	my $self = shift;
+	my ($full_min, $full_max);
+	
+	# Compute the min as the greatest minimum, and max as the least maximum:
+	foreach my $pattern (@{$self->{patterns_to_apply}}) {
+		my $min = $pattern->min_size;
+		my $max = $pattern->max_size;
+		$full_min = $min if not defined $full_min or $full_min < $min;
+		$full_max = $max if not defined $full_max or $full_max > $max;
+	}
+	$self->min_size($full_min);
+	$self->max_size($full_max);
+}
+
+=item _apply
+
+working here
+
+=cut
 
 # Return false if any of them fail or if they disagree on the matched length
 sub _apply {
@@ -2083,22 +2683,9 @@ sub _apply {
 	return '0 but true';
 }
 
-# Called by the _prep method; stores minimum and maximum match sizes in an
-# internal cache:
-sub _minmax {
-	my $self = shift;
-	my ($full_min, $full_max);
-	
-	# Compute the min as the greatest minimum, and max as the least maximum:
-	foreach my $pattern (@{$self->{patterns_to_apply}}) {
-		my $min = $pattern->min_size;
-		my $max = $pattern->max_size;
-		$full_min = $min if not defined $full_min or $full_min < $min;
-		$full_max = $max if not defined $full_max or $full_max > $max;
-	}
-	$self->min_size($full_min);
-	$self->max_size($full_max);
-}
+=back
+
+=cut
 
 package Scrooge::Sequence;
 our @ISA = qw(Scrooge::Grouped);
@@ -2118,6 +2705,17 @@ sub _init {
 =pod
 
 working here - problems with recursion
+
+NOTE: UPON FURTHER REFLECTION, I DON'T THINK THAT RECURSION IS EVEN POSSIBLE.
+THAT IS, THE CONSTRUCTION OF THE RECURSION WITH THE EXAMPLE GIVEN BELOW
+WILL CROAK DURING THE re_seq's INITIALIZATION. THE REASON IS THAT 
+C<$recursive_seq> IS NOT DEFINED ON THE RIGHT SIDE OF THE ASSIGNMENT, AND
+THEREFORE WILL CROAK WHEN Scrooge::Grouped CHECKS THAT ALL ITS ARGUMENTS
+ARE DERIVED FROM Scrooge.
+
+ULTIMATELY, RECURSION CAN BE HANDLED BY CREATING AN re_sub THAT ITSELF
+INVOKES A PATTERN. IF THE PATTERN MATCHES, IT CAN RETURN THE MATCH RESULTS
+IN THE MATCH DETAILS, LEADING TO A NESTED HASH WITH MATCH RESULTS.
 
 Consider this recursive pattern:
 
@@ -2346,6 +2944,16 @@ sub _minmax {
 package Scrooge::Role::Subdata;
 use Carp;
 
+=head2 Scrooge::Role::Subdata
+
+working here - doc more
+
+Current limitation: all pattern objects *must* be distinct, or must be run
+on the same data. The pattern will cache the first set of data that it gets
+prepped with and will ignore any other prepped data sets. XXX
+
+=cut
+
 # Should only need to override _prep_all
 sub prep_all {
 	my ($self, $data) = @_;
@@ -2428,95 +3036,6 @@ sub _init {
 # THE magic value that indicates this module compiled correctly:
 1;
 
-=head1 NOTES
-
-Using this module will look a litte bit different from classic regular
-expressions for many reasons:
-
-=over
-
-=item Numerical arrays, not strings
-
-We are dealing with sequences of numbers, not sequences of characters. This
-leads to some significant differences. With character-based regular
-expressions, we are looking for specific characters or collections of
-characters. With numerical data, we will rarely look for specific values;
-instead we will look for sequences of data that have certain properties.
-
-=item Different kinds of clustering
-
-With string regular expressions, it is not very common to match a string
-against patternA *and* patternB. Usually one pattern is a strict subset of
-the other. This is not necessarily the case with numerical regular
-expressions. For example, you may want to match against data that is both
-positive and which has a negative slope. As such, this numerical regular
-expression library lets you specify how you want collections of regular
-expressions to be matched: A OR B OR C, A AND B AND C, A THEN B THEN C, etc.
-
-Perl gets around this by assuming A THEN B THEN C, and using the infix OR
-operator. I could do the same and supply an infix AND operator, but then I'd
-have to create a concise syntax... see the next point.
-
-=item No concise syntax
-
-In Perl, you construct your regular expressions with a very concise string.
-Perl then interprets the string and generates a regular expression object
-from that string. This module is the first of its kind, as far as the author
-is aware, so there is no clear idea of what would constitute a useful or
-smart notation. Furthermore, it is also clear that end users will have all
-sorts of matching criteria that I could never hope to anticipate. Rather
-than try to impose an untested pattern notation, this module
-simply lets you construct the pattern object directly.
-
-=back
-
-=head1 Implementation Details
-
-These are many details that I hope will help you if you try to look closely
-at the implementation of this system.
-
-=over
-
-=item Details of stashing and unstashing
-
-I'm keeping these notes as they explain how things work fairly well:
-
-I believe that multiple copies of the same pattern (and an implementation of
-grouping quantifiers that would depend upon this) can be solved by doing
-the following:
-
-First, keep a stack of matched offests. Matches should only be be run in
-sequence, so if a match fails, it should be able to pop off the last element
-of the stack.
-
-Second, keep the stack under a seperate key from the final output results.
-This way, C<_cleanup> can copy the current stack to the output results and
-clear off the stack, leaving any out scope ready to work.
-
-Third, when named matches are requested, return two arrays of left and right
-offsets rather than two integers. Actually, we can be a bit better here: if
-the stack has only a single entry, then return the integers. Otherwise
-return array refs. Or, even better: return piddles with the offsets!
-
-=item patterns within Rules
-
-Even more likely and problematic than the above problem is the possibility
-that a particular pattern object is used within a pattern as well as B<within
-the condition of neighboring pattern>. This is very much a problem since a
-pattern used within the condition of another will B<not> be name-clash
-detected and it will fiddle with internal data, including the current piddle
-of interest.
-
-Initially, I thought it would be adequate to implement a stack system on
-C<_prep> and C<_cleanup>. However, named patterns need to be able to return
-their offsets after C<_cleanup> is called, so these must B<not> be
-cleaned-up. To solve this problem, I need to determine some means for the
-pattern to realize that it has switched contexts, and then stash or unstash
-the internal information like the match offsets and the piddle (and anything
-else that's important.)
-
-=back
-
 =head1 TODO
 
 These are items that are very important or even critical to getting Scrooge to
@@ -2537,160 +3056,7 @@ I have added lots of code to handle untimely death at various stages of
 execution of the pattern engine. I have furthermore added lots
 of lines of explanation for nested and grouped patterns so that pin-pointing
 the exact pattern is clearer. At this point, I need to test that all of the
-deaths do not interfere with proper cleanup and that 
-
-=back
-
-=head1 IDEAS
-
-This is the place where I put my ideas that I would like to implement, but
-which are not yet implemented and which are not critical to the sensible
-operation of the pattern engine.
-
-=over
-
-=item Concise Syntax Ideas
-
-A potential concise syntax might look like this:
-
- $pattern = qnre{
-    # Comments and whitespace are allowed
-    
-    # If there is more than one pattern in a row, the grouping
-    # is assumed to be a re_seq group.
-    
-    # ---( Basics )---
-    # Perl scalars and lists are properly interpolated:
-    $my_pattern_object
-    @my_pattern_objects
-    
-    # barewords are assumed to be pattern constructors
-    # and are called with the given args
-    reg1(args)
-    
-    # The interior of an argument list is pased *exactly* as is to the
-    # constructor:
-    reg2( value => $quantitiy, %other_args )
-    
-    # square bracket notation indicates the min
-    # and max length that a pattern can match
-    reg1(args)[quantifiers]
-    
-    # ---( Prefixes )---
-    # Barewords are called as-is unless you specify an auto-prefix:
-    Scrooge::OneD::
-    
-    # Now these constructors have that prefix added so:
-    reg1(args)
-    # is interpreted as Scrooge::OneD::reg1(args)
-    
-    # You can explicitly resolve a constructor like so:
-    Scrooge::Extra::reg3(args)
-    
-    # To restore the original prefix, simply use two colons:
-    ::
-    
-    # ---( Quantifiers )---
-    # You can add square brackets immediately after a pattern's args to
-    # indicate the min and max length. This set's reg2 to match between
-    # 1 and 50 elements:
-    reg2(args)[1, 50]
-    # This matches betwen 1% and 50% of the data set's length:
-    reg2(args)[1%, 50%]
-    # If the dataset is N elements long, this matches between 0.5 * N
-    # and N - 10 elements:
-    reg3(args)[50%, -10]
-    # Args are not required:
-    reg3[20%, -4]
-    # These two statements are equivalent:
-    reg3[50%, 100%]
-    reg3[50%, -0]
-    
-    # ---( Grouping )---
-    # Grouping is designated with a symbol and angle brackets:
-    &< ... patterns ... >       # AND group
-    |< ... >                   # OR group
-    %< ... >                   # XOR group
-    $< ... >                   # SEQUENCE group
-    
-    # Prefixing is lexically scoped and inherets from outside prefix
-    My::Prefix::      # Set the current prefix
-    reg1              # this is My::Prefix::reg1
-    $<
-       reg4           # this is My::Prefix::reg4
-       ::             # set no-prefix
-       reg1           # this is just reg1
-       reg2           # this is just reg2
-    >
-    reg3              # this is My::Prefix::reg3
-    
-    
-    # ---( Repeat counts )---
-    # In addition to setting quantifiers, you can also set repeat counts.
-    # Repeat count comes before a pattern:
-    *reg1(args)             # zero-or-more copies of reg1
-    ?reg2                   # zero-or-one copies of reg2
-    +reg3[10%, 50%]         # one-or-more copies of reg3, each of which
-                            #   should consume between 10% and 50% of the
-                            #   length of the dataset
-    5:reg1(args)          # repeat exactly 5 times
-    [4, 6]:reg4           # repeat reg4 between 4 and 6 times
-    [4, ]:reg4            # repeat reg4 4 or more times
-    [, 4]:reg4            # repeat reg4 zero to 4 times
-    
-    
-    # ---( Naming and Capturing )---
-    # You can name any normal pattern by adding .name immediately after the
-    # constructor name, before any arguments or quantifiers:
-    reg2.name
-    reg4.name(args)
-    reg5.name[5, 20%]
-    
-    # You can name any grouped pattern by inserting the name between the
-    # symbol and the angle brackets:
-    $.my_sequence< ... >
-    |.my_or< ... >
-    # Spaces are allowed:
-    & . named < ... >
-    
-    # You can name a repetition by putting the name before the colon:
-    5.name:reg2
-    
-    # You can name both the repetition and the pattern, but they must have
-    # different names:
-    [4,8].name:reg2.name2
-    
-    # Once named, you can insert a previous named pattern like so:
-    \name
-    
-    
-    # ---( Clarifications )---
-    # Note, this statement is not formatted clearly:
-    pattern(args)[repeat, count] 
-        :pattern2(args)
-    # It means this:
-    pattern(args)
-    [repeat, count]:pattern2(args)
-    
- };
-
-I would use Devel::Declare to convert this into a set of nested
-constructors.
-
-=item Grouping quantifiers
-
-It would be nice to be able to combine quantifiers and groups. A major issue
-in this would be figuring out how to handle named captures for such a
-situation.
-
-=item OPTIMIZE Grouping
-
-Include some sort of OPTIMIZE grouping that attempts to partition the data
-in an optimal fashion using some sort of scoring mechanism?
-
- # Find the optimal division between an exponential drop
- # and a linear fit:
- my $pattern = NRE::OPTIMIZE($exponential_drop, $linear)
+deaths do not interfere with proper cleanup.
 
 =back
 
@@ -2701,6 +3067,11 @@ series:
 
 http://citeseerx.ist.psu.edu/viewdoc/download?doi=10.1.1.133.6186&rep=rep1&type=pdf
 
-=head1 AUTHOR
+For basics on Perl regular expressions, see L<perlretut>. For text parsing,
+you should consider L<Regexp::Grammars>, L<Parse::RecDescent>, or the more
+recent addition: L<Marpa::XS>.
 
-David Mertens C<dcmertens.perl@gmail.com>
+=head1 AUTHORS
+
+David Mertens C<dcmertens.perl@gmail.com>,
+Jeff Giegold C<j.giegold@gmail.com>

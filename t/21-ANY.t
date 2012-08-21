@@ -12,9 +12,9 @@ my $data = sequence(20);
 
 # Check that the explicit constructor works:
 $@ = '';
-my $explicit = eval {Scrooge::Any->new(quantifiers => [1,1])};
-is($@, '', 'Scrooge::Any->new does not croak');
-isa_ok($explicit, 'Scrooge::Any') or diag($@);
+my $explicit = eval {Scrooge::Quantified->new(quantifiers => [1,1])};
+is($@, '', 'Scrooge::Quantified->new does not croak');
+isa_ok($explicit, 'Scrooge::Quantified') or diag($@);
 my ($matched, $offset) = $explicit->apply($data);
 is($matched, 1, 'Properly interprets single-element quantifier');
 is($offset, 0, 'Correctly identified first element as matching');
@@ -25,7 +25,7 @@ is($offset, 0, 'Correctly identified first element as matching');
 $@ = '';
 my $simple = eval {re_any()};
 is($@, '', 're_any does not croak');
-isa_ok($simple, 'Scrooge::Any');
+isa_ok($simple, 'Scrooge::Quantified');
 ($matched, $offset) = $simple->apply($data);
 is($matched, 1, 'Simple constructor defaults to a single-element match');
 is($offset, 0, 'Simple constructor correctly identified first element as matching');
