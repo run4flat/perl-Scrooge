@@ -1430,25 +1430,9 @@ sub cleanup {
 	# finalize the match stack
 	$self->{final_details} = delete $self->{match_details};
 	
-#	# We're about to call the sub-class's cleanup method. If, for some
-#	# stupid reason, the sub-class's cleanup uses a pattern, then we have
-#	# to guard against call-stack issues. We do that by noting the size of
-#	# the current partial_state stack before we call.
-#	my $partial_state_stack_size = scalar(@{$self->{old_partial_state}});
 	# Call sub-class's cleanup method:
 	eval { $self->_cleanup() };
 	my $err_string = $@;
-#	# If the partial state stack has changed size, then it's because the
-#	# _cleanup method called a numerical pattern that contained this pattern.
-#	# Sounds ridiculous, but under very contrived circumstances, it can
-#	# happen without deep recursion. If it happened, restore *this* pattern's
-#	# partial state (is_cleaning) and remove the old state from the stack:
-#	if ($partial_state_stack_size != scalar(@{$self->{old_partial_state}})) {
-#		$self->{is_cleaning} = 1;
-#		my $old_state = pop @{$self->{old_partial_state}};
-#		croak("OH NO!!!! The old partial state MUST be is_cleaning, but it's not! INTERNAL ERROR!")
-#			unless $old_state eq 'is_cleaning';
-#	}
 	
 	# Remove this copy of the $data since its presence is used in prep
 	# to know if needs to stash or not.
@@ -1457,19 +1441,6 @@ sub cleanup {
 	# Unstash everything:
 	if (defined $self->{old_data}->[0]) {
 		$self->{$_} = pop @{$self->{"old_$_"}} foreach $self->_to_stash;
-		
-#		# Restore the previous match stack, if appropriate:
-#		$self->{match_details} = pop @{$self->{old_match_details}}
-#			if defined $self->{name};
-#		
-#		# Set-up the old is_prepping state, if that was the last state.
-#		# Note that the is_cleaning is handled by the calling context, which
-#		# happens about 20 linues up, so I do *not* handle that here:
-#		if ($self->{old_partial_state}->[-1] and
-#				$self->{old_partial_state}->[-1] eq 'is_prepping') {
-#			$self->{is_prepping} = 1;
-#			pop @{$self->{old_partial_state}};
-#		}
 	}
 	
 	# ALWAYS unstash the previous state, which is always guaranteed to have
@@ -2998,14 +2969,105 @@ sub seq_apply {
 # Role for situations involving more than one data set.
 package Scrooge::Role::Subdata;
 use Carp;
+use Exporter qw( import );
+our @EXPORT_OK = qw(_init verify_subdata prep_all);
 
 =head2 Scrooge::Role::Subdata
 
-working here - doc more
+This is not actually a class: it is a role. As a role, it provides methods
+that can be used by other classes, but not through inheritance.
 
-Current limitation: all pattern objects *must* be distinct, or must be run
-on the same data. The pattern will cache the first set of data that it gets
-prepped with and will ignore any other prepped data sets. XXX
+Scrooge::Role::Subdata provides the functionality for building a
+grouped pattern for which the children patterns get different data subsets.
+It provides a C<prep_all> method that works properly for named data subsets,
+as well as methods to verify the the C<subset_names> key including a stock
+C<_init> method. If your class needs to create its own versions of C<_init>
+(and therefore cannot import it), you can instead import and use the
+C<verify_subdata> method.
+
+To give an idea of just how simple this makes things, the entire
+implementation of C<Scrooge::Subdata::Sequence> is this:
+
+ package Scrooge::Subdata::Sequence;
+ our @ISA = qw(Scrooge::Sequence);
+ Scrooge::Role::Subdata->import qw(_init prep_all);
+
+This role provides the following methods, any and all of which can be pulled
+into consuming classes:
+
+=over
+
+=item _init
+
+This role method invokes the parent class's C<_init> method followed by
+C<Scrooge::Role::Subdata::verify_subdata>. If you do not import this method
+into your class, you should be sure to invoke C<verify_subdata> in your
+class's C<_init> method.
+
+=cut
+
+sub _init {
+	my $self = shift;
+	
+	# Find the first base class with an _init method and invoke it
+	no strict 'refs';
+	my $class = ref($self);
+	my $isa = $class . '::ISA';
+	for my $base_class (@$isa) {
+		if (my $subref = $base_class->can('_init')) {
+			$subref->($self);
+			last;
+		}
+	}
+	
+	# Invoke this role's data verification method
+	Scrooge::Role::Subdata::verify_subdata($self);
+}
+
+=item verify_subdata
+
+This role method performs a basic verification of the internal keys needed
+for the C<prep_all> method to function. It is meant to be invoked during a
+consuming class's initialization, after the C<_init> method of
+L<Scrooge::Grouped> has been run. It can croak for one of two reasons:
+
+ Subset patterns must supply subset_names
+
+means you did not provide a collection of subset names to the pattern
+constructor, and
+
+ Number of subset names must equal the number of patterns
+
+means you provided a list of subset names, but that list does not have the
+same length as the actual number of patterns.
+
+=cut
+
+sub verify_subdata {
+	my $self = shift;
+	# Make sure user supplied subset_names
+	croak("Subset patterns must supply subset_names")
+		unless defined $self-> { subset_names };
+	# number of subset_names == number of patterns
+	croak("Number of subset names must equal the number of patterns")
+		unless @{ $self-> { subset_names }} == @{ $self-> { patterns }};
+}
+
+
+=item prep_all
+
+Normally the C<prep_all> method invokes the C<prep> method of all the
+children and passes the same dataset to each of them. This role changes that
+behavior and passes different datasets to each child pattern based on the
+tag associated with that pattern, and the data associated with that tag.
+
+This role's C<prep_all> method differs from normal grouped pattern
+C<prep_all> methods because it invokes the children patterns' C<prep>
+method with the associated dataset
+
+not with the data object passed to it (which sould have been an
+anonymous hash reference if you're using classes with this role) but with
+the data associated with the 
 
 =cut
 
@@ -3045,67 +3107,75 @@ sub prep_all {
 	return @succeeded;
 }
 
-sub _verify{
-	my $self = shift;
-	# Make sure user supplied subset_names
-	croak("Subset patterns must supply subset_names")
-		unless defined $self-> { subset_names };
-	# number of subset_names == number of patterns
-	croak("Number of subset names must equal the number of patterns")
-		unless @{ $self-> { subset_names }} == @{ $self-> { patterns }};
-}
+=back
+
+Current limitation: all pattern objects B<must> be distinct, or must be run
+on the same data. The pattern will cache the first set of data that it gets
+prepped with and will ignore any other prepped data sets. XXX
+
+=cut
 
 package Scrooge::Subdata::Sequence;
 our @ISA = qw(Scrooge::Sequence);
-
-*prep_all = \&Scrooge::Role::Subdata::prep_all;
-
-sub _init {
-	my $self = shift;
-	$self->SUPER::_init;
-	Scrooge::Role::Subdata::_verify($self);
-}
+Scrooge::Role::Subdata->import (qw(_init prep_all));
 
 package Scrooge::Subdata::And;
 our @ISA = qw(Scrooge::And);
-
-*prep_all = \&Scrooge::Role::Subdata::prep_all;
-
-sub _init {
-	my $self = shift;
-	$self->SUPER::_init;
-	Scrooge::Role::Subdata::_verify($self);
-}
+Scrooge::Role::Subdata->import (qw(_init prep_all));
 
 package Scrooge::Subdata::Or;
 our @ISA = qw(Scrooge::Or);
+Scrooge::Role::Subdata->import (qw(_init prep_all));
 
-*prep_all = \&Scrooge::Role::Subdata::prep_all;
+=head2 Scrooge::Subdata::Or
 
-sub _init {
-	my $self = shift;
-	$self->SUPER::_init;
-	Scrooge::Role::Subdata::_verify($self);
-}
+=head2 Scrooge::Subdata::And
+
+=head2 Scrooge::Subdata::Sequence
+
+These classes subclass L</Scrooge::Or>, L</Scrooge::And>, and
+L</Scrooge::Sequence> and mix-in the L</Scrooge::Role::Subdata> role. The
+difference between these classes and their parent classes is that they use
+the C<prep_all> and C<_init> methods from C<Scrooge::Role::Subdata>.
+
+=cut
 
 # THE magic value that indicates this module compiled correctly:
 1;
 
 =head1 TODO
 
-These are items that are very important or even critical to getting Scrooge to
-operate properly.
+These are items that I want to do before putting this library on CPAN.
 
 =over
 
-=item Testing: Multiple copies of the same pattern, nested calls to pattern
+=item Tutorial
 
-I have implemented a match stack to allow for multiple copies of the same
-pattern within a larger pattern. I have also implemented a stashing and
-unstashing mechanism to allow for patterns to be called from within other
-patterns without breaking the original. This may, or may not, be tested. (This
-comment was written a long time ago, and I may have written the tests for this
-issue in the interim.)
+I've started Scrooge::Tutorial but not finished it.
+
+=item Clean up cross-references
+
+I have many broken links and cross-references that need to be fixed. These
+include references to methods without providing a link to the method's
+documentation.
+
+=item Change re_named_or to re_tagged_or, re_* to pat_*
+
+Referring to tagging instead of naming provides a distinguishing term rather
+than overloading the already overused term "name". Also, the notion of these
+as regular expressions was deprecated a while ago but the prefix remains.
+That should be fixed.
+
+=item Repeated patterns
+
+I need to make a pattern that takes a single child pattern and lets you 
+repeat it a specified number of times, probably called re_repeat
+
+=item Explore recursive patterns
+
+Recursion can be achieved by having an re_sub call itself. This should
+work as-is thanks to all the stash management. I need to explore this in a
+tutorial and test it.
 
 =item Proper prep, cleanup, and stash handling on croak
 
@@ -3114,6 +3184,36 @@ execution of the pattern engine. I have furthermore added lots
 of lines of explanation for nested and grouped patterns so that pin-pointing
 the exact pattern is clearer. At this point, I need to ensure that these are
 indeed tested.
+
+=item remove MSER for the moment
+
+I'll add this back, but it ought not be in the distribution for the first
+CPAN release.
+
+=back
+
+These are things I want to do after the first CPAN release:
+
+=over
+
+=item Add MSER back
+
+After the first CPAN release, I want to add the MSER analysis back.
+
+=item Fix tagged patterns
+
+Tagging and Subdata support require a reworking of caching and state
+management. I need to fix that soon so I can finalize the C<_apply> API.
+
+In one approach, I could include the data as an argument to C<_apply> and
+the pattern could cache pre-calculations and other data-specific stuff under
+the C<refaddr> of the container. This way, the pattern does not need to know
+anything about tags, just about caching.
+
+Another approach would be to pass the tag of the dataset, which would
+require that the pattern cache the data itself and any other pre-calculations
+under the given name. But the more I think about it, the more I like the
+C<refaddr> cache since the same data can be run under different tags.
 
 =back
 
