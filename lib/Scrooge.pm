@@ -2619,7 +2619,22 @@ sub _minmax {
 
 =item _apply
 
-working here
+Applying Scrooge::And at a given left and right offsets involves applying
+all the child patterns at the same left and right offsets and adjusting the
+right offset until all of the child patterns match or one of them fails
+outright.
+
+This method can die for a couple of reasons. If any of the child patterns
+die, it will reissue the error with the following message:
+
+ In re_and pattern [$name], $ith pattern [$child-name] died:
+ $error_message
+
+This will also die if any of the child patterns try to consume more elements
+than they were allowed to consume with this error message:
+
+ In re_and pattern [$name], $ith pattern [$child_name] consumed $actual
+ but it was only allowed to consume $allowed
 
 =cut
 
@@ -2640,7 +2655,7 @@ sub _apply {
 			$self->pop_match for (1..$i);
 			# Make sure i starts counting from 1 in death note:
 			$i++;
-			die "In re_and pattern$name, ${i}th pattern$child_name failed:\n$@"; 
+			die "In re_and pattern$name, ${i}th pattern$child_name died:\n$@"; 
 		}
 		
 		# Return failure immediately:
@@ -2700,10 +2715,22 @@ package Scrooge::Sequence;
 our @ISA = qw(Scrooge::Grouped);
 use Carp;
 
-# make sure that temp_matches is stashed:
-sub _to_stash {
-	return 'temp_matches', $_[0]->SUPER::_to_stash;
-}
+=head2 Scrooge::Sequence
+
+The Scrooge::Sequence class provides the functionality for sequential
+pattern matching, which is at the heart of greedy pattern matching. This
+class overrides a handful of Scrooge::Grouped methods in order to perform its
+work and adds one new private key: C<temp_matches>. The overridden methods
+include:
+
+=over
+
+=item _init
+
+The C<_init> method calls the Scrooge::Grouped initialization and sets the
+C<temp_matches> key to an empty hash.
+
+=cut
 
 sub _init {
 	my $self = shift;
@@ -2711,85 +2738,115 @@ sub _init {
 	$self->{temp_matches} = {};
 }
 
-=pod
+=item _minmax
 
-working here - problems with recursion
+For a sequential pattern, the minimum possible match length is the sum of
+the minimal lengths; the maximum possible match length is the sum of the
+maximal lengths.
 
-NOTE: UPON FURTHER REFLECTION, I DON'T THINK THAT RECURSION IS EVEN POSSIBLE.
-THAT IS, THE CONSTRUCTION OF THE RECURSION WITH THE EXAMPLE GIVEN BELOW
-WILL CROAK DURING THE re_seq's INITIALIZATION. THE REASON IS THAT 
-C<$recursive_seq> IS NOT DEFINED ON THE RIGHT SIDE OF THE ASSIGNMENT, AND
-THEREFORE WILL CROAK WHEN Scrooge::Grouped CHECKS THAT ALL ITS ARGUMENTS
-ARE DERIVED FROM Scrooge.
+=cut
 
-ULTIMATELY, RECURSION CAN BE HANDLED BY CREATING AN re_sub THAT ITSELF
-INVOKES A PATTERN. IF THE PATTERN MATCHES, IT CAN RETURN THE MATCH RESULTS
-IN THE MATCH DETAILS, LEADING TO A NESTED HASH WITH MATCH RESULTS.
+# Called by the _prep method, sets the internal minimum and maximum sizes:
+sub _minmax {
+	my $self = shift;
+	my ($full_min, $full_max) = (0, 0);
+	
+	# Compute the min and max as the sum of the mins and maxes
+	foreach my $pattern (@{$self->{patterns_to_apply}}) {
+		$full_min += $pattern->min_size;
+		$full_max += $pattern->max_size;
+	}
+	$self->min_size($full_min);
+	$self->max_size($full_max);
+}
 
-Consider this recursive pattern:
 
-  $recursive_seq = re_seq(A, $recursive_seq);
+=item _to_stash
 
-This won't pass add_name_to if either A or the sequence is named, and
-if neither are named, it will recurse infinitely and never return. Now,
-this problem is better solved with a repetition, but I bet a recursive
-sequence pattern could be useful in some context, somewhere. Also, it
-would fall into a recursive loop figuring out the max or min lengths. :-(
+Since Scrooge::Sequence uses the private key C<temp_matches>, it needs to
+ensure that the is stashed, so it overrides C<_to_stash> to indicate the
+additional key.
 
-However, consider this pattern:
+=cut
 
- my ($seq_pattern, $and_pattern);
- $seq_pattern = re_seq(A, $and_pattern);
- $and_pattern = re_and(B, $seq_pattern);
- 
- # which is equivalent to 
- $seq_pattern = re_seq(A, re_and(B, $seq_pattern));
+# make sure that temp_matches is stashed:
+sub _to_stash {
+	return 'temp_matches', $_[0]->SUPER::_to_stash;
+}
 
-To the best of my knowledge, this sequence can never terminate successfully.
-On the other hand, this one can terminate successfully:
+=item _apply
 
- $seq_pattern = re_seq(A, re_or(B, $seq_pattern));
+Applying a sequential pattern involves matching all the children in order,
+one after the other. Scrooge::Sequence achieves this by calling its own
+C<seq_apply> method recursively on the list of patterns.
 
-but that is equivalent to the following repetition pattern:
-
- $pattern = re_seq( REPEAT(A), B);
-
-However, this pattern cannot be written like that:
-
- $pattern = re_seq(A re_or(B, $pattern), A);
-
-That finds nested numerical signatures, much like the followin quasi-string
-pattern:
-
- $pattern = re_seq(
-     /\(/,          # opening paren
-     /[^()]*/,      # anything which is not paretheses
-     REPEAT([0,1],  # zero or one
-         $pattern),   #     nested parentheses
-     /[^()]*/,      # anything which is not paretheses
-     /\)/           # closing paren
- );
-
-So, by allowing for nested patterns, I allow for the possibility of recursive
-descent parsing, which is not allowed under normal regexes. However, the
-current engine does a poor job of this becuase it's not possible to look up
-the 'left paren' in this example. For example, if you matched any sort of
-nested bracketed expression, you couldn't check the left-hand bracket to
-make sure the closing bracket matched.
-
-This is unfortunate. At the moment, sequential matches only store the
-results when it's clear that we have a successful match, which I do to
-minimize excessive storage and deletion. In order to allow for something
-like this (which I would like to be able to do), I would need to store the
-state of the match immediately, and I'd need to make it retrievable during
-the execution of the later rules.
-
-=cut	
+=cut
 
 sub _apply {
 	my ($self, $left, $right) = @_;
 	return $self->seq_apply($left, $right, @{$self->{patterns_to_apply}});
 }
+
+=back
+
+This class also creates a new function that handles the heavy lifting of the
+match:
+
+=over
+
+=item seq_apply
+
+This method provides the heavy lifting for the greedy sequential matching.
+It takes a left offset, a right offset, and a list of patterns to apply
+and operates recursively.
+
+If there is only one pattern, the method evaluates the pattern for the
+given left and right offsets and returns the number of consumed elements.
+(It does not adjust the right offset if the child returns a negative offset;
+it leaves any and all such adjustments for the caller to handle.)
+
+If there are multiple patterns, the matching proceeds thus:
+
+=over
+
+=item 1.
+
+The first pattern is shifted off the top of the list and applied at the
+given left offset. The applied right offset starts with enough room so that
+the remaining patterns can match within the alotted right offset passed into
+the method.
+
+=item 2.
+
+Said applied right offset gets widdled down until the first pattern matches.
+
+=item 3.
+
+If the first pattern fails to match for any right offset, the method returns
+a match failure.
+
+=item 4.
+
+If the first match succeeds, the remaining patterns are matched with
+C<seq_apply> with a left offset that starts to the right of the first
+pattern's match, and the given right offset.
+
+=item 5.
+
+If the remaining patterns return a negative number, it adjusts the right
+offset and calls C<seq_apply> until the remaining patterns match (in which
+case it returns a success with the number of matched elements) or fail
+outright.
+
+=item 6.
+
+If the remaining patterns fail for the first pattern's current right offset,
+this method goes back and reduces the first pattern's right offset until it
+matches again, at which point it resumes with step 4.
+
+=back
+
+=cut
 
 sub seq_apply {
 	my ($self, $left, $right, @patterns) = @_;
@@ -2934,20 +2991,9 @@ sub seq_apply {
 	return 0;
 }
 
-# Called by the _prep method, sets the internal minimum and maximum sizes:
-# recursive check this
-sub _minmax {
-	my $self = shift;
-	my ($full_min, $full_max) = (0, 0);
-	
-	# Compute the min and max as the sum of the mins and maxes
-	foreach my $pattern (@{$self->{patterns_to_apply}}) {
-		$full_min += $pattern->min_size;
-		$full_max += $pattern->max_size;
-	}
-	$self->min_size($full_min);
-	$self->max_size($full_max);
-}
+=back
+
+=cut
 
 # Role for situations involving more than one data set.
 package Scrooge::Role::Subdata;
