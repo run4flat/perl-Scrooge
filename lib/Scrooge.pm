@@ -1430,25 +1430,9 @@ sub cleanup {
 	# finalize the match stack
 	$self->{final_details} = delete $self->{match_details};
 	
-#	# We're about to call the sub-class's cleanup method. If, for some
-#	# stupid reason, the sub-class's cleanup uses a pattern, then we have
-#	# to guard against call-stack issues. We do that by noting the size of
-#	# the current partial_state stack before we call.
-#	my $partial_state_stack_size = scalar(@{$self->{old_partial_state}});
 	# Call sub-class's cleanup method:
 	eval { $self->_cleanup() };
 	my $err_string = $@;
-#	# If the partial state stack has changed size, then it's because the
-#	# _cleanup method called a numerical pattern that contained this pattern.
-#	# Sounds ridiculous, but under very contrived circumstances, it can
-#	# happen without deep recursion. If it happened, restore *this* pattern's
-#	# partial state (is_cleaning) and remove the old state from the stack:
-#	if ($partial_state_stack_size != scalar(@{$self->{old_partial_state}})) {
-#		$self->{is_cleaning} = 1;
-#		my $old_state = pop @{$self->{old_partial_state}};
-#		croak("OH NO!!!! The old partial state MUST be is_cleaning, but it's not! INTERNAL ERROR!")
-#			unless $old_state eq 'is_cleaning';
-#	}
 	
 	# Remove this copy of the $data since its presence is used in prep
 	# to know if needs to stash or not.
@@ -1457,19 +1441,6 @@ sub cleanup {
 	# Unstash everything:
 	if (defined $self->{old_data}->[0]) {
 		$self->{$_} = pop @{$self->{"old_$_"}} foreach $self->_to_stash;
-		
-#		# Restore the previous match stack, if appropriate:
-#		$self->{match_details} = pop @{$self->{old_match_details}}
-#			if defined $self->{name};
-#		
-#		# Set-up the old is_prepping state, if that was the last state.
-#		# Note that the is_cleaning is handled by the calling context, which
-#		# happens about 20 linues up, so I do *not* handle that here:
-#		if ($self->{old_partial_state}->[-1] and
-#				$self->{old_partial_state}->[-1] eq 'is_prepping') {
-#			$self->{is_prepping} = 1;
-#			pop @{$self->{old_partial_state}};
-#		}
 	}
 	
 	# ALWAYS unstash the previous state, which is always guaranteed to have
@@ -2619,7 +2590,22 @@ sub _minmax {
 
 =item _apply
 
-working here
+Applying Scrooge::And at a given left and right offsets involves applying
+all the child patterns at the same left and right offsets and adjusting the
+right offset until all of the child patterns match or one of them fails
+outright.
+
+This method can die for a couple of reasons. If any of the child patterns
+die, it will reissue the error with the following message:
+
+ In re_and pattern [$name], $ith pattern [$child-name] died:
+ $error_message
+
+This will also die if any of the child patterns try to consume more elements
+than they were allowed to consume with this error message:
+
+ In re_and pattern [$name], $ith pattern [$child_name] consumed $actual
+ but it was only allowed to consume $allowed
 
 =cut
 
@@ -2640,7 +2626,7 @@ sub _apply {
 			$self->pop_match for (1..$i);
 			# Make sure i starts counting from 1 in death note:
 			$i++;
-			die "In re_and pattern$name, ${i}th pattern$child_name failed:\n$@"; 
+			die "In re_and pattern$name, ${i}th pattern$child_name died:\n$@"; 
 		}
 		
 		# Return failure immediately:
@@ -2700,10 +2686,22 @@ package Scrooge::Sequence;
 our @ISA = qw(Scrooge::Grouped);
 use Carp;
 
-# make sure that temp_matches is stashed:
-sub _to_stash {
-	return 'temp_matches', $_[0]->SUPER::_to_stash;
-}
+=head2 Scrooge::Sequence
+
+The Scrooge::Sequence class provides the functionality for sequential
+pattern matching, which is at the heart of greedy pattern matching. This
+class overrides a handful of Scrooge::Grouped methods in order to perform its
+work and adds one new private key: C<temp_matches>. The overridden methods
+include:
+
+=over
+
+=item _init
+
+The C<_init> method calls the Scrooge::Grouped initialization and sets the
+C<temp_matches> key to an empty hash.
+
+=cut
 
 sub _init {
 	my $self = shift;
@@ -2711,85 +2709,115 @@ sub _init {
 	$self->{temp_matches} = {};
 }
 
-=pod
+=item _minmax
 
-working here - problems with recursion
+For a sequential pattern, the minimum possible match length is the sum of
+the minimal lengths; the maximum possible match length is the sum of the
+maximal lengths.
 
-NOTE: UPON FURTHER REFLECTION, I DON'T THINK THAT RECURSION IS EVEN POSSIBLE.
-THAT IS, THE CONSTRUCTION OF THE RECURSION WITH THE EXAMPLE GIVEN BELOW
-WILL CROAK DURING THE re_seq's INITIALIZATION. THE REASON IS THAT 
-C<$recursive_seq> IS NOT DEFINED ON THE RIGHT SIDE OF THE ASSIGNMENT, AND
-THEREFORE WILL CROAK WHEN Scrooge::Grouped CHECKS THAT ALL ITS ARGUMENTS
-ARE DERIVED FROM Scrooge.
+=cut
 
-ULTIMATELY, RECURSION CAN BE HANDLED BY CREATING AN re_sub THAT ITSELF
-INVOKES A PATTERN. IF THE PATTERN MATCHES, IT CAN RETURN THE MATCH RESULTS
-IN THE MATCH DETAILS, LEADING TO A NESTED HASH WITH MATCH RESULTS.
+# Called by the _prep method, sets the internal minimum and maximum sizes:
+sub _minmax {
+	my $self = shift;
+	my ($full_min, $full_max) = (0, 0);
+	
+	# Compute the min and max as the sum of the mins and maxes
+	foreach my $pattern (@{$self->{patterns_to_apply}}) {
+		$full_min += $pattern->min_size;
+		$full_max += $pattern->max_size;
+	}
+	$self->min_size($full_min);
+	$self->max_size($full_max);
+}
 
-Consider this recursive pattern:
 
-  $recursive_seq = re_seq(A, $recursive_seq);
+=item _to_stash
 
-This won't pass add_name_to if either A or the sequence is named, and
-if neither are named, it will recurse infinitely and never return. Now,
-this problem is better solved with a repetition, but I bet a recursive
-sequence pattern could be useful in some context, somewhere. Also, it
-would fall into a recursive loop figuring out the max or min lengths. :-(
+Since Scrooge::Sequence uses the private key C<temp_matches>, it needs to
+ensure that the is stashed, so it overrides C<_to_stash> to indicate the
+additional key.
 
-However, consider this pattern:
+=cut
 
- my ($seq_pattern, $and_pattern);
- $seq_pattern = re_seq(A, $and_pattern);
- $and_pattern = re_and(B, $seq_pattern);
- 
- # which is equivalent to 
- $seq_pattern = re_seq(A, re_and(B, $seq_pattern));
+# make sure that temp_matches is stashed:
+sub _to_stash {
+	return 'temp_matches', $_[0]->SUPER::_to_stash;
+}
 
-To the best of my knowledge, this sequence can never terminate successfully.
-On the other hand, this one can terminate successfully:
+=item _apply
 
- $seq_pattern = re_seq(A, re_or(B, $seq_pattern));
+Applying a sequential pattern involves matching all the children in order,
+one after the other. Scrooge::Sequence achieves this by calling its own
+C<seq_apply> method recursively on the list of patterns.
 
-but that is equivalent to the following repetition pattern:
-
- $pattern = re_seq( REPEAT(A), B);
-
-However, this pattern cannot be written like that:
-
- $pattern = re_seq(A re_or(B, $pattern), A);
-
-That finds nested numerical signatures, much like the followin quasi-string
-pattern:
-
- $pattern = re_seq(
-     /\(/,          # opening paren
-     /[^()]*/,      # anything which is not paretheses
-     REPEAT([0,1],  # zero or one
-         $pattern),   #     nested parentheses
-     /[^()]*/,      # anything which is not paretheses
-     /\)/           # closing paren
- );
-
-So, by allowing for nested patterns, I allow for the possibility of recursive
-descent parsing, which is not allowed under normal regexes. However, the
-current engine does a poor job of this becuase it's not possible to look up
-the 'left paren' in this example. For example, if you matched any sort of
-nested bracketed expression, you couldn't check the left-hand bracket to
-make sure the closing bracket matched.
-
-This is unfortunate. At the moment, sequential matches only store the
-results when it's clear that we have a successful match, which I do to
-minimize excessive storage and deletion. In order to allow for something
-like this (which I would like to be able to do), I would need to store the
-state of the match immediately, and I'd need to make it retrievable during
-the execution of the later rules.
-
-=cut	
+=cut
 
 sub _apply {
 	my ($self, $left, $right) = @_;
 	return $self->seq_apply($left, $right, @{$self->{patterns_to_apply}});
 }
+
+=back
+
+This class also creates a new function that handles the heavy lifting of the
+match:
+
+=over
+
+=item seq_apply
+
+This method provides the heavy lifting for the greedy sequential matching.
+It takes a left offset, a right offset, and a list of patterns to apply
+and operates recursively.
+
+If there is only one pattern, the method evaluates the pattern for the
+given left and right offsets and returns the number of consumed elements.
+(It does not adjust the right offset if the child returns a negative offset;
+it leaves any and all such adjustments for the caller to handle.)
+
+If there are multiple patterns, the matching proceeds thus:
+
+=over
+
+=item 1.
+
+The first pattern is shifted off the top of the list and applied at the
+given left offset. The applied right offset starts with enough room so that
+the remaining patterns can match within the alotted right offset passed into
+the method.
+
+=item 2.
+
+Said applied right offset gets widdled down until the first pattern matches.
+
+=item 3.
+
+If the first pattern fails to match for any right offset, the method returns
+a match failure.
+
+=item 4.
+
+If the first match succeeds, the remaining patterns are matched with
+C<seq_apply> with a left offset that starts to the right of the first
+pattern's match, and the given right offset.
+
+=item 5.
+
+If the remaining patterns return a negative number, it adjusts the right
+offset and calls C<seq_apply> until the remaining patterns match (in which
+case it returns a success with the number of matched elements) or fail
+outright.
+
+=item 6.
+
+If the remaining patterns fail for the first pattern's current right offset,
+this method goes back and reduces the first pattern's right offset until it
+matches again, at which point it resumes with step 4.
+
+=back
+
+=cut
 
 sub seq_apply {
 	my ($self, $left, $right, @patterns) = @_;
@@ -2934,32 +2962,112 @@ sub seq_apply {
 	return 0;
 }
 
-# Called by the _prep method, sets the internal minimum and maximum sizes:
-# recursive check this
-sub _minmax {
-	my $self = shift;
-	my ($full_min, $full_max) = (0, 0);
-	
-	# Compute the min and max as the sum of the mins and maxes
-	foreach my $pattern (@{$self->{patterns_to_apply}}) {
-		$full_min += $pattern->min_size;
-		$full_max += $pattern->max_size;
-	}
-	$self->min_size($full_min);
-	$self->max_size($full_max);
-}
+=back
+
+=cut
 
 # Role for situations involving more than one data set.
 package Scrooge::Role::Subdata;
 use Carp;
+use Exporter qw( import );
+our @EXPORT_OK = qw(_init verify_subdata prep_all);
 
 =head2 Scrooge::Role::Subdata
 
-working here - doc more
+This is not actually a class: it is a role. As a role, it provides methods
+that can be used by other classes, but not through inheritance.
 
-Current limitation: all pattern objects *must* be distinct, or must be run
-on the same data. The pattern will cache the first set of data that it gets
-prepped with and will ignore any other prepped data sets. XXX
+Scrooge::Role::Subdata provides the functionality for building a
+grouped pattern for which the children patterns get different data subsets.
+It provides a C<prep_all> method that works properly for named data subsets,
+as well as methods to verify the the C<subset_names> key including a stock
+C<_init> method. If your class needs to create its own versions of C<_init>
+(and therefore cannot import it), you can instead import and use the
+C<verify_subdata> method.
+
+To give an idea of just how simple this makes things, the entire
+implementation of C<Scrooge::Subdata::Sequence> is this:
+
+ package Scrooge::Subdata::Sequence;
+ our @ISA = qw(Scrooge::Sequence);
+ Scrooge::Role::Subdata->import qw(_init prep_all);
+
+This role provides the following methods, any and all of which can be pulled
+into consuming classes:
+
+=over
+
+=item _init
+
+This role method invokes the parent class's C<_init> method followed by
+C<Scrooge::Role::Subdata::verify_subdata>. If you do not import this method
+into your class, you should be sure to invoke C<verify_subdata> in your
+class's C<_init> method.
+
+=cut
+
+sub _init {
+	my $self = shift;
+	
+	# Find the first base class with an _init method and invoke it
+	no strict 'refs';
+	my $class = ref($self);
+	my $isa = $class . '::ISA';
+	for my $base_class (@$isa) {
+		if (my $subref = $base_class->can('_init')) {
+			$subref->($self);
+			last;
+		}
+	}
+	
+	# Invoke this role's data verification method
+	Scrooge::Role::Subdata::verify_subdata($self);
+}
+
+=item verify_subdata
+
+This role method performs a basic verification of the internal keys needed
+for the C<prep_all> method to function. It is meant to be invoked during a
+consuming class's initialization, after the C<_init> method of
+L<Scrooge::Grouped> has been run. It can croak for one of two reasons:
+
+ Subset patterns must supply subset_names
+
+means you did not provide a collection of subset names to the pattern
+constructor, and
+
+ Number of subset names must equal the number of patterns
+
+means you provided a list of subset names, but that list does not have the
+same length as the actual number of patterns.
+
+=cut
+
+sub verify_subdata {
+	my $self = shift;
+	# Make sure user supplied subset_names
+	croak("Subset patterns must supply subset_names")
+		unless defined $self-> { subset_names };
+	# number of subset_names == number of patterns
+	croak("Number of subset names must equal the number of patterns")
+		unless @{ $self-> { subset_names }} == @{ $self-> { patterns }};
+}
+
+
+=item prep_all
+
+Normally the C<prep_all> method invokes the C<prep> method of all the
+children and passes the same dataset to each of them. This role changes that
+behavior and passes different datasets to each child pattern based on the
+tag associated with that pattern, and the data associated with that tag.
+
+This role's C<prep_all> method differs from normal grouped pattern
+C<prep_all> methods because it invokes the children patterns' C<prep>
+method with the associated dataset
+
+not with the data object passed to it (which sould have been an
+anonymous hash reference if you're using classes with this role) but with
+the data associated with the 
 
 =cut
 
@@ -2999,67 +3107,75 @@ sub prep_all {
 	return @succeeded;
 }
 
-sub _verify{
-	my $self = shift;
-	# Make sure user supplied subset_names
-	croak("Subset patterns must supply subset_names")
-		unless defined $self-> { subset_names };
-	# number of subset_names == number of patterns
-	croak("Number of subset names must equal the number of patterns")
-		unless @{ $self-> { subset_names }} == @{ $self-> { patterns }};
-}
+=back
+
+Current limitation: all pattern objects B<must> be distinct, or must be run
+on the same data. The pattern will cache the first set of data that it gets
+prepped with and will ignore any other prepped data sets. XXX
+
+=cut
 
 package Scrooge::Subdata::Sequence;
 our @ISA = qw(Scrooge::Sequence);
-
-*prep_all = \&Scrooge::Role::Subdata::prep_all;
-
-sub _init {
-	my $self = shift;
-	$self->SUPER::_init;
-	Scrooge::Role::Subdata::_verify($self);
-}
+Scrooge::Role::Subdata->import (qw(_init prep_all));
 
 package Scrooge::Subdata::And;
 our @ISA = qw(Scrooge::And);
-
-*prep_all = \&Scrooge::Role::Subdata::prep_all;
-
-sub _init {
-	my $self = shift;
-	$self->SUPER::_init;
-	Scrooge::Role::Subdata::_verify($self);
-}
+Scrooge::Role::Subdata->import (qw(_init prep_all));
 
 package Scrooge::Subdata::Or;
 our @ISA = qw(Scrooge::Or);
+Scrooge::Role::Subdata->import (qw(_init prep_all));
 
-*prep_all = \&Scrooge::Role::Subdata::prep_all;
+=head2 Scrooge::Subdata::Or
 
-sub _init {
-	my $self = shift;
-	$self->SUPER::_init;
-	Scrooge::Role::Subdata::_verify($self);
-}
+=head2 Scrooge::Subdata::And
+
+=head2 Scrooge::Subdata::Sequence
+
+These classes subclass L</Scrooge::Or>, L</Scrooge::And>, and
+L</Scrooge::Sequence> and mix-in the L</Scrooge::Role::Subdata> role. The
+difference between these classes and their parent classes is that they use
+the C<prep_all> and C<_init> methods from C<Scrooge::Role::Subdata>.
+
+=cut
 
 # THE magic value that indicates this module compiled correctly:
 1;
 
 =head1 TODO
 
-These are items that are very important or even critical to getting Scrooge to
-operate properly.
+These are items that I want to do before putting this library on CPAN.
 
 =over
 
-=item Testing: Multiple copies of the same pattern, nested calls to pattern
+=item Tutorial
 
-I have implemented a match stack to allow for multiple copies of the same
-pattern within a larger pattern. I have also implemented a stashing and
-unstashing mechanism to allow for patterns to be called from within other
-patterns without breaking the original. This may, or may not, be tested. (This
-comment was written a long time ago, and I may have written the tests for this
-issue in the interim.)
+I've started Scrooge::Tutorial but not finished it.
+
+=item Clean up cross-references
+
+I have many broken links and cross-references that need to be fixed. These
+include references to methods without providing a link to the method's
+documentation.
+
+=item Change re_named_or to re_tagged_or, re_* to pat_*
+
+Referring to tagging instead of naming provides a distinguishing term rather
+than overloading the already overused term "name". Also, the notion of these
+as regular expressions was deprecated a while ago but the prefix remains.
+That should be fixed.
+
+=item Repeated patterns
+
+I need to make a pattern that takes a single child pattern and lets you 
+repeat it a specified number of times, probably called re_repeat
+
+=item Explore recursive patterns
+
+Recursion can be achieved by having an re_sub call itself. This should
+work as-is thanks to all the stash management. I need to explore this in a
+tutorial and test it.
 
 =item Proper prep, cleanup, and stash handling on croak
 
@@ -3068,6 +3184,36 @@ execution of the pattern engine. I have furthermore added lots
 of lines of explanation for nested and grouped patterns so that pin-pointing
 the exact pattern is clearer. At this point, I need to ensure that these are
 indeed tested.
+
+=item remove MSER for the moment
+
+I'll add this back, but it ought not be in the distribution for the first
+CPAN release.
+
+=back
+
+These are things I want to do after the first CPAN release:
+
+=over
+
+=item Add MSER back
+
+After the first CPAN release, I want to add the MSER analysis back.
+
+=item Fix tagged patterns
+
+Tagging and Subdata support require a reworking of caching and state
+management. I need to fix that soon so I can finalize the C<_apply> API.
+
+In one approach, I could include the data as an argument to C<_apply> and
+the pattern could cache pre-calculations and other data-specific stuff under
+the C<refaddr> of the container. This way, the pattern does not need to know
+anything about tags, just about caching.
+
+Another approach would be to pass the tag of the dataset, which would
+require that the pattern cache the data itself and any other pre-calculations
+under the given name. But the more I think about it, the more I like the
+C<refaddr> cache since the same data can be run under different tags.
 
 =back
 
