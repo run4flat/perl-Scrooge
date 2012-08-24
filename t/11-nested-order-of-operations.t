@@ -1,7 +1,7 @@
 use PDL;
 use strict;
 use warnings;
-use Test::More tests => 11;
+use Test::More tests => 7;
 use Scrooge;
 use Data::Dumper;
 
@@ -23,7 +23,7 @@ else {
 my $data = sequence(50);
 
 #######################################################################
-#                           Nested Prep - 3                           #
+#                           Nested Prep - 1                           #
 #######################################################################
 
 # I want to use a slightly more complex set of functions, so I'm going to
@@ -37,17 +37,17 @@ Tracker::track(
 		_cleanup	=> q{ our $cleanup_returns -> () },
 		_prep		=> q{ our $prep_returns->() },
 	},
-	qw(_to_stash apply prep cleanup)
+	qw(_to_stash apply is_prepping prep cleanup)
 );
 
 sub _init {
 	my $self = shift;
-	$self->{min_size} = 1;
-	$self->{max_size} = 1;
+	$self->min_size(1);
+	$self->max_size(1);
 }
 
 
-my $regex = Scrooge::Test::Tracker::Nested->new;
+my $regex = __PACKAGE__->new;
 our @call_structure = ();
 our $apply_returns = sub {1};
 our $cleanup_returns = sub {1};
@@ -79,26 +79,23 @@ $apply_returns = sub {
 };
 
 my $expected = [
-	apply => [
-		prep			=> [
-			_prep 			=> [
-				apply			=> [
-					prep			=> [ _to_stash => [], _prep => [] ],
-					_apply			=> [],
-					cleanup			=> [ _cleanup => [], _to_stash => [] ],
+	-apply => [
+		is_prepping => [],
+		-prep			=> [
+			-_prep 			=> [
+				-apply			=> [
+					-is_prepping => [],
+					cleanup			=> [ _cleanup => [] ],
 				],
 			],
 		],
-		_apply			=> [],
 		cleanup			=> [ _cleanup => [] ],
 	]
 ];
 
 @call_structure = ();
-my ($length, $offset) = $regex->apply($data);
-is($prep_regex_length, $N_to_return[0], 'min and max sizes are properly tracked');
-is($length, $N_to_return[-1], 'min and max sizes are properly tracked');
-is_deeply(\@call_structure, $expected, 'Nested prep agrees with expectations')
+my ($length, $offset) = eval{$regex->apply($data)};
+is_deeply(\@call_structure, $expected, 'Nested prep dies')
 	or diag(Dumper (\@call_structure));
 
 $prep_returns = sub {1};
@@ -127,9 +124,11 @@ $apply_returns = sub {
 
 $expected = [
 	apply => [
+		is_prepping		=> [],
 		prep			=> [ _prep => [] ],
 		_apply			=> [
 			apply 			=> [
+				is_prepping		=> [],
 				prep			=> [ _to_stash => [], _prep => [] ],
 				_apply			=> [],
 				cleanup			=> [ _cleanup => [], _to_stash => [] ],
@@ -149,7 +148,7 @@ is_deeply(\@call_structure, $expected, 'Nested apply agrees with expectations')
 $apply_returns = sub {1};
 
 ########################################################################
-#                          Nested Cleanup - 3                          #
+#                          Nested Cleanup - 2                          #
 ########################################################################
 
 my $cleanup_counter = 0;
@@ -173,65 +172,29 @@ $apply_returns = sub {
 
 
 $expected = [
-	apply => [
-		prep			=> [ _prep => [] ],
-		_apply			=> [],
-		cleanup			=> [
-			_cleanup		=> [
-				apply 			=> [
-					prep			=> [ _to_stash => [], _prep => [] ],
-					_apply			=> [],
-					cleanup			=> [ _cleanup => [], _to_stash => [] ],
+	-apply => [
+		is_prepping	=> [],
+		prep		=> [ _prep => [] ],
+		_apply		=> [],
+		-cleanup	=> [
+			-_cleanup	=> [
+				-apply 		=> [
+					-is_prepping	=> [],
+					'cleanup'		=> [ '_cleanup' => [] ],
 				],
-			]
+			],
 		],
-	]
+	],
 ];
 
 @N_to_return = ();
 @call_structure = ();
-($length) = $regex->apply($data);
-is($length, $N_to_return[0], 'Nested cleanup did not mess up return value');
-is($cleanup_length, $N_to_return[-1], 'Nested cleanup did not mess up return value');
-is_deeply(\@call_structure, $expected, 'Nested cleanup agrees with expectations')
+($length) = eval{$regex->apply($data)};
+is($length, undef, 'Nested cleanup did not mess up return value');
+is_deeply(\@call_structure, $expected, 'Nested cleanup croaks')
 	or diag(Dumper (\@call_structure));
 
 $apply_returns = sub {1};
-
-########################################################################
-#                  Nested Prep with croaking Prep - 1                  #
-########################################################################
-
-# Have the second call to prep croak:
-$prep_counter = 0;
-$prep_returns = sub {
-	if ($prep_counter++ == 0) {
-		my $result = $regex->apply($data);
-		return $result;
-	}
-	die 'test';
-};
-
-$expected = [
-	-apply => [
-		-prep			=> [
-			-_prep			=> [
-				-apply			=> [
-					-prep			=> [ _to_stash => [], -_prep => [] ],
-					cleanup			=> [ _cleanup => [], _to_stash => [] ],
-				],
-			],
-		],
-		cleanup			=> [ _cleanup => [] ],
-	]
-];
-
-@call_structure = ();
-eval{$regex->apply($data)};
-is_deeply(\@call_structure, $expected, 'Nested prep with croaking prep agrees with expectations')
-	or diag(Dumper (\@call_structure));
-
-$prep_returns = sub {1};
 
 ########################################################################
 #                 Nested Apply with croaking Apply - 1                 #
@@ -248,9 +211,11 @@ $apply_returns = sub {
 
 $expected = [
 	-apply => [
+		is_prepping		=> [],
 		prep			=> [ _prep => [] ],
 		-_apply				=> [
 			-apply				=> [
+				is_prepping		=> [ ],
 				prep			=> [ _to_stash => [], _prep => [] ],
 				-_apply			=> [],
 				cleanup			=> [ _cleanup => [], _to_stash => [] ],
@@ -262,7 +227,7 @@ $expected = [
 
 @call_structure = ();
 eval{$regex->apply($data)};
-is_deeply(\@call_structure, $expected, 'Nested apply with croaking apply agrees with expectations')
+is_deeply(\@call_structure, $expected, 'Nested apply with croaking apply performs full cleanup')
 	or diag(Dumper (\@call_structure));
 
 $apply_returns = sub {1};
