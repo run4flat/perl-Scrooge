@@ -406,6 +406,8 @@ use PDL;
 
 our @ISA = qw(Scrooge::Quantified);
 
+__PACKAGE__->add_invocation_guarded_property('subref');
+
 sub _init {
   my $self = shift;
   $self->{above} = '-inf' unless defined $self->{above};
@@ -424,8 +426,8 @@ sub _init {
 # Notes      : none atm
 
 sub _prep {
-  my ($self, $data) = @_;
-  $data = PDL::Core::topdl($data);
+  my ($self) = @_;
+  my $data = PDL::Core::topdl($self->data);
  
   # Parse the above and below specifications
   my ($above, $below) = Scrooge::PDL::parse_range_strings(
@@ -491,6 +493,8 @@ end-point is considered to be a local exremum) and ensure that the data is a
 piddle, and the C<_apply> method, obviously, to check if the current point
 of interest is indeed a local minimum or maximum.
 
+Properties include C<include>, C<type>, 
+
 =cut
 
 package Scrooge::PDL::Local_Extremum;
@@ -513,21 +517,20 @@ sub min_size { 1 }
 sub max_size { 1 }
 
 sub _prep {
-  my ($self, $data) = @_;
-  $data = PDL::Core::topdl($data);
+  my ($self) = @_;
+  my $data = PDL::Core::topdl($self->data);
   
   # Handle edge cases
   return if $data->nelem == 0;
   return if $data->nelem == 1 and $self->{include} eq 'neither';
   
-  $self->{data} = $data;
   return 1;
 }
 
 sub _apply{
   my ($self, $l_off) = @_;
   my $type = $self->{type};
-  my $piddle = $self->{data};
+  my $piddle = $self->data;
   my $include = $self->{include};
   my $max_element = ($piddle->nelem) - 1;
   

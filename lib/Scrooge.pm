@@ -4,6 +4,7 @@ package Scrooge;
 use Carp;
 use Exporter;
 use PDL;
+use Scalar::Util;
 
 our @ISA = qw(Exporter);
 
@@ -409,15 +410,9 @@ are similar to the grouping regexes that came before, except that they let
 you specify the name of the dataset against which to match.
 
 Name of the dataset? What name? To match against multiple datasets, C<apply>
-a pattern on an anonymous hash with key/value pairs in which the keys are
-the names of the different data sets and the values are the actual data sets,
+a pattern on a list of key/value pairs (or an anonymous hash) in which the keys
+are the names of the different data sets and the values are the actual data sets,
 the things you'd normally send to C<apply>.
-
-The semantics of multiple, named data sets is still in flux and will change in
-the future. For now, feel free to use these B<only if each object works with one
-data set>. Calling the same pattern on multiple data sets will result in matches
-being run only on the first dataset. If you need to run the same pattern on
-multiple data sets, create multiple copies of the pattern.
 
 =cut
 
@@ -590,14 +585,22 @@ sub apply {
 		croak('Scrooge::apply expects either a data argument or key/value data pairs');
 	}
 	
+	# Get the data's length and verify that the container is a known type
+	my $N = data_length($data);
+	croak('Could not get length of the supplied data')
+		if not defined $N or $N eq '';
+	
 	# Prepare the pattern for execution. This may involve computing low and
 	# high quantifier limits, keeping track of $data, stashing
 	# intermediate data if this is a nested pattern, and many other things.
 	# The actual prep method can fail, so look out for that.
-	$self->is_prepping;
-	my $prep_results = eval{$self->prep($data)};
-	my @croak_messages;
-	push @croak_messages, $@ if $@ ne '';
+	my (@croak_messages, $prep_results);
+	eval {
+		$self->is_prepping;
+		$self->add_data($data);
+		$prep_results = $self->prep;
+		1;
+	} or push @croak_messages, $@;
 	unless ($prep_results) {
 		# update to cleanup state:
 		$self->is_cleaning;
@@ -613,11 +616,6 @@ sub apply {
 		# Otherwise, just return an empty match:
 		return;
 	}
-	
-	# Get the data's length
-	my $N = data_length($data);
-	croak("Could not get length of the supplied data")
-		if not defined $N or $N eq '';
 	
 	# Note change in local state:
 	$self->is_applying;
@@ -790,14 +788,337 @@ sub get_details {
 	return $self->{final_details}->[0];
 }
 
+=head1 PROPERTIES
+
+Confession time: one of the most difficult aspects of Scrooge to implement was
+robust caching. I figured it out, but it was harder than I had anticipated.
+Cached calculations and match details are surprisingly easy to overwrite when
+you just store them in the hash underlying C<$self>:
+
+ $self->{some_value} = $self->calculate_something($self->data);
+
+For this reason, Scrooge has a concept known as guarded properties and it
+provides a handful of class meta-methods to make guarded properties easy to
+implement in your Scrooge subclasses. After reading this section, you should be
+able to use guarded methods that Just Work.
+
+As far as Scrooge is concerned, there are three kinds of properties. First,
+there are unguarded properties, like the pattern's name, or a sequence pattern's
+list of sub-patterns. These values never change, so they don't need to be
+guarded. Second, there are invocation-guarded properties, properties that need
+to be protected from multiple invocations of your pattern during a single
+call to C<apply>. The quintesential example of an invocation-guarded property is
+the set of match details. You might think this is a rare property to overwrite,
+but it is perfectly reasonable to have a basic pattern which is part of a
+sequence B<and> which is invoked inside an L</re_sub> pattern later in the
+sequence. Third, there are data-specific guarded properties, which are
+properties whose values depend on the underlying data. Since Scrooge lets you
+run patterns on collections of data, applying different patterns to different
+data (using, say, L</re_named_seq>), you need to have a way to cache
+data-specific calculations. A simple example of this is C<re_range> in
+L<Scrooge::PDL>, which precalculates values including the data's average, min,
+and max. If the same pattern is applied to multiple data sets, the pattern needs
+some way to cache those precalculations in a data-specific way.
+
+Unguarded properties are the easiest to use: you use them as you would any Perl
+hash-based object property:
+
+ $self->{unguarded_property}++;
+
+guarded properties are almost as easy to use. You declare a data-guarded
+property with the C<add_data_guarded_property> class method, and you declare
+an invocation-guarded property with the C<add_invocation_guarded_property>:
+
+ __PACKAGE__->add_invocation_guarded_property('min_length');
+ __PACKAGE__->add_data_guarded_property('data_min');
+
+You then set and retrieve those values using class methods of the same name:
+
+ my $data_min = $self->data_min;
+ $self->min_length($new_min_length);
+
+The Scrooge base class comes with a handful of properties already, some
+unguarded, some data-guarded, and some invocation-guarded.
+
+=head2 name
+
+The pattern's name is used when retrieving the match details and is not guarded.
+It also should not be changed.
+
+=head2 final_details
+
+The final match details are associated with the C<final_details> key. It is not
+guarded because it is never set until the pattern is finished.
+
+=head2 min_size, max_size
+
+For the Scrooge base-class, these are invocation-specific properties that
+indicate the minimum and maximum number of elements that your pattern will
+match. These are somewhat unusual in that some derived classes coerce these
+into data-guarded properties while other derived classes ignore them completely
+and provide their own C<min_size> and C<max_size> methods that return constant
+values and do not operate as setters.
+
+Note that at the moment, C<min_size> and C<max_size> are not querried in the
+middle of the operation of the pattern, only at the beginning. In other
+words, overriding these methods so that their return value changes throughout
+the course of the pattern match (with a hope of reporting a more precise value,
+perhaps) will not work.
+
+=cut
+
+our $has_to_stash = 1;
+__PACKAGE__->add_invocation_guarded_property('min_size');
+__PACKAGE__->add_invocation_guarded_property('max_size');
+
+=head2 data
+
+All Scrooge objects have the C<data> property, which is data-guarded for obvious
+reasons.
+
+=cut
+
+__PACKAGE__->add_data_guarded_property('data');
+
+=head2 match_details
+
+If a pattern is named, match results are accumulated onto the anonymous array
+associated with the C<match_details> property. This is an invocation-guarded
+property. You should not manipulate this directly unless you are writing a
+grouping pattern, and even then only through L</store_match> and
+L</clear_stored_match>, and even then only if L</Scrooge::Grouped> doesn't
+provide what you need.
+
+=cut
+
+__PACKAGE__->add_invocation_guarded_property('match_details');
+
+=head2 state
+
+The pattern's state is an internal property. Whether it is guarded or not is
+something of a grey area as its value is used to ensure that guarding works.
+(At any rate, don't use this property name or you will very likely cause the
+pattern internals to run amock.)
+
+=head2 prep_result
+
+This data-specific internal property is only used during the prep phase of the
+pattern.
+
+=head2 cache_key
+
+This data-specific internal property is used to ensure that the accessor methods
+for data-guarded properties actually retrieve the correct values. (It is, oddly
+enough, invocation-guarded, not data-guarded, since it cannot be data-guarded.)
+
+=cut
+
+__PACKAGE__->add_invocation_guarded_property('cache_key');
+
+=head2 add_invocation_guarded_property
+
+This class method performs all the necessary internal machinations to create
+and manage an invocation-guarded property. You invoke it like so in your
+class definition:
+
+ package My::Pattern;
+ ...
+ __PACKAGE__->add_invocation_guarded_property('my_property');
+ ...
+
+This will create an accessor method for you that you can safely invoke at any
+time to retrieve the value you need:
+
+ sub _prep {
+     my $self = shift;
+     ...
+     $self->my_property('new_value');
+     ...
+ }
+
+=cut
+
+sub add_invocation_guarded_property {
+	my ($package, $prop_name) = @_;
+	__add_property_accessor($package, $prop_name);
+	__add_property_to_stash($package, $prop_name);
+	__add_to_stash($package);
+}
+
+=head2 add_data_guarded_property
+
+This class method performs all necessary internal machinations to create
+and manage a data-guarded property. You invoke it as part of your class
+definition:
+
+ package My::Pattern;
+ ...
+ __PACKAGE__->add_data_guarded_property('my_property');
+ ...
+
+You can only use the automatically generated accessor during the prep,
+apply, and cleanup stages of the pattern. In particular, you cannot invoke
+the accessor during initialization or after the pattern has finished
+matching.
+
+ sub _prep {
+     my $self = shift;
+     ...
+     $self->my_property('new_value');
+     ...
+ }
+ 
+ sub _apply {
+     my $self = shift;
+     ...
+     my $cached_value = $self->my_property;
+     ...
+ }
+
+=cut
+
+sub add_data_guarded_property {
+	my ($package, $prop_name) = @_;
+	__add_property_accessor($package, $prop_name, 1);
+	__add_property_to_stash($package, $prop_name);
+	__add_to_stash($package);
+}
+
+#####
+##### These are meta-methods, absolutely only for internal use
+#####
+
+sub __add_property_accessor {
+	my ($package, $prop_name, $is_data_accessor) = @_;
+	
+	# Make this blank for object properties
+	my $accessor_string = '';
+	$accessor_string = '{$self->{cache_key}}' if $is_data_accessor;
+	
+	# Create this property's accessor method and add it to the to_stash list
+	eval qq{
+		package $package;
+		sub $prop_name {
+			my \$self = shift;
+			
+			# Return the data-specific value if called as a getter
+			return \$self->{$prop_name}$accessor_string if \@_ == 0;
+			
+			# Set the data-specific value if called as a setter
+			\$self->{$prop_name}$accessor_string = \$_[0];
+		}
+	};
+	
+	# add the appropriate all_ accessor
+	if ($is_data_accessor) {
+		eval qq{
+			package $package;
+			sub all_$prop_name {
+				return values \%{ \$_[0]->{$prop_name} };
+			}
+		}
+	}
+	else {
+		eval qq{
+			package $package;
+			sub all_$prop_name {
+				return \$_[0]->{$prop_name};
+			}
+		}
+	}
+}
+
+sub __add_property_to_stash {
+	my ($package, $prop_name) = @_;
+	eval qq{
+		package $package;
+		push our \@to_stash, '$prop_name';
+	};
+}
+
+# Ensures that the _to_stash method is in the package
+sub __add_to_stash {
+	my $package = shift;
+	eval qq{
+		package $package;
+		
+		sub _to_stash {
+			my \$self = shift;
+			return our \@to_stash, \$self->SUPER::_to_stash;
+		}
+		
+		our \$has_to_stash = 1;
+	} unless eval '$' . $package . '::has_to_stash';
+}
+
+#####
+##### End meta-methods
+#####
+
+=head2 coerce_as_data_property
+
+Performs the necessary internal machinery to esure that an B<inherited>
+guarded invocation property can be used instead as a guarded data property.
+
+ __PACKAGE__->coerce_as_data_property('name');
+
+=cut
+
+sub coerce_as_data_property {
+	my ($package, $prop_name) = @_;
+	__add_property_accessor($package, $prop_name, 1);
+}
+
+sub _to_stash {
+	return our @to_return;
+}
+
+=head2 Example
+
+ package My::Scrooge::Subclass;
+ 
+ __PACKAGE__->add_invocation_guarded_property('foo')
+ __PACKAGE__->add_data_guarded_property('file_handle')
+ 
+ # Set object-specific values in _init
+ sub _init {
+     ...
+     $self->foo($default_foo);
+     ...
+ }
+ 
+ # Set data-specific values in _prep
+ sub _prep {
+     ...
+     open my $new_fh, '<', $file_name;
+     $self->file_handle($new_fh);
+     ...
+ }
+ 
+ # Retrieve any values in _apply
+ sub _apply {
+ 	...
+ 	my $length = $self->length;
+ 	my $fh = $self->file_handle;
+ 	...
+ }
+ 
+ # During cleanup, the all_ accessors may be useful
+ sub _cleanup {
+     my @file_handles = $self->all_file_handle;
+     close $_ foreach @file_handles;
+ }
+
+
 =head1 AUTHOR METHODS
 
 This section documents the basic class structure of Scrooge for those interested
 in writing pattern classes. If your goal is to simply build and apply patterns
 to data then this section is not for you.
 
-There are many methods provided by Scrooge. Some of them are explicitly meant to
-be overridden; others are explicitly not meant to be overridden. In general,
+Scrooge provides a number of methods that you as a class author
+will likely want to use or override. Some of what follows are explicitly meant
+to be overridden; others are explicitly not meant to be overridden. In general,
 methods that begin with an underscore are overridable; methods that do B<not>
 begin with an underscore should be left alone.
 
@@ -818,59 +1139,68 @@ C<_prep> method invoked.
 =cut
 
 # Default init does nothing:
-sub _init {
-	croak('Scrooge::_init is a method that takes no arguments')
-		unless @_ == 1;
+sub _init { }
+
+=head2 add_data ($data)
+
+This method is a low-level method that helps prepare the data-guarded
+properties. It stores the data under a data-specific cache key, sets the
+pattern's current cache key as the just-computed cache key, and returns said
+cache key. 
+
+If you are writing a grouping or other container class, you should call this
+method with the data that the pattern is to analyze just before invoking the
+pattern's C<prep> method.
+
+=cut
+
+sub add_data {
+	my ($self, $data) = @_;
+	my $cache_key = Scalar::Util::refaddr($_[1]);
+	$self->cache_key($cache_key);
+	$self->data($data);
+	return $cache_key;
 }
 
-=head2 _prep ($data)
-
+=head2 _prep
 
 The very last stage of C<prep> is calling this method, C<_prep>, whose name
 differs from C<prep> only in the presence of the leading underscore. As a class
 author, you should override this method. This function is called before the
-pattern hammers on the supplied data. If you have any data-specific setup to do,
-do it in this function. You should perform as much pre-calculation and
-preparation as possible in this code so as to minimize repeated calculations in
-your C<_apply> method.
+pattern hammers on the data. If you have any data-specific setup to do with
+data-guarded properties, do it in this function. You should perform as much
+pre-calculation and preparation as possible in this code so as to minimize
+repeated calculations in your C<_apply> method. This method should return
+either 1 or 0 indicating that it either has or does not have a chance of
+matching the data.
 
-If you are not deriving your class from L</Scrooge::Quantified>,
-L</Scrooge::ZWA>, or L</Scrooge::Grouped> and you intend for your pattern to
-run, you must either set C<< $self->{min_size} >> and C<< $self->{max_size} >>
-at this point or you must override the related internal functions so that they
-operate correctly without having values associated with those keys. The
-C<min_size> and C<max_size> methods operate both as setters and as getters, so
-the following code is an appropriate means to set these variables in your
-C<_prep> method:
+This method will be called once for each set of data that is being matched
+against your pattern. That is, if you use something like L</re_named_seq> and
+associate two different tags with your pattern, for example, this method will
+be called twice. (Actually, they will be called twice if the data sets
+associated with those tags are distinct.)
 
- $self->min_size($some_size);
- $self->max_size($some_size);
+You can retrieve that data for calculations with the L</data> accessor method:
+
+ my $min_value = $self->data->min;
 
 Having examined the data, if you know that this pattern will not match 
 you should return zero. This guarantees that the following functions
-will not be called on your pattern during this run: C<_apply>, C<_min_size>,
-C<_max_size>, and C<_store_match>. Put a little bit
+will not be called on your pattern during this run with this data: C<_apply>, 
+C<_min_size>, C<_max_size>, and C<_store_match>. Put a little bit
 differently, it is safe for any of those functions to assume that C<_prep>
-has been called and was able to set up internal data that might be required
-for their operation. Furthermore, if you realize in the middle of C<_prep>
+has been called and was able to set up data-guarded properties that might be
+required for their operation because they won't be called if C<_prep> returned
+zero. Furthermore, if you realize in the middle of C<_prep>
 that your pattern cannot run, it is safe to return 0 immediately and expect
 the parent pattern to call C<_cleanup> for you. (working here - make sure the
 documentation for Scrooge::Grouped details what Grouped patterns are supposed to
-do with C<_prep> return values.)
+do with C<_prep> return values. XXX)
 
 Your pattern may still be querried afterwards for a match by
 C<get_details_for> or C<get_details>, regardless of the return value of
 C<_prep>. In both of those cases, returning the undefined value,
 indicating a failed match, would be the proper thing to do.
-
-NOTE: Support for multiple data sets
-will likely require that the name of the data be passed. In the future, it is
-likely that the sub-dataset's name, if supplied, will be the second argument. At
-any rate, consider the interfae of this function to be in alpha, and that
-changes may occurr in the not-distant future. For the time being, as was
-mentioned above under L</SIMULTANEOUSLY MATCHING ON MULTIPLE DATASETS>,
-your users will have to stick with one dataset per pattern object. If they stick
-with that, then everything mentioned above will work fine.
 
 =cut
 
@@ -878,6 +1208,8 @@ with that, then everything mentioned above will work fine.
 sub _prep {	return 1 }
 
 =head2 _to_stash
+
+XXX - put this somewhere else
 
 In the discussion on L</_prep>, I mentioned calculation of internal data. If you
 store any internal data, you should override C<_to_stash> and include the names
@@ -917,56 +1249,13 @@ is relatively cheap but having sub-patterns destroy the internal state of your
 pattern is impossible to recover from. When in doubt, if you put data into one
 of your hash's keys, you should stash it.
 
-=cut
-
-# The internal keys with values that we want to protect in case of
-# recursive usage:
-sub _to_stash {
-	croak('Scrooge::_to_stash is a method that takes no arguments')
-		unless @_ == 1;
-	return qw (data min_size max_size match_details);
-}
-
-=head2 min_size, max_size
-
-These are getters and setters for the current lengths that indicate the
-minimum and maximum number of elements that your pattern is capable of
-matching. Scrooge expects these values to be set before or during L</_prep>
-and afterwards consults whatever was stored there.
-
-Unlike other non-underscore methods, you can override these if you like.
-
-Note that at the moment, C<min_size> and C<max_size> are not querried
-during the actual operation of the pattern, only at the beginning. In other
-words, overriding these methods so that their return value changes throughout
-the course of the pattern match (with a hope of reporting a more precise value,
-perhaps) will not work.
-
-You are guaranteed that C<_prep> will have been run before these methods are
-run, and they will not be run if C<_prep> returned a false value. If you
-call the base class's prep, you are also guaranteed that if C<min_size> or
-C<max_size> are keys in the object, they will be the default values.
-
-=cut
-
-sub min_size {
-	return $_[0]->{min_size} if @_ == 1;
-	return $_[0]->{min_size} = $_[1] if @_ == 2;
-	croak('Scrooge::min_size is an accessor method');
-}
-
-sub max_size {
-	return $_[0]->{max_size} if @_ == 1;
-	return $_[0]->{max_size} = $_[1] if @_ == 2;
-	croak('Scrooge::max_size is an accessor method');
-}
-
 =head2 _apply ($left, $right)
 
+XXX - double-check these docs
+
 This method is called when it comes time to apply the pattern to see if it
-matches at the current left and right offsets, which are the two arguments
-supplied to the method. The data is not included becaus it was cached under the
-C<data> key during L</prep>; you can retrieve it under that key if you need it.
+matches at the current left and right offsets on this data, which are the three
+arguments supplied to the method.
 
 If your pattern encloses another, it should call the enclosed pattern's C<_apply>
 method and take its return value into consideration with its own, unless
@@ -1104,11 +1393,6 @@ The details are stored via the C<store_match> method. In addition to the
 key/value pairs returned by C<_apply>, the left and right offsets of the match
 are stored under the keys C<left> and C<right>.
 
-Note that the data and pre-calculation caching is a major tripping point of
-multiple dataset matching, so the arguments to C<_apply> may change in the
-future. The most likely situation is that the name of the dataset will be
-included as a third argument. Stay tuned.
-
 =head2 _cleanup
 
 The overridable method C<_cleanup> allows you to clean up any resources at the
@@ -1119,9 +1403,10 @@ resource in the C<prep> stage, and then unallocate that resource at the end of
 of the match. In that case, this overridable method is precisely what you will
 want to use.
 
-C<cleanup> (and therefore C<_cleanup> should only be called once, but your code
-needs to be flexible enough to accomodate multiple calls to C<_cleanup> without
-dying.
+C<cleanup> (and therefore C<_cleanup>) should only be called once, even if 
+C<_prep> was called multiple times (for multiple data sets. However, it may in
+fact be called more than once and your code needs to be flexible enough to
+accomodate multiple calls to C<_cleanup> without dying.
 
 =cut
 
@@ -1224,8 +1509,14 @@ sub get_bracketed_name_string {
 
 =head2 is_prepping
 
-This is a setter method that changes the internal state of the pattern just
-before L<prep|/prep ($data)> gets called.
+This method sets up the internal state of the pattern just before
+L<prep|/prep ($data)> gets called. This method is also responsible for ensuring
+that the pattern is in a good state to be prepared and will croak if you are
+trying to use it in some invalid way. If you somehow manage to use a pattern
+within its own prep or cleanup code, you will get one of these errors:
+
+ Pattern [name] uses itself in prep code, which is not allowed
+ Pattern [name] uses itself in cleanup code, which is not allowed
 
 =cut
 
@@ -1233,57 +1524,62 @@ before L<prep|/prep ($data)> gets called.
 # state is required to be 'not running' before the pattern starts, and it
 # is required to have a defined value during all three user-directable
 # phases.
-# Do *not* set the state to prepping; that is part of prep's short-
-# circuiting.
 sub is_prepping {
 	croak('Scrooge::is_prepping is a method that takes no arguments')
 		unless @_ == 1;
 	my $self = shift;
-	if ($self->{state}) {
-		push @{$self->{old_state}}, $self->{state};
-		delete $self->{state};
+	if (my $state = delete $self->{state}) {
+		push @{$self->{old_state}}, $state;
+
+		# A pattern can only move into the prep state if it is 'not running' or in
+		# the middle of 'apply'. We die *before* having modified the state because
+		# cleanup only restores if the old state is 'apply'
+		my $name = $self->get_bracketed_name_string;
+		croak("Pattern$name uses itself in cleanup code, which is not allowed")
+			if $state eq 'cleaning';
+		croak("Pattern$name uses itself in prep code, which is not allowed")
+			if $state eq 'prepping';
+		croak("Internal error: Pattern$name managed to get to is_prepping with an unknown state")
+			if $state ne 'not running' and $state ne 'apply';
 	}
 }
 
-=head2 prep ($data)
+=head2 prep
 
 This method is neither user-level nor overridable. It is called as the first
-stage of C<apply>. It handles the messy business of handling the pattern's
-internal state and stashing the to-be-matched data in the C<data> key of the
-(hash-based) object before calling C<_prep>.
-
-As a class author, you should overload C<_prep> to control how your class
-prepares for being matched.
+stage of C<apply>. This method ensures that C<_prep> gets called only once on
+each set of data. As a class author, you should overload C<_prep> to control how
+your class prepares for being matched.
 
 =cut
 
 sub prep {
-	croak('Scrooge::prep is a one-argument method')
-		unless @_ == 2;
-	my ($self, $data) = @_;
+	croak('Scrooge::prep takes no argument') unless @_ == 1;
+	my $self = shift;
 	
-	# Make sure this only gets run once per call to apply:
-	return 1 if $self->{state};
-	$self->{state} = 'prepping';
+	my $cache_key = $self->cache_key;
 	
-	# Stash everything. Note that under repeated invocations of a pattern, there
-	# may be values that we traditionally stash that have lingered from the
-	# previous invocation.
-	# I would like to remove those values, but that causes troubles. XXX :-(
-#	my @to_stash = $self->_to_stash;
-	if (defined $self->{data}) {
-		push @{$self->{"old_$_"}}, $self->{$_} foreach $self->_to_stash;
-#			@to_stash;
-	}
-	else {
-		#delete $self->{$_} foreach @to_stash;
+	# Store the old properties if this is our first time through prep
+	if (not defined $self->{state}) {
+		$self->{state} = 'prepping';
+		# Stash old values if the pattern is currently in an "apply" state
+		if ($self->{old_state}->[-1] eq 'apply') {
+			push @{$self->{"old_$_"}}, $self->{$_} foreach $self->_to_stash;
+		}
 	}
 	
-	$self->{data} = $data;
-	return $self->_prep($data);
+	# Make sure this only gets run once per dataset per call to apply, and that
+	# if it was already run on this data, the previous return value is again
+	# returned:
+	return $self->{prep_result}{$cache_key}
+		if exists $self->{prep_result}{$cache_key};
+	
+	# Associate the match details with an anonymous array
+	$self->match_details([]);
+	
+	# Return the result of the prep:
+	return $self->{prep_result}{$cache_key} = $self->_prep;
 }
-
-# Note: right now the pattern knows that it is being prepped inside a 
 
 =head2 is_applying
 
@@ -1293,7 +1589,9 @@ before L</_apply> gets called.
 =cut
 
 sub is_applying {
-	$_[0]->{state} = 'apply';
+	my $self = shift;
+	delete $self->{prep_result};
+	$self->{state} = 'apply';
 }
 
 =head2 store_match ($hashref)
@@ -1314,7 +1612,7 @@ sub store_match {
 	
 	# Only store the match if this is named
 	return unless exists $self->{name};
-	push @{$self->{match_details}}, $details;
+	push @{$self->match_details}, $details;
 }
 
 =head2 clear_stored_match
@@ -1334,7 +1632,7 @@ sub clear_stored_match {
 	my $self = shift;
 	
 	return 0 unless exists $self->{name};
-	pop @{$self->{match_details}};
+	pop @{$self->match_details};
 	return 0;
 }
 
@@ -1402,6 +1700,7 @@ before L</cleanup> gets called.
 # As with is_prepping, do *not* set the state since cleaning's short-
 # circuiting depends on this being clear:
 sub is_cleaning {
+	delete $_[0]->{prep_result};
 	delete $_[0]->{state};
 }
 
@@ -1428,24 +1727,20 @@ sub cleanup {
 	$self->{state} = 'cleaning';
 
 	# finalize the match stack
-	$self->{final_details} = delete $self->{match_details};
+	$self->{final_details} = $self->match_details;
 	
 	# Call sub-class's cleanup method:
 	eval { $self->_cleanup() };
 	my $err_string = $@;
 	
-	# Remove this copy of the $data since its presence is used in prep
-	# to know if needs to stash or not.
-	delete $self->{data};
-	
-	# Unstash everything:
-	if (defined $self->{old_data}->[0]) {
-		$self->{$_} = pop @{$self->{"old_$_"}} foreach $self->_to_stash;
-	}
-	
 	# ALWAYS unstash the previous state, which is always guaranteed to have
 	# a meaningful value:
 	$self->{state} = pop @{$self->{old_state}};
+	
+	# Unstash everything if the match was previously applying itself
+	if ($self->{state} eq 'apply') {
+		$self->{$_} = pop @{$self->{"old_$_"}} foreach $self->_to_stash;
+	}
 	
 	# Finally, check the error state from the sub-class's cleanup:
 	die $err_string if $err_string ne '';
@@ -1561,6 +1856,9 @@ sub _init {
 	return $self;
 }
 
+__PACKAGE__->coerce_as_data_property('min_size');
+__PACKAGE__->coerce_as_data_property('max_size');
+
 =item _prep
 
 Given a set of data, this method calculates the minimum and maximum number of
@@ -1576,9 +1874,10 @@ value is 1, you should proceed with your own C<_prep> work.
 
 # Prepare the current quantifiers:
 sub _prep {
-	my ($self, $data) = @_;
+	my $self = shift;
+	
 	# Compute and store the numeric values for the min and max quantifiers:
-	my $N = Scrooge::data_length($data);
+	my $N = Scrooge::data_length($self->data);
 	my ($min_size, $max_size);
 	my $min_quant = $self->{min_quant};
 	my $max_quant = $self->{max_quant};
@@ -1626,7 +1925,6 @@ not provide any extra match details.
 
 =cut
 
-# apply (the non-overridable method) will store the saved values:
 sub _apply {
 	my (undef, $left, $right) = @_;
 	return $right - $left + 1;
@@ -1635,9 +1933,6 @@ sub _apply {
 =back
 
 =cut
-
-# I don't need to override _stash or _cleanup because they already handle
-# the size information.
 
 package Scrooge::Sub;
 our @ISA = qw(Scrooge::Quantified);
@@ -1695,7 +1990,7 @@ pattern, you can still return extra match details though there's no point).
 sub _apply {
 	my ($self, $left, $right) = @_;
 	# Apply the rule and see what we get:
-	my ($consumed, %details) = eval{$self->{subref}->($self->{data}, $left, $right)};
+	my ($consumed, %details) = eval{$self->{subref}->($self->data, $left, $right)};
 	
 	# handle any exceptions:
 	unless ($@ eq '') {
@@ -1741,6 +2036,27 @@ L</re_zwa_position>.
 
 =over
 
+=item _init
+
+This method ensures that the position key, if suppplied, is associated with a
+valid value: a scalar or a two-element array.
+
+=cut
+
+sub _init {
+	my $self = shift;
+	
+	# No position is ok
+	return if not exists $self->{position};
+	
+	# Scalar position is ok
+	return unless ref($self->{position});
+	
+	# Two-element position is ok
+	croak('Scrooge::ZWA optional position key must be associated with a scalar or two-element array')
+		unless ref($self->{position}) eq ref([]) and @{$self->{position}} == 2;
+}
+
 =item min_size, max_size
 
 Scrooge::ZWA overrides min_size and max_size to both return zero.
@@ -1750,21 +2066,32 @@ Scrooge::ZWA overrides min_size and max_size to both return zero.
 sub min_size { 0 }
 sub max_size { 0 }
 
+=item zwa_position_subref
+
+Getter/setter for the zero-width position assertion subroutine. XXX
+
+=cut
+
+__PACKAGE__->add_data_guarded_property('zwa_position_subref');
+
 =item _prep
+
+XXX double check these docs
 
 Scrooge::ZWA provides a C<_prep> method that evaluates the value associated
 with the C<position> key. If that value is a scalar then the exact positiion
 indicated by that scalar must match. If that value is an
 anonymous array with two values, the two values indicate a range of positions
 at which the assertion can match. Either way, if there is such a
-C<position> key with values as described, the C<_prep> method will create
-an anonymous subroutine under the key C<zwa_position_subref> that accepts a
-single argument and returns a true or false value indicating whether the
-position is matched. If there is no such C<position> key, there will still
-be a subroutine under C<zwa_position_subref>, but it will always return a
+C<position> key with values as described, the C<_prep> method will store an
+anonymous subroutine under C<zwa_position_subref> that
+accepts a single argument---the left offset---and returns a true or false value
+indicating whether the position is matched. C<zwa_position_subref> will always
+return a usable subroutine: if there is no C<position> key, the returned subroutine
+simply always returns a
 true value. Thus, if you derive a class from C<Scrooge::ZWA>, running
-C<< $self->SUPER::_prep >> will ensure that C<< $self->{zwa_position_subref} >>
-is a subroutine that will give you a meaningful evaluation for any given
+C<< $self->SUPER::_prep >> will ensure that C<< $self->zwa_position_subref >>
+returns subroutine that will give you a meaningful evaluation for any given
 (left) offset.
 
 =cut
@@ -1778,24 +2105,25 @@ sub _prep {
 	# Create a position assertion that always matches if no position was
 	# specified.
 	if (not exists $self->{position}) {
-		$self->{zwa_position_subref} = sub { 1 };
+		$self->zwa_position_subref(sub { 1 });
 		return 1;
 	}
 	
 	my $position = $self->{position};
+	my $data = $self->data;
 	
 	# Check if they specified an exact position
 	if (ref($position) eq ref('scalar')) {
-		my $match_offset = parse_position($self->{data}, $position);
+		my $match_offset = parse_position($data, $position);
 		
 		# Fail the prep if the position cannot match
 		return 0 if $match_offset < 0
-			or $match_offset > Scrooge::data_length($self->{data});
+			or $match_offset > Scrooge::data_length($data);
 		
 		# Set the match function:
-		$self->{zwa_position_subref} = sub {
+		$self->zwa_position_subref(sub {
 			return $_[0] == $match_offset;
-		};
+		});
 		return 1;
 	}
 	# Check if they specified a start and finish position
@@ -1803,37 +2131,36 @@ sub _prep {
 		my ($left_string, $right_string) = @$position;
 		
 		# Parse the left and right offsets
-		my $left_offset = parse_position($self->{data}, $left_string);
-		my $right_offset = parse_position($self->{data}, $right_string);
+		my $left_offset = parse_position($data, $left_string);
+		my $right_offset = parse_position($data, $right_string);
 		
 		# If the left offset is to the right of the right offset, it can never
 		# match so return a value of zero for the prep
 		return 0 if $left_offset > $right_offset;
 		
 		# Otherwise, set up the position match function
-		$self->{zwa_position_subref} = sub {
+		$self->zwa_position_subref(sub {
 			return $left_offset <= $_[0] and $_[0] <= $right_offset;
-		};
+		});
 		return 1;
 	}
 	
-	# They didn't specify anything, so match anywhere
-	$self->{zwa_position_subref} = sub { 1 };
-	return 1;
+	# should never get here if _init does its job
+	croak('Scrooge::ZWA internal error - managed to get to end of _prep');
 }
 
 =item _apply
 
-The default C<_apply> for Scrooge::ZWA simply applies the subroutine under
-C<< $self->{zwa_position_subref} >>, which asserts the positional request
-codified under the key C<position>. If there is no such key/value pair,
+The default C<_apply> for Scrooge::ZWA simply applies the subroutine associated
+with C<zwa_position_subref>, which asserts the positional
+request codified under the key C<position>. If there is no such key/value pair,
 then any position matches.
 
 =cut
 
 sub _apply {
 	my ($self, $left, $right) = @_;
-	return '0 but true' if $self->{zwa_position_subref}->($left);
+	return '0 but true' if $self->zwa_position_subref->($left);
 	return 0;
 }
 
@@ -1956,11 +2283,11 @@ sub _apply {
 	
 	# Make sure the position matches the specification (and if they didn't
 	# indicate a position, it will always match)
-	return 0 unless $self->{zwa_position_subref}->($left);
+	return 0 unless $self->zwa_position_subref->($left);
 	
 	# Evaluate their subroutine:
 	my ($consumed, %details)
-		= eval{$self->{subref}->($self->{data}, $left, $right)};
+		= eval{$self->{subref}->($self->data, $left, $right)};
 	
 	# Handle any exceptions
 	if ($@ ne '') {
@@ -2001,7 +2328,7 @@ stashing and unstashing values, and other things. This base class exists so
 that you can (mostly) ignore these details.
 
 Scrooge::Grouped is derived directly from Scrooge and provides methods for
-the basic methods of C<_init>, C<_prep>, and C<_to_stash>, in addition to
+the basic methods of C<_init>, C<_prep>, and
 some of the lower-level methods. It also utilizes many new group-specific
 methods that only make sense in the context of gouped patterns, and which
 can be overridden in derived classes. It is an abstract base class, however,
@@ -2079,9 +2406,6 @@ names are added to the given hash, hence this overload.
 
 # This is only called by patterns that *hold* this one, in the process of
 # building their own name tables. Add this and all children to the hashref.
-# Structures like ABA should pass this, but recursive structures will go
-# into deep recursion.
-# XXX recursive check this
 sub add_name_to {
 	my ($self, $hashref) = @_;
 	# Go through each named value in this group's collection of names:
@@ -2091,20 +2415,6 @@ sub add_name_to {
 		
 		$hashref->{$name} = $ref;
 	}
-}
-
-=item _to_stash
-
-In addition to the base class items that need to be stashed, this method
-indicates that the keys C<patterns_to_apply> and C<positive_matches> are to
-be stashed and unstashed.
-
-=cut
-
-# Some state information that will need to be stashed:
-sub _to_stash {
-	my $self = shift;
-	return qw(patterns_to_apply positive_matches), $self->SUPER::_to_stash;
 }
 
 =item _prep
@@ -2121,27 +2431,34 @@ data's length. Otherwise, this method returns true.
 
 =cut
 
+# XXX document patterns_to_apply etc
+__PACKAGE__->add_data_guarded_property('patterns_to_apply');
+__PACKAGE__->add_data_guarded_property('cache_keys');
+__PACKAGE__->add_data_guarded_property('positive_matches');
+
 # _prep will call _prep on all its children and keep track of those that
 # return true values. Success or failure is based upon the inherited method
 # _prep_success.
 sub _prep {
-	my ($self, $data) = @_;
+	my $self = shift;
 	
-	my @succeeded = $self->prep_all($data);
+	my ($succeeded, $cache_keys) = $self->prep_all;
 	
 	# Store the patterns to apply. If _prep_success returns zero, we do not
 	# need to call cleanup: that will be called by our parent:
-	$self->{patterns_to_apply} = \@succeeded;
+	$self->patterns_to_apply($succeeded);
 	return 0 unless $self->_prep_success;
+	$self->cache_keys($cache_keys);
+	$self->positive_matches([]);
 	
 	# Cache the minimum and maximum number of elements to match:
 	$self->_minmax;
-	my $data_size = Scrooge::data_length($data);
+	my $data_size = Scrooge::data_length($self->data);
 	$self->max_size($data_size) if $self->max_size > $data_size;
+	
 	# Check those values for sanity:
-	if ($self->max_size < $self->min_size or $self->min_size > $data_size) {
-		return 0;
-	}
+	return 0 if $self->max_size < $self->min_size
+			or $self->min_size > $data_size;
 
 	# If we're here, then all went well, so return as much:
 	return 1;
@@ -2190,7 +2507,7 @@ sub clear_stored_match {
 	$self->SUPER::clear_stored_match;
 	
 	# Call all the positively matched patterns' clear function:
-	foreach my $pattern (@{$self->{positive_matches}}) {
+	foreach my $pattern (@{$self->positive_matches}) {
 		$pattern->clear_stored_match;
 	}
 	
@@ -2282,21 +2599,26 @@ match.
 =cut
 
 sub prep_all {
-	my ($self, $data) = @_;
+	my $self = shift;
+	my $data = $self->data;
+	my $cache_key = $self->cache_key;
 	
 	# Call the prep function for each of them, keeping track of all those
 	# that succeed. Notice that I capture errors and continue because every
 	# single pattern needs to run its prep method in order for it to be 
 	# safe for it to call its cleanup method.
 	my @succeeded;
+	my @cache_keys;
 	my @errors;
 	foreach (@{$self->{patterns}}) {
-		my $successful_prep = eval { $_->prep($data) };
+		$_->add_data($data);
+		my $successful_prep = eval { $_->prep };
 		push @errors, $@ if $@ ne '';
-		if ($successful_prep) {
-			# Make sure the min size is not too large:
-			push (@succeeded, $_)
-				unless $_->min_size > Scrooge::data_length($data);
+		
+		# Make sure the min size is not too large:
+		if ($successful_prep and $_->min_size <= Scrooge::data_length($data)) {
+			push @succeeded, $_;
+			push @cache_keys, $cache_key;
 		}
 	}
 	
@@ -2308,7 +2630,7 @@ sub prep_all {
 		die(join(('='x20) . "\n", 'Multiple Errors', @errors));
 	}
 	
-	return @succeeded;
+	return \@succeeded, \@cache_keys;
 }
 
 =item _prep_success
@@ -2326,7 +2648,7 @@ as their are patterns in the group.
 # The default success happens when we plan to apply *all* the patterns
 sub _prep_success {
 	my $self = shift;
-	return @{$self->{patterns}} == @{$self->{patterns_to_apply}};
+	return @{$self->{patterns}} == @{$self->patterns_to_apply};
 }
 
 =item push_match
@@ -2349,7 +2671,7 @@ sub push_match {
 	croak('Scrooge::Grouped::push_match is a method that expects two arguments')
 		unless @_ == 3;
 	my ($self, $pattern, $details) = @_;
-	push @{$self->{positive_matches}}, $pattern;
+	push @{$self->positive_matches}, $pattern;
 	$pattern->store_match($details);
 }
 
@@ -2366,8 +2688,8 @@ stack of C<positive_matches>.
 # positive_matches stack. recursive check this XXX
 sub pop_match {
 	my $self = shift;
-	$self->{positive_matches}->[-1]->clear_stored_match;
-	pop @{$self->{positive_matches}};
+	$self->positive_matches->[-1]->clear_stored_match;
+	pop @{$self->positive_matches};
 }
 
 =back
@@ -2422,13 +2744,16 @@ largest maximum reported by all the children.
 # Called by the _prep method; sets the internal minimum and maximum match
 # sizes.
 sub _minmax {
-	my $self = shift;
+	my ($self) = @_;
 	my ($full_min, $full_max);
 	
+	my @patterns = @{$self->patterns_to_apply};
+	my @cache_keys = @{$self->cache_keys};
 	# Compute the min as the least minimum, and max as the greatest maximum:
-	foreach my $pattern (@{$self->{patterns_to_apply}}) {
-		my $min = $pattern->min_size;
-		my $max = $pattern->max_size;
+	for my $i (0 .. $#patterns) {
+		$patterns[$i]->cache_key($cache_keys[$i]);
+		my $min = $patterns[$i]->min_size;
+		my $max = $patterns[$i]->max_size;
 		$full_min = $min if not defined $full_min or $full_min > $min;
 		$full_max = $max if not defined $full_max or $full_max < $max;
 	}
@@ -2447,7 +2772,8 @@ children are expected to succeed.
 # Must override the default _prep_success method. If we have *any* patterns
 # that will run, that is considered a success.
 sub _prep_success {
-	return @{$_[0]->{patterns_to_apply}} > 0;
+	my ($self) = @_;
+	return @{$self->patterns_to_apply} > 0;
 }
 
 =item _apply
@@ -2462,12 +2788,14 @@ before moving to the next pattern.
 
 sub _apply {
 	my ($self, $left, $right) = @_;
-	my @patterns = @{$self->{patterns_to_apply}};
+	my @patterns = @{$self->patterns_to_apply};
+	my @cache_keys = @{$self->cache_keys};
 	my $max_size = $right - $left + 1;
 	my $min_r = $left + $self->min_size - 1;
 	my $i = 0;
 	PATTERN: for (my $i = 0; $i < @patterns; $i++) {
 		my $pattern = $patterns[$i];
+		$pattern->cache_key($cache_keys[$i]);
 		
 		# skip if it wants too many:
 		next if $pattern->min_size > $max_size;
@@ -2577,10 +2905,13 @@ sub _minmax {
 	my $self = shift;
 	my ($full_min, $full_max);
 	
+	my @patterns = @{$self->patterns_to_apply};
+	my @cache_keys = @{$self->cache_keys};
 	# Compute the min as the greatest minimum, and max as the least maximum:
-	foreach my $pattern (@{$self->{patterns_to_apply}}) {
-		my $min = $pattern->min_size;
-		my $max = $pattern->max_size;
+	for my $i (0 .. $#patterns) {
+		$patterns[$i]->cache_key($cache_keys[$i]);
+		my $min = $patterns[$i]->min_size;
+		my $max = $patterns[$i]->max_size;
 		$full_min = $min if not defined $full_min or $full_min < $min;
 		$full_max = $max if not defined $full_max or $full_max > $max;
 	}
@@ -2614,8 +2945,10 @@ sub _apply {
 	my ($self, $left, $right) = @_;
 	my $consumed_length = $right - $left + 1;
 	my @to_store;
-	my @patterns = @{$self->{patterns_to_apply}};
+	my @patterns = @{$self->patterns_to_apply};
+	my @cache_keys = @{$self->cache_keys};
 	for (my $i = 0; $i < @patterns; $i++) {
+		$patterns[$i]->cache_key($cache_keys[$i]);
 		my ($consumed, %details) = eval{$patterns[$i]->_apply($left, $right)};
 		
 		# Croak problems if found:
@@ -2691,23 +3024,9 @@ use Carp;
 The Scrooge::Sequence class provides the functionality for sequential
 pattern matching, which is at the heart of greedy pattern matching. This
 class overrides a handful of Scrooge::Grouped methods in order to perform its
-work and adds one new private key: C<temp_matches>. The overridden methods
-include:
+work. The overridden methods include:
 
 =over
-
-=item _init
-
-The C<_init> method calls the Scrooge::Grouped initialization and sets the
-C<temp_matches> key to an empty hash.
-
-=cut
-
-sub _init {
-	my $self = shift;
-	$self->SUPER::_init();
-	$self->{temp_matches} = {};
-}
 
 =item _minmax
 
@@ -2720,29 +3039,18 @@ maximal lengths.
 # Called by the _prep method, sets the internal minimum and maximum sizes:
 sub _minmax {
 	my $self = shift;
-	my ($full_min, $full_max) = (0, 0);
+	my ($full_min, $full_max);
 	
+	my @patterns = @{$self->patterns_to_apply};
+	my @cache_keys = @{$self->cache_keys};
 	# Compute the min and max as the sum of the mins and maxes
-	foreach my $pattern (@{$self->{patterns_to_apply}}) {
-		$full_min += $pattern->min_size;
-		$full_max += $pattern->max_size;
+	for my $i (0 .. $#patterns) {
+		$patterns[$i]->cache_key($cache_keys[$i]);
+		$full_min += $patterns[$i]->min_size;
+		$full_max += $patterns[$i]->max_size;
 	}
 	$self->min_size($full_min);
 	$self->max_size($full_max);
-}
-
-
-=item _to_stash
-
-Since Scrooge::Sequence uses the private key C<temp_matches>, it needs to
-ensure that the is stashed, so it overrides C<_to_stash> to indicate the
-additional key.
-
-=cut
-
-# make sure that temp_matches is stashed:
-sub _to_stash {
-	return 'temp_matches', $_[0]->SUPER::_to_stash;
 }
 
 =item _apply
@@ -2755,7 +3063,8 @@ C<seq_apply> method recursively on the list of patterns.
 
 sub _apply {
 	my ($self, $left, $right) = @_;
-	return $self->seq_apply($left, $right, @{$self->{patterns_to_apply}});
+	return $self->seq_apply($left, $right
+		, $self->patterns_to_apply, $self->cache_keys);
 }
 
 =back
@@ -2820,12 +3129,18 @@ matches again, at which point it resumes with step 4.
 =cut
 
 sub seq_apply {
-	my ($self, $left, $right, @patterns) = @_;
+	my ($self, $left, $right, $patterns_ref, $cache_keys_ref) = @_;
+	my @patterns = @$patterns_ref;
+	my @cache_keys = @$cache_keys_ref;
 	my $pattern = shift @patterns;
-	my $data = $self->{data};
+	my $cache_key = shift @cache_keys;
+	
+	# Set this pattern's cache key before we get going
+	$pattern->cache_key($cache_key);
 	
 	# Handle edge case of this being the only pattern:
 	if (@patterns == 0) {
+		
 		# Make sure we don't send any more or any less than the pattern said
 		# it was willing to handle:
 		my $size = $right - $left + 1;
@@ -2839,7 +3154,7 @@ sub seq_apply {
 		
 		# If the pattern croaked, emit a death:
 		if ($@ ne '') {
-			my $i = scalar @{$self->{patterns_to_apply}};
+			my $i = scalar @{$self->patterns_to_apply};
 			my $name = $self->get_bracketed_name_string;
 			my $child_name = $pattern->get_bracketed_name_string;
 			die "In re_seq pattern$name, ${i}th pattern$child_name failed:\n$@"; 
@@ -2850,7 +3165,7 @@ sub seq_apply {
 			my $name = $self->get_bracketed_name_string;
 			my $child_name = $pattern->get_bracketed_name_string;
 			# Make sure i starts counting from 1 in death note:
-			my $i = scalar @{$self->{patterns_to_apply}};
+			my $i = scalar @{$self->patterns_to_apply};
 			die "In re_seq pattern$name, ${i}th pattern$child_name consumed $consumed\n"
 				. "but it was only allowed to consume $size\n";
 		}
@@ -2867,7 +3182,10 @@ sub seq_apply {
 	# Determine the largest possible size based on the requirements of the
 	# remaining patterns:
 	my $max_consumable = $right - $left + 1;
-	$max_consumable -= $_->min_size foreach (@patterns);
+	for my $i (0 .. $#patterns) {
+		$patterns[$i]->cache_key($cache_keys[$i]);
+		$max_consumable -= $patterns[$i]->min_size;
+	}
 	
 	# Fail if the maximum consumable size is smaller than this pattern's
 	# minimum requirement. working here: this condition may never occurr:
@@ -2885,10 +3203,12 @@ sub seq_apply {
 	
 	LEFT_SIZE: for (my $size = $max_consumable; $size >= $min_size; $size--) {
 		# Apply this pattern to this length:
-		($left_consumed, %details) = eval{$pattern->_apply($left, $left + $size - 1)};
+		($left_consumed, %details)
+			= eval{$pattern->_apply($left, $left + $size - 1)};
 		# Croak immediately if we encountered a problem:
 		if ($@ ne '') {
-			my $i = scalar @{$self->{patterns_to_apply}} - scalar(@patterns);
+			my $i = scalar @{$self->patterns_to_apply}
+				- scalar(@patterns);
 			my $name = $self->get_bracketed_name_string;
 			my $child_name = $pattern->get_bracketed_name_string;
 			die "In re_seq pattern$name, ${i}th pattern$child_name failed:\n$@"; 
@@ -2902,7 +3222,8 @@ sub seq_apply {
 			my $name = $self->get_bracketed_name_string;
 			my $child_name = $pattern->get_bracketed_name_string;
 			# Make sure i starts counting from 1 in death note:
-			my $i = scalar @{$self->{patterns_to_apply}} - scalar(@patterns);
+			my $i = scalar @{$self->patterns_to_apply}
+				- scalar(@patterns);
 			die "In re_seq pattern$name, ${i}th pattern$child_name consumed $left_consumed\n"
 				. "but it was only allowed to consume $size\n";
 		}
@@ -2933,7 +3254,8 @@ sub seq_apply {
 				# Shrink the current right edge:
 				$curr_right += $right_consumed;
 				# Try the pattern:
-				$right_consumed = $self->seq_apply($left + $size, $curr_right, @patterns);
+				$right_consumed = $self->seq_apply($left + $size, $curr_right
+					, \@patterns, \@cache_keys);
 			} while ($right_consumed < 0);
 		};
 		
@@ -3001,7 +3323,7 @@ into consuming classes:
 
 This role method invokes the parent class's C<_init> method followed by
 C<Scrooge::Role::Subdata::verify_subdata>. If you do not import this method
-into your class, you should be sure to invoke C<verify_subdata> in your
+into your class, be sure to invoke C<verify_subdata> in your
 class's C<_init> method.
 
 =cut
@@ -3056,30 +3378,25 @@ sub verify_subdata {
 
 =item prep_all
 
-Normally the C<prep_all> method invokes the C<prep> method of all the
-children and passes the same dataset to each of them. This role changes that
-behavior and passes different datasets to each child pattern based on the
-tag associated with that pattern, and the data associated with that tag.
-
-This role's C<prep_all> method differs from normal grouped pattern
-C<prep_all> methods because it invokes the children patterns' C<prep>
-method with the associated dataset
-
-not with the data object passed to it (which sould have been an
-anonymous hash reference if you're using classes with this role) but with
-the data associated with the 
+The C<prep_all> method of Scrooge::Grouped prepares each child pattern with
+the same dataset before invoking the C<prep> method on each of them. This role
+changes that behavior and prepares each child pattern with differet datasets
+based on the tag associated with that pattern, and the data associated with
+that tag.
 
 =cut
 
 # Should only need to override _prep_all
 sub prep_all {
-	my ($self, $data) = @_;
+	my $self = shift;
+	my $data = $self->data;
 	
 	# Call the prep function for each of them, keeping track of all those
 	# that succeed. Notice that I capture errors and continue because every
 	# single pattern needs to run its prep method in order for it to be 
 	# safe for it to call its cleanup method.
 	my @succeeded;
+	my @cache_keys;
 	my @patterns = @{ $self->{ patterns }};
 	my @subset_names = @{ $self->{ subset_names }};
 	my @errors;
@@ -3087,12 +3404,16 @@ sub prep_all {
 		if( not exists $data-> { $subset_names[$i] }) {
 			push @errors, "Subset name $subset_names[$i] not found";
 		}
-		my $successful_prep = eval { $patterns[$i]->prep($data-> { $subset_names[$i] }) };
+		my $cache_key = $patterns[$i]->add_data($data->{$subset_names[$i]});
+		my $successful_prep = eval { $patterns[$i]->prep };
 		push @errors, $@ if $@ ne '';
+		# Make sure the min size is not too large:
 		if ($successful_prep) {
-			# Make sure the min size is not too large:
-			push (@succeeded, $patterns[$i])
-				unless $patterns[$i]->min_size > Scrooge::data_length($data);
+			if ($patterns[$i]->min_size <= Scrooge::data_length($data)
+			) {
+				push @succeeded, $patterns[$i];
+				push @cache_keys, $cache_key;
+			}
 		}
 	}
 	
@@ -3104,16 +3425,8 @@ sub prep_all {
 		die(join(('='x20) . "\n", 'Multiple Errors', @errors));
 	}
 	
-	return @succeeded;
+	return \@succeeded, \@cache_keys;
 }
-
-=back
-
-Current limitation: all pattern objects B<must> be distinct, or must be run
-on the same data. The pattern will cache the first set of data that it gets
-prepped with and will ignore any other prepped data sets. XXX
-
-=cut
 
 package Scrooge::Subdata::Sequence;
 our @ISA = qw(Scrooge::Sequence);
@@ -3199,21 +3512,6 @@ These are things I want to do after the first CPAN release:
 =item Add MSER back
 
 After the first CPAN release, I want to add the MSER analysis back.
-
-=item Fix tagged patterns
-
-Tagging and Subdata support require a reworking of caching and state
-management. I need to fix that soon so I can finalize the C<_apply> API.
-
-In one approach, I could include the data as an argument to C<_apply> and
-the pattern could cache pre-calculations and other data-specific stuff under
-the C<refaddr> of the container. This way, the pattern does not need to know
-anything about tags, just about caching.
-
-Another approach would be to pass the tag of the dataset, which would
-require that the pattern cache the data itself and any other pre-calculations
-under the given name. But the more I think about it, the more I like the
-C<refaddr> cache since the same data can be run under different tags.
 
 =back
 
