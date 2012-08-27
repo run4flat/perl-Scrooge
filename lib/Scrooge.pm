@@ -597,8 +597,12 @@ sub apply {
 	my (@croak_messages, $prep_results);
 	eval {
 		$self->is_prepping;
+		if ($self->prep_invocation == 0) {
+			$prep_results = 0;
+			return 1;
+		}
 		$self->add_data($data);
-		$prep_results = $self->prep;
+		$prep_results = $self->prep_data;
 		1;
 	} or push @croak_messages, $@;
 	unless ($prep_results) {
@@ -802,40 +806,58 @@ provides a handful of class meta-methods to make guarded properties easy to
 implement in your Scrooge subclasses. After reading this section, you should be
 able to use guarded methods that Just Work.
 
-As far as Scrooge is concerned, there are three kinds of properties. First,
-there are unguarded properties, like the pattern's name, or a sequence pattern's
-list of sub-patterns. These values never change, so they don't need to be
-guarded. Second, there are invocation-guarded properties, properties that need
-to be protected from multiple invocations of your pattern during a single
-call to C<apply>. The quintesential example of an invocation-guarded property is
-the set of match details. You might think this is a rare property to overwrite,
-but it is perfectly reasonable to have a basic pattern which is part of a
-sequence B<and> which is invoked inside an L</re_sub> pattern later in the
-sequence. Third, there are data-specific guarded properties, which are
-properties whose values depend on the underlying data. Since Scrooge lets you
-run patterns on collections of data, applying different patterns to different
-data (using, say, L</re_named_seq>), you need to have a way to cache
-data-specific calculations. A simple example of this is C<re_range> in
-L<Scrooge::PDL>, which precalculates values including the data's average, min,
-and max. If the same pattern is applied to multiple data sets, the pattern needs
-some way to cache those precalculations in a data-specific way.
+As far as Scrooge is concerned, there are two events against which you may wish
+to guard your cached data. The pattern may be asked to match against multiple
+sets of data within the same (larger) pattern, so precalculated results that
+are specific to data should guard against switching of data. The pattern may
+also cache partial match data, which should be guarded against mid-match
+re-invocations. The quintesential example of this is a nested bracket
+pattern (which makes little sense in the context of this engine, but bear with
+me):
 
-Unguarded properties are the easiest to use: you use them as you would any Perl
-hash-based object property:
+ my $bracketed;
+ $bracketed = re_or (
+   # Either a sequence of '(', bracketed_sequence, ')' ...
+   re_seq (
+     $opening_bracket,
+     re_sub(
+       my ($data, $left, $right) = @_;
+       return $bracketed->apply($data->slice("$left:$right"));
+     ),
+     $closing_bracket,
+   ),
+   # ... or no brackets
+   $no_brackets
+ );
 
- $self->{unguarded_property}++;
+In this example, it may be that C<$opening_bracket> wishes to store some
+information unique to each time it is called, and since C<$bracketed> is
+invoked B<in the middle of the match>, C<$opening_bracket> needs some way to
+make sure that its inner invocations do not overwrite internal data for outer
+invocations. 
 
-guarded properties are almost as easy to use. You declare a data-guarded
-property with the C<add_data_guarded_property> class method, and you declare
-an invocation-guarded property with the C<add_invocation_guarded_property>:
+Some of your pattern's properties do not need to be guarded against either of 
+these events. For example, a pattern's name or a sequence pattern's list of
+sub-patterns never change, neither for changes in the data of interest nor the
+invocation of the pattern. For these properties, you can create your own
+accessor methods, or you can access the values directly as members of the
+hash underlying C<$self>:
 
- __PACKAGE__->add_invocation_guarded_property('min_length');
- __PACKAGE__->add_data_guarded_property('data_min');
+ print "Pattern ", $self->{name}, " encountered trouble: $message\n";
+ # (Better to use the get_bracketed_name_string method than
+ # to use $self->{name} directly, though).
+
+If you property is either data- or invocation-specific, Scrooge provides a
+meta-method that creates accessors for those properties and adds the
+proper underlying machinery to protect those values when data is changed or the
+pattern is invoked multiple times. The method, documented below, is illustrated
+thus:
+
+ __PACKAGE__->add_special_property('name_of_property', 'data', 'invocation');
 
 You then set and retrieve those values using class methods of the same name:
 
- my $data_min = $self->data_min;
- $self->min_length($new_min_length);
+ my $special_prop = $self->name_of_property;
 
 The Scrooge base class comes with a handful of properties already, some
 unguarded, some data-guarded, and some invocation-guarded.
@@ -853,7 +875,7 @@ guarded because it is never set until the pattern is finished.
 =head2 min_size, max_size
 
 For the Scrooge base-class, these are invocation-specific properties that
-indicate the minimum and maximum number of elements that your pattern will
+indicate the minimum and maximum number of elements that your pattern can
 match. These are somewhat unusual in that some derived classes coerce these
 into data-guarded properties while other derived classes ignore them completely
 and provide their own C<min_size> and C<max_size> methods that return constant
@@ -868,30 +890,30 @@ perhaps) will not work.
 =cut
 
 our $has_to_stash = 1;
-__PACKAGE__->add_invocation_guarded_property('min_size');
-__PACKAGE__->add_invocation_guarded_property('max_size');
+__PACKAGE__->add_special_property('min_size', 'invocation');
+__PACKAGE__->add_special_property('max_size', 'invocation');
 
 =head2 data
 
-All Scrooge objects have the C<data> property, which is data-guarded for obvious
+All Scrooge objects have the C<data> property, which is data-specific for obvious
 reasons.
 
 =cut
 
-__PACKAGE__->add_data_guarded_property('data');
+__PACKAGE__->add_special_property('data', 'data');
 
 =head2 match_details
 
 If a pattern is named, match results are accumulated onto the anonymous array
 associated with the C<match_details> property. This is an invocation-guarded
-property. You should not manipulate this directly unless you are writing a
-grouping pattern, and even then only through L</store_match> and
-L</clear_stored_match>, and even then only if L</Scrooge::Grouped> doesn't
+property. You should not manipulate this directly. If you write a grouping
+pattern, you should manipulate child patterns with L</store_match> and
+L</clear_stored_match>, but only if L</Scrooge::Grouped> doesn't
 provide what you need.
 
 =cut
 
-__PACKAGE__->add_invocation_guarded_property('match_details');
+__PACKAGE__->add_special_property('match_details', 'invocation');
 
 =head2 state
 
@@ -913,75 +935,68 @@ enough, invocation-guarded, not data-guarded, since it cannot be data-guarded.)
 
 =cut
 
-__PACKAGE__->add_invocation_guarded_property('cache_key');
+__PACKAGE__->add_special_property('cache_key', 'invocation');
 
-=head2 add_invocation_guarded_property
+=head2 add_special_property
 
-This class method performs all the necessary internal machinations to create
-and manage an invocation-guarded property. You invoke it like so in your
-class definition:
-
- package My::Pattern;
- ...
- __PACKAGE__->add_invocation_guarded_property('my_property');
- ...
-
-This will create an accessor method for you that you can safely invoke at any
-time to retrieve the value you need:
-
- sub _prep {
-     my $self = shift;
-     ...
-     $self->my_property('new_value');
-     ...
- }
-
-=cut
-
-sub add_invocation_guarded_property {
-	my ($package, $prop_name) = @_;
-	__add_property_accessor($package, $prop_name);
-	__add_property_to_stash($package, $prop_name);
-	__add_to_stash($package);
-}
-
-=head2 add_data_guarded_property
-
-This class method performs all necessary internal machinations to create
-and manage a data-guarded property. You invoke it as part of your class
-definition:
+This B<class> method performs all the necessary internal machinery to create
+and manage an invocation- and/or data-guarded property. You invoke it in your
+class definition. For example:
 
  package My::Pattern;
  ...
- __PACKAGE__->add_data_guarded_property('my_property');
+ # Create a data-guarded property
+ __PACKAGE__->add_special_property('my_data_property', 'data');
+ # Create an invocation-guarded property
+ __PACKAGE__->add_special_property('my_invocation_property', 'invocation');
+ # Create a data-and-invocation-guarded property
+ __PACKAGE__->add_special_property('my_both_property', 'data', 'invocation');
  ...
 
-You can only use the automatically generated accessor during the prep,
-apply, and cleanup stages of the pattern. In particular, you cannot invoke
-the accessor during initialization or after the pattern has finished
-matching.
+This will create an accessor method for you that you can safely invoke to
+retrieve the value you need:
 
- sub _prep {
+ sub _prep_data {
      my $self = shift;
      ...
-     $self->my_property('new_value');
+     $self->my_data_property('new_value');
      ...
  }
- 
- sub _apply {
-     my $self = shift;
-     ...
-     my $cached_value = $self->my_property;
-     ...
- }
+
+To set these values before the pattern begins matching, you should overload the
+C<_prep_invocation> and C<_prep_data> methods, described below. (XXX link those)
+If your property is data-based and is protected against changes in the data, you
+can only access it during C<_prep_data>, C<_apply>, and C<_cleanup>. If it is
+only invocation-protected, you can access it at any point.
+
+XXX Double-check that invocation-guarded handling properly invokes initialization
+of data-and-invocation-guarded properties, 
+
+XXX document the all_* accessor, for us in C<_cleanup>
 
 =cut
 
-sub add_data_guarded_property {
-	my ($package, $prop_name) = @_;
-	__add_property_accessor($package, $prop_name, 1);
-	__add_property_to_stash($package, $prop_name);
-	__add_to_stash($package);
+sub add_special_property {
+	my ($package, $prop_name, @options) = @_;
+	
+	# Make sure they provided at least one property descriptor
+	croak("Special property must have a descriptor, either 'data' or 'invocation'")
+		unless @options;
+	
+	# Make sure they used the right property descriptors
+	croak("Special proerty options include only 'data' and 'invocation'")
+		if @options != grep { /data/ or /invocation/ } @options;
+	
+	if (grep {/data/} @options) {
+		__add_property_accessor($package, $prop_name, 1);
+	}
+	else {
+		__add_property_accessor($package, $prop_name);
+	}
+	if (grep {/invocation/} @options) {
+		__add_property_to_stash($package, $prop_name);
+		__add_to_stash($package);
+	}
 }
 
 #####
@@ -1058,9 +1073,9 @@ sub __add_to_stash {
 =head2 coerce_as_data_property
 
 Performs the necessary internal machinery to esure that an B<inherited>
-guarded invocation property can be used instead as a guarded data property.
+invocation-guarded property is also guarded against data changes:
 
- __PACKAGE__->coerce_as_data_property('name');
+ __PACKAGE__->coerce_as_data_property('property_name');
 
 =cut
 
@@ -1069,6 +1084,8 @@ sub coerce_as_data_property {
 	__add_property_accessor($package, $prop_name, 1);
 }
 
+# Scrooge's base class method; the installed to_stash method also invokes
+# the parent's _to_return method, which doesn't exist for the base class.
 sub _to_stash {
 	return our @to_return;
 }
@@ -1077,18 +1094,30 @@ sub _to_stash {
 
  package My::Scrooge::Subclass;
  
- __PACKAGE__->add_invocation_guarded_property('foo')
- __PACKAGE__->add_data_guarded_property('file_handle')
+ __PACKAGE__->add_special_property('foo', 'invocation')
+ __PACKAGE__->add_special_property('file_handle', 'data')
  
  # Set object-specific values in _init
  sub _init {
      ...
-     $self->foo($default_foo);
+     # Keep track of the number of nesting levels:
+     $self->{nesting_levels} = 0;
      ...
  }
  
- # Set data-specific values in _prep
- sub _prep {
+ # Set invocation-specific values in _prep_invocation
+ sub _prep_invocation {
+     ...
+     # Count the number of times this is invoked:
+     $self->{nesting_levels}++;
+     
+     # Set the initial value for foo:
+     $self->foo([]);
+     ...
+ }
+ 
+ # Set data-specific values in _prep_data
+ sub _prep_data {
      ...
      open my $new_fh, '<', $file_name;
      $self->file_handle($new_fh);
@@ -1097,10 +1126,11 @@ sub _to_stash {
  
  # Retrieve any values in _apply
  sub _apply {
- 	...
- 	my $length = $self->length;
- 	my $fh = $self->file_handle;
- 	...
+     ...
+     my $length = $self->length;
+     my $fh = $self->file_handle;
+     push @{$self->foo}, some_thing($self);
+     ...
  }
  
  # During cleanup, the all_ accessors may be useful
@@ -1164,6 +1194,8 @@ sub add_data {
 
 =head2 _prep
 
+XXX document _prep_data, _prep_invocation
+
 The very last stage of C<prep> is calling this method, C<_prep>, whose name
 differs from C<prep> only in the presence of the leading underscore. As a class
 author, you should override this method. This function is called before the
@@ -1204,8 +1236,17 @@ indicating a failed match, would be the proper thing to do.
 
 =cut
 
-# Default _prep simply returns true, meaning a successful prep:
-sub _prep {	return 1 }
+sub _prep_invocation {
+	my $self = shift;
+	
+	# Associate the match details with an anonymous array
+	$self->match_details([]);
+	
+	return 1;
+}
+
+# Default _prep_data simply returns true, meaning a successful prep:
+sub _prep_data { return 1 }
 
 =head2 _to_stash
 
@@ -1547,26 +1588,42 @@ sub is_prepping {
 =head2 prep
 
 This method is neither user-level nor overridable. It is called as the first
-stage of C<apply>. This method ensures that C<_prep> gets called only once on
-each set of data. As a class author, you should overload C<_prep> to control how
-your class prepares for being matched.
+stage of C<apply>. This method ensures that C<_prep_data> gets called once for
+each set of data, and that C<_prep_invocation> gets called once per invocation.
+As a class author, you should overload C<_prep_data> C<_prep_invocation> to
+control how your class prepares for being matched.
 
 =cut
 
-sub prep {
+sub prep_invocation {
+	croak('Scrooge::prep_invocation takes no argument') unless @_ == 1;
+	my $self = shift;
+	
+	# Make sure this only gets run once per invocation, and that if it was
+	# already run on this data, the previous return value is again returned:
+	return $self->{prep_result}{invocation}
+		if exists $self->{prep_result}{invocation};
+	
+	# Indicate the change of state and stash old values, if appropriate
+	$self->{state} = 'prepping';
+	if ($self->{old_state}->[-1] eq 'apply') {
+		push @{$self->{"old_$_"}}, $self->{$_} foreach $self->_to_stash;
+	}
+	
+	# Once-per-invocation preparation
+	return $self->{prep_result}{invocation} = $self->_prep_invocation;
+}
+
+sub prep_data {
 	croak('Scrooge::prep takes no argument') unless @_ == 1;
 	my $self = shift;
 	
-	my $cache_key = $self->cache_key;
+	# Handle a bad invocation prep, in which case data-specific prep should
+	# not happen.
+	return 0 if $self->{prep_result}{invocation} == 0;
 	
-	# Store the old properties if this is our first time through prep
-	if (not defined $self->{state}) {
-		$self->{state} = 'prepping';
-		# Stash old values if the pattern is currently in an "apply" state
-		if ($self->{old_state}->[-1] eq 'apply') {
-			push @{$self->{"old_$_"}}, $self->{$_} foreach $self->_to_stash;
-		}
-	}
+	# We'll need the cache key for the rest of this.
+	my $cache_key = $self->cache_key;
 	
 	# Make sure this only gets run once per dataset per call to apply, and that
 	# if it was already run on this data, the previous return value is again
@@ -1574,11 +1631,8 @@ sub prep {
 	return $self->{prep_result}{$cache_key}
 		if exists $self->{prep_result}{$cache_key};
 	
-	# Associate the match details with an anonymous array
-	$self->match_details([]);
-	
 	# Return the result of the prep:
-	return $self->{prep_result}{$cache_key} = $self->_prep;
+	return $self->{prep_result}{$cache_key} = $self->_prep_data;
 }
 
 =head2 is_applying
@@ -1859,21 +1913,22 @@ sub _init {
 __PACKAGE__->coerce_as_data_property('min_size');
 __PACKAGE__->coerce_as_data_property('max_size');
 
-=item _prep
+=item _prep_data
 
-Given a set of data, this method calculates the minimum and maximum number of
-elements that will match based on the quantifiers stored in C<min_quant> and
+This method calculates the minimum and maximum number of elements that will
+match based on the current data and the quantifiers stored in C<min_quant> and
 C<max_quant>. If it turns out that the minimum size is larger than the maximum
 size, this method returns 0 to indicate that this pattern will never match. It
 also does not set the min and max sizes in that case. That means that if you
-inheret from this method, you should invoke this C<_prep> method; if the return
-value is zero, your own C<_prep> method should also be zero, and if the return
-value is 1, you should proceed with your own C<_prep> work.
+inheret from this class, you should invoke this C<_prep_data> method; if the
+return value is zero, your own C<_prep_data> method should also be zero (or you
+should have a means for handling the min/max sizes in a sensible way), and if
+the return value is 1, you should proceed with your own C<_prep_data> work.
 
 =cut
 
 # Prepare the current quantifiers:
-sub _prep {
+sub _prep_data {
 	my $self = shift;
 	
 	# Compute and store the numeric values for the min and max quantifiers:
@@ -2072,25 +2127,24 @@ Getter/setter for the zero-width position assertion subroutine. XXX
 
 =cut
 
-__PACKAGE__->add_data_guarded_property('zwa_position_subref');
+__PACKAGE__->add_special_property('zwa_position_subref', 'data');
 
-=item _prep
+=item _prep_data
 
 XXX double check these docs
 
-Scrooge::ZWA provides a C<_prep> method that evaluates the value associated
-with the C<position> key. If that value is a scalar then the exact positiion
-indicated by that scalar must match. If that value is an
-anonymous array with two values, the two values indicate a range of positions
-at which the assertion can match. Either way, if there is such a
-C<position> key with values as described, the C<_prep> method will store an
-anonymous subroutine under C<zwa_position_subref> that
-accepts a single argument---the left offset---and returns a true or false value
-indicating whether the position is matched. C<zwa_position_subref> will always
-return a usable subroutine: if there is no C<position> key, the returned subroutine
-simply always returns a
+Scrooge::ZWA provides a C<_prep_data> method that examines the value associated
+with the C<position> key for the data in question. If that value is a scalar
+then the exact positiion indicated by that scalar must match. If that value is
+an anonymous array with two values, the two values indicate a range of positions
+at which the assertion can match. Either way, if there is such a C<position> key
+with values as described, the C<_prep_data> method will store an anonymous
+subroutine under C<zwa_position_subref> that accepts a single argument---the
+left offset---and returns a true or false value indicating whether the position
+is matched. C<zwa_position_subref> will always return a usable subroutine: if
+there is no C<position> key, the returned subroutine simply always returns a
 true value. Thus, if you derive a class from C<Scrooge::ZWA>, running
-C<< $self->SUPER::_prep >> will ensure that C<< $self->zwa_position_subref >>
+C<< $self->SUPER::_prep_data >> will ensure that C<< $self->zwa_position_subref >>
 returns subroutine that will give you a meaningful evaluation for any given
 (left) offset.
 
@@ -2099,7 +2153,7 @@ returns subroutine that will give you a meaningful evaluation for any given
 # Prepares the zero-width assertion; parses the position strings and constructs
 # an anonymous subroutine that can be called against the current left/right
 # position.
-sub _prep {
+sub _prep_data {
 	my $self = shift;
 	
 	# Create a position assertion that always matches if no position was
@@ -2146,7 +2200,7 @@ sub _prep {
 	}
 	
 	# should never get here if _init does its job
-	croak('Scrooge::ZWA internal error - managed to get to end of _prep');
+	croak('Scrooge::ZWA internal error - managed to get to end of _prep_data');
 }
 
 =item _apply
@@ -2420,7 +2474,7 @@ sub add_name_to {
 =item _prep
 
 The C<_prep> method calls C<prep> on all the children patterns (via the
-C<prep_all> method). The patterns that succeeded are associated with the key
+C<prep_all_data> method). The patterns that succeeded are associated with the key
 C<patterns_to_apply> and success is determined by the result of the
 C<_prep_success> method. The result of that last method will depend on the
 sort of grouping pattern: 'or' patterns will consider it a successful prep
@@ -2432,17 +2486,40 @@ data's length. Otherwise, this method returns true.
 =cut
 
 # XXX document patterns_to_apply etc
-__PACKAGE__->add_data_guarded_property('patterns_to_apply');
-__PACKAGE__->add_data_guarded_property('cache_keys');
-__PACKAGE__->add_data_guarded_property('positive_matches');
+__PACKAGE__->add_special_property('patterns_to_apply', 'data', 'invocation');
+__PACKAGE__->add_special_property('cache_keys', 'data', 'invocation');
+__PACKAGE__->add_special_property('positive_matches', 'data', 'invocation');
+__PACKAGE__->coerce_as_data_property('min_size');
+__PACKAGE__->coerce_as_data_property('max_size');
 
-# _prep will call _prep on all its children and keep track of those that
-# return true values. Success or failure is based upon the inherited method
-# _prep_success.
-sub _prep {
+# _prep_invocation simply calls the child prep methods, and ony returns failure
+# if they all fail:
+sub _prep_invocation {
 	my $self = shift;
 	
-	my ($succeeded, $cache_keys) = $self->prep_all;
+	return 0 unless $self->SUPER::_prep_invocation;
+	
+	my $N_succeeded = 0;
+	foreach my $pattern (@{$self->{patterns}}) {
+		$pattern->prep_invocation and $N_succeeded++;
+	}
+	
+	return $N_succeeded > 0;
+}
+
+# _prep_data will call prep_data on all its children via the prep_all_data method.
+# That method returns the list of successful child patterns and their data
+# cache keys. Success or failure is based upon the inherited method
+# _prep_success.
+
+sub _prep_data {
+	my $self = shift;
+	
+	# Bail out if inherited method fails
+	return 0 unless $self->SUPER::_prep_data;
+	
+	# Run prep_data on all children
+	my ($succeeded, $cache_keys) = $self->prep_all_data;
 	
 	# Store the patterns to apply. If _prep_success returns zero, we do not
 	# need to call cleanup: that will be called by our parent:
@@ -2520,7 +2597,7 @@ sub clear_stored_match {
 Each of these methods ensure that the base Scrooge method is called on the
 current Grouping pattern and that the C<is_I<method>>s are called on all of
 the children patterns. Note that these methods are called on B<all> the
-patterns, whether or not they reported a successful C<_prep>.
+patterns, whether or not they reported a successful prep.
 
 =cut
 
@@ -2528,8 +2605,25 @@ patterns, whether or not they reported a successful C<_prep>.
 sub is_prepping {
 	my $self = shift;
 	$self->SUPER::is_prepping;
+	
+	# Collect any exceptions
+	my @errors;
 	foreach my $pattern (@{$self->{patterns}}) {
-		$pattern->is_prepping;
+		eval {
+			$pattern->is_prepping;
+			1
+		} or do {
+			push @errors, $@;
+		}
+	}
+	
+	# Throw exceptions, if any
+	if (@errors > 1) {
+		die "Multiple patterns died just before prep:\n"
+			. join("\n!!! AND !!!\n", @errors);
+	}
+	elsif (@errors == 1) {
+		die "Pattern died just before prep:\n$errors[0]";
 	}
 }
 
@@ -2541,8 +2635,7 @@ sub is_applying {
 	}
 }
 
-# As with is_prepping, do *not* set the state since cleaning's short-
-# circuiting depends on this being clear:
+# Call the inherited is_cleaning, and all child is_cleaning methods:
 sub is_cleaning {
 	my $self = shift;
 	$self->SUPER::is_cleaning;
@@ -2581,24 +2674,19 @@ including:
 
 =over
 
-=item prep_all
+=item prep_all_data
 
-The C<prep_all> method of Scrooge::Grouped calls the C<prep> method on each
-sub-pattern, tracking the success or failure, as well as any exceptions. Even
-if one of the pattern throws an exception, C<prep_all> continues C<prep>ing
-the remainder of the patterns because they cannot have their C<_cleanup>
-methods called if they have not already been C<prep>ed.
-
-If there were no exceptions, C<prep_all> returns a list of patterns whose
-C<_prep> methods returned true values. Even a successful C<prep> does not
-guarantee that the pattern will be returned as successful: if the
-successfully prepped pattern has a minimum size that consumes more data than
-is available, it's a failed prep overall and cannot lead to a successful
-match.
+The C<prep_all_data> method of Scrooge::Grouped calls the C<prep_data> method on
+each sub-pattern, tracking their success or failure. Even a successful
+C<prep_data> does not guarantee that the pattern will be considered successful:
+if the successfully prepped pattern has a minimum size that consumes more data
+than is available, it's a failed prep overall and cannot lead to a successful
+match. Unless there were exceptions, C<prep_all_data> returns an anonymous list
+of successful patterns and a second list of their cache keys.
 
 =cut
 
-sub prep_all {
+sub prep_all_data {
 	my $self = shift;
 	my $data = $self->data;
 	my $cache_key = $self->cache_key;
@@ -2609,25 +2697,15 @@ sub prep_all {
 	# safe for it to call its cleanup method.
 	my @succeeded;
 	my @cache_keys;
-	my @errors;
 	foreach (@{$self->{patterns}}) {
 		$_->add_data($data);
-		my $successful_prep = eval { $_->prep };
-		push @errors, $@ if $@ ne '';
+		my $successful_prep = $_->prep_data;
 		
 		# Make sure the min size is not too large:
 		if ($successful_prep and $_->min_size <= Scrooge::data_length($data)) {
 			push @succeeded, $_;
 			push @cache_keys, $cache_key;
 		}
-	}
-	
-	# Rethrow if we caught any exceptions:
-	if (@errors == 1) {
-		die(@errors);
-	}
-	elsif (@errors > 1) {
-		die(join(('='x20) . "\n", 'Multiple Errors', @errors));
 	}
 	
 	return \@succeeded, \@cache_keys;
@@ -3292,7 +3370,7 @@ sub seq_apply {
 package Scrooge::Role::Subdata;
 use Carp;
 use Exporter qw( import );
-our @EXPORT_OK = qw(_init verify_subdata prep_all);
+our @EXPORT_OK = qw(_init verify_subdata prep_all_data);
 
 =head2 Scrooge::Role::Subdata
 
@@ -3301,7 +3379,7 @@ that can be used by other classes, but not through inheritance.
 
 Scrooge::Role::Subdata provides the functionality for building a
 grouped pattern for which the children patterns get different data subsets.
-It provides a C<prep_all> method that works properly for named data subsets,
+It provides a C<prep_all_data> method that works properly for named data subsets,
 as well as methods to verify the the C<subset_names> key including a stock
 C<_init> method. If your class needs to create its own versions of C<_init>
 (and therefore cannot import it), you can instead import and use the
@@ -3312,7 +3390,7 @@ implementation of C<Scrooge::Subdata::Sequence> is this:
 
  package Scrooge::Subdata::Sequence;
  our @ISA = qw(Scrooge::Sequence);
- Scrooge::Role::Subdata->import qw(_init prep_all);
+ Scrooge::Role::Subdata->import qw(_init prep_all_data);
 
 This role provides the following methods, any and all of which can be pulled
 into consuming classes:
@@ -3349,7 +3427,7 @@ sub _init {
 =item verify_subdata
 
 This role method performs a basic verification of the internal keys needed
-for the C<prep_all> method to function. It is meant to be invoked during a
+for the C<prep_all_data> method to function. It is meant to be invoked during a
 consuming class's initialization, after the C<_init> method of
 L<Scrooge::Grouped> has been run. It can croak for one of two reasons:
 
@@ -3376,9 +3454,9 @@ sub verify_subdata {
 }
 
 
-=item prep_all
+=item prep_all_data
 
-The C<prep_all> method of Scrooge::Grouped prepares each child pattern with
+The C<prep_all_data> method of Scrooge::Grouped prepares each child pattern with
 the same dataset before invoking the C<prep> method on each of them. This role
 changes that behavior and prepares each child pattern with differet datasets
 based on the tag associated with that pattern, and the data associated with
@@ -3386,8 +3464,8 @@ that tag.
 
 =cut
 
-# Should only need to override _prep_all
-sub prep_all {
+# Should only need to override _prep_all_data
+sub prep_all_data {
 	my $self = shift;
 	my $data = $self->data;
 	
@@ -3399,14 +3477,14 @@ sub prep_all {
 	my @cache_keys;
 	my @patterns = @{ $self->{ patterns }};
 	my @subset_names = @{ $self->{ subset_names }};
-	my @errors;
 	for my $i (0..$#patterns) {
-		if( not exists $data-> { $subset_names[$i] }) {
-			push @errors, "Subset name $subset_names[$i] not found";
-		}
+		# Make sure we have a valid name:
+		croak("Subset name $subset_names[$i] not found")
+			unless exists $data-> { $subset_names[$i] };
+		
 		my $cache_key = $patterns[$i]->add_data($data->{$subset_names[$i]});
-		my $successful_prep = eval { $patterns[$i]->prep };
-		push @errors, $@ if $@ ne '';
+		my $successful_prep = $patterns[$i]->prep_data;
+		
 		# Make sure the min size is not too large:
 		if ($successful_prep) {
 			if ($patterns[$i]->min_size <= Scrooge::data_length($data)
@@ -3417,28 +3495,20 @@ sub prep_all {
 		}
 	}
 	
-	# Rethrow if we caught any exceptions:
-	if (@errors == 1) {
-		die(@errors);
-	}
-	elsif (@errors > 1) {
-		die(join(('='x20) . "\n", 'Multiple Errors', @errors));
-	}
-	
 	return \@succeeded, \@cache_keys;
 }
 
 package Scrooge::Subdata::Sequence;
 our @ISA = qw(Scrooge::Sequence);
-Scrooge::Role::Subdata->import (qw(_init prep_all));
+Scrooge::Role::Subdata->import (qw(_init prep_all_data));
 
 package Scrooge::Subdata::And;
 our @ISA = qw(Scrooge::And);
-Scrooge::Role::Subdata->import (qw(_init prep_all));
+Scrooge::Role::Subdata->import (qw(_init prep_all_data));
 
 package Scrooge::Subdata::Or;
 our @ISA = qw(Scrooge::Or);
-Scrooge::Role::Subdata->import (qw(_init prep_all));
+Scrooge::Role::Subdata->import (qw(_init prep_all_data));
 
 =head2 Scrooge::Subdata::Or
 
@@ -3449,7 +3519,7 @@ Scrooge::Role::Subdata->import (qw(_init prep_all));
 These classes subclass L</Scrooge::Or>, L</Scrooge::And>, and
 L</Scrooge::Sequence> and mix-in the L</Scrooge::Role::Subdata> role. The
 difference between these classes and their parent classes is that they use
-the C<prep_all> and C<_init> methods from C<Scrooge::Role::Subdata>.
+the C<prep_all_data> and C<_init> methods from C<Scrooge::Role::Subdata>.
 
 =cut
 

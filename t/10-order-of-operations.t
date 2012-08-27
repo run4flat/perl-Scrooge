@@ -130,7 +130,7 @@ is_deeply(\@call_structure, $expected, 'Failed prep agrees with expectations')
 #                          Croaking Prep - 1                          #
 #######################################################################
 
-# Note: croaking functions are notated in ALL CAPS
+# Note: croaking functions are notated with a dash
 
 @call_structure = ();
 $prep_returns = sub {die 'test'};

@@ -176,21 +176,21 @@ is($regex->{max_size}, 1, 'Default max_size is 1');
 ($length, $offset) = $regex->apply($piddle);
 is($length, 1, 'Test::Range should match the maximum possible specified number of elements');
 is($offset, 0, 'Test::Range should always have a matched offset of zero');
-$regex->max_size(5);
+$regex->{max_size} = 5;
 ($length, $offset) = $regex->apply($piddle);
 is($length, 5, 'Test::Range should match the maximum possible specified number of elements');
 is($offset, 0, 'Test::Range should always have a matched offset of zero');
-$regex->max_size(12);
+$regex->{max_size} = 12;
 ($length, $offset) = $regex->apply($piddle);
 is($length, 10, 'Test::Range should match the maximum possible specified number of elements');
 is($offset, 0, 'Test::Range should always have a matched offset of zero');
 
 # ---( Min-length tests, 5 )---
-$regex->min_size(10);
+$regex->{min_size} = 10;
 ($length, $offset) = $regex->apply($piddle);
 is($length, 10, 'Test::Range should match the maximum possible specified number of elements');
 is($offset, 0, 'Test::Range should always have a matched offset of zero');
-$regex->min_size(11);
+$regex->{min_size} = 11;
 ($length, $offset) = eval{ $regex->apply($piddle) };
 is($@, '', 'Failed Test::Range match does not throw an exception');
 is($length, undef, 'Test::Range should not match if data is smaller than min');
@@ -205,8 +205,8 @@ is($offset, undef, 'Test::Range should not match if data is smaller than min');
 $regex = eval { Scrooge::Test::Exactly::Offset->new };
 is($@, '', 'Test::Exactly::Offset constructor does not croak');
 isa_ok($regex, 'Scrooge::Test::Exactly::Offset');
-is($regex->{min_size}, 1, 'Default min_size is 1');
-is($regex->{max_size}, 1, 'Default max_size is 1');
+is($regex->min_size, 1, 'Default min_size is 1');
+is($regex->max_size, 1, 'Default max_size is 1');
 is($regex->{offset}, 0, 'Default offset is 0');
 
 # ---( Compare with Test::Exactly, 1 )---

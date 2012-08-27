@@ -415,7 +415,7 @@ use PDL;
 
 our @ISA = qw(Scrooge::Quantified);
 
-__PACKAGE__->add_invocation_guarded_property('subref');
+__PACKAGE__->add_special_property('subref', 'data');
 
 sub _init {
   my $self = shift;
@@ -434,7 +434,7 @@ sub _init {
 # Throws     : if parse_range_strings had trouble
 # Notes      : none atm
 
-sub _prep {
+sub _prep_data {
   my ($self) = @_;
   my $data = PDL::Core::topdl($self->data);
  
@@ -449,7 +449,7 @@ sub _prep {
     return '';
   }
   # Build the subroutine reference
-  $self->{ subref } = sub {
+  $self->subref(sub {
     my ($left, $right) = @_;
     
     # Zero width assertions are trivially true.
@@ -470,9 +470,9 @@ sub _prep {
     # to the length of the match.
     return which( ($sub_piddle < $above) | ($sub_piddle > $below))->at(0);     
     
-  };
+  });
   
-  return $self->SUPER::_prep($data);
+  return $self->SUPER::_prep_data;
 }
 
 ###########################################################
@@ -486,7 +486,7 @@ sub _prep {
 
 sub _apply {
   my $self = shift;
-  return $self->{subref}->(@_);
+  return $self->subref->(@_);
 }
 
 =head2 Scrooge::PDL::Local_Extremum
@@ -525,7 +525,7 @@ sub _init {
 sub min_size { 1 }
 sub max_size { 1 }
 
-sub _prep {
+sub _prep_data {
   my ($self) = @_;
   my $data = PDL::Core::topdl($self->data);
   

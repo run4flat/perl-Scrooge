@@ -35,12 +35,8 @@ use strict;
 use warnings;
 our @ISA = qw(Scrooge);
 
-sub _init {
-	my $self = shift;
-	$self->{min_size} = 1 if not defined $self->{min_size};
-	$self->{max_size} = 1 if not defined $self->{max_size};
-}
-
+sub min_size { 1 }
+sub max_size { 1 }
 sub _apply { 0 }
 
 ###########################################################################
@@ -58,7 +54,8 @@ use strict;
 use warnings;
 our @ISA = qw(Scrooge);
 
-sub _prep { 0 }
+sub _prep_data { 0 }
+sub _prep_invocation { 0 }
 sub _apply { 0 }
 
 ############################################################################
@@ -75,11 +72,12 @@ package Scrooge::Test::All;
 use strict;
 use warnings;
 our @ISA = qw(Scrooge);
+__PACKAGE__->coerce_as_data_property('max_size');
 
-sub _prep {
+sub _prep_data {
 	my $self = shift;
-	$self->{min_size} = 0;
-	$self->{max_size} = Scrooge::data_length($self->{data});
+	$self->min_size(0);
+	$self->max_size(Scrooge::data_length($self->data));
 	return 1;
 }
 
@@ -168,22 +166,17 @@ our @ISA = qw(Scrooge);
 #
 sub _init {
 	my $self = shift;
-	my $N = delete $self->{N};
-	$N = 1 if not defined $N;
-	$self->min_size($N);
-	$self->max_size($N);
+	$self->{N} = 1 unless exists $self->{N};
 }
 
 sub set_N {
 	my ($self, $N) = @_;
-	$self->min_size($N);
-	$self->max_size($N);
+	$self->{N} = $N;
 }
 
-sub _apply {
-	my $self = shift;
-	return $self->min_size;
-}
+sub min_size { return $_[0]->{N} }
+sub max_size { return $_[0]->{N} }
+sub _apply   { return $_[0]->{N} }
 
 ############################################################################
 #                           Scrooge::Test::Range                           #
@@ -195,9 +188,9 @@ sub _apply {
 #     my $regex = Scrooge::Test::Range->new(min_size => 1, max_size => 5);
 # 
 # You can also call it without specifying any sizes, in which case it
-# defaults to 1, 1. You can change the size by calling min_size and max_size
-# directly. However, the class will not double-check values for you, you
-# must make sure that max_size > min_size.
+# defaults to 1, 1. You can change the size by setting $regex->{min_size} and
+# $regex->{max_size} directly. However, the class will not double-check values
+# for you, you must make sure that max_size > min_size.
 # 
 #     $regex->min_size(4);
 #     $regex->max_size(15);
@@ -210,9 +203,19 @@ our @ISA = qw(Scrooge);
 
 sub _init {
 	my $self = shift;
-	$self->{min_size} = 1 if not defined $self->{min_size};
-	$self->{max_size} = 1 if not defined $self->{max_size};
+	$self->min_size(1) unless defined $self->min_size;
+	$self->max_size(1) unless defined $self->max_size;
 }
+
+#sub min_size {
+#	return $_[0]->{min_size} unless @_ > 1;
+#	$_[0]->{min_size} = $_[1];
+#}
+#
+#sub max_size {
+#	return $_[0]->{max_size} unless @_ > 1;
+#	$_[0]->{max_size} = $_[1];
+#}
 
 sub _apply {
 	my ($self, $left, $right) = @_;
@@ -224,7 +227,10 @@ sub _apply {
 ############################################################################
 
 # Subclass of Test::Exactly that matches only when left is at a specified
-# offset.
+# offset. You can set the offset ussing the set_offset method:
+# 
+#     $regex->set_offset(10); 
+#
 package Scrooge::Test::Exactly::Offset;
 use strict;
 use warnings;
@@ -260,11 +266,8 @@ use strict;
 use warnings;
 our @ISA = qw(Scrooge);
 
-sub _init {
-	my $self = shift;
-	$self->{min_size} = 0;
-	$self->{max_size} = 0;
-}
+sub min_size { 0 }
+sub max_size { 0 }
 
 sub _apply {
 	my ($self, $left) = @_;
