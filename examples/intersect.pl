@@ -1,7 +1,7 @@
 use strict;
 use warnings;
 use PDL;
-use Regex::Engine;
+use Scrooge;
 
 
 my $data = sin(sequence(100)/10);
