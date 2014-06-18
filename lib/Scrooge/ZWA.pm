@@ -1,3 +1,7 @@
+use strict;
+use warnings;
+use Scrooge;
+
 package Scrooge::ZWA;
 our @ISA = ('Scrooge');
 use Carp;

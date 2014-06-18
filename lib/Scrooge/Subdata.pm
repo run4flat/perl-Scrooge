@@ -1,3 +1,7 @@
+use strict;
+use warnings;
+use Scrooge;
+
 # Role for situations involving more than one data set.
 package Scrooge::Role::Subdata;
 use Carp;

@@ -1,3 +1,8 @@
+use strict;
+use warnings;
+
+package Scrooge;
+
 =head1 PROPERTIES
 
 Confession time: one of the most difficult aspects of Scrooge to implement was

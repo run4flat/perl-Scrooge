@@ -1,10 +1,14 @@
 use strict;
 use warnings;
+
 package Scrooge;
 use Carp;
+use Scrooge::Internals;
 use Exporter;
-use PDL;
+#use PDL;
 use Scalar::Util;
+
+# Fow now, just pull all of these in manually.
 
 our @ISA = qw(Exporter);
 

@@ -1,9 +1,10 @@
-package Scrooge::PDL;
-
-use Exporter 'import';
-our @EXPORT = qw(re_range re_local_extremum re_local_min re_local_max);
 use strict;
 use warnings;
+
+package Scrooge::PDL;
+use Scrooge;
+use Exporter 'import';
+our @EXPORT = qw(re_range re_local_extremum re_local_min re_local_max);
 use Carp;
 our $VERSION = 0.01;
 
@@ -409,10 +410,10 @@ a time, so if multiple sections of the data match, the pattern will return the f
 =cut
 
 package Scrooge::PDL::Range;
-use Scrooge;
 use Carp;
 use PDL;
 
+use Scrooge::Quantified;
 our @ISA = qw(Scrooge::Quantified);
 
 __PACKAGE__->add_special_property('subref', 'data');

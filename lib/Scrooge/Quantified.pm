@@ -1,3 +1,7 @@
+use strict;
+use warnings;
+use Scrooge;
+
 package Scrooge::Quantified;
 our @ISA = qw(Scrooge);
 use Carp;
