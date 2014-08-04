@@ -30,12 +30,14 @@
 # To install trackers, you should have already defined the parent class by
 # assigning to @ISA. You then specify the functions that you want tracked:
 #
-#     package My::Test::Class;
-#     our @ISA = ('PDL');
-#     Tracker::track( qw(at slice) );
+#     package My::Test::Foo;
+#     our @ISA = ('Foo');
 #
-# After constructing an object of the new class, you will be able to run
-# 'at' and 'slice', and their function calls will be recorded.
+#     # track the bar and baz methods:
+#     Tracker::track( qw(bar baz) );
+#
+# After constructing an object of the new class, you will be able to call
+# the 'bar' and 'baz' methods, and their function calls will be recorded.
 #
 # Tracked functions always shift off $self from the argument stack. Then,
 # they return the result of the following:
@@ -46,8 +48,7 @@
 # class's function called. Simply provide a first argument that is an
 # anonymous hash with funcname => 'code-string':
 #
-#     Tracker::track({slice => 'return 0'}, qw(is));
-#
+#     Tracker::track({bar => 'return 0'}, qw(baz));
 #
 
 package Tracker;
@@ -68,7 +69,6 @@ sub track {
 		strict->import();
 		Test::More->import();
 		Data::Dumper->import();
-		PDL->import();
 	};
 	
 	# Unpack any code fragments:
