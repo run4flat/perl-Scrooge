@@ -1,6 +1,7 @@
 # A set of conditions that use MSER-inspired methods.
 use strict;
 use warnings;
+BEGIN { exit 0 }
 
 # Invoke PDL::PP
 my $base_name;
