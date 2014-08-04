@@ -15,224 +15,263 @@ elsif (-f "t\\$module_name") {
 use strict;
 use warnings;
 use Scrooge;
-use Test::More tests => 72;
-use PDL;
+use Test::More tests => 10;
 
-my ($regex, $length, $offset);
-my $piddle = sequence(10);
-my @array = (0..9);
+my ($pattern, $length, $class, %match_info);
+my $arr_len = 10;
+my $array = [1..$arr_len];
+
+
+#############################
+# Scrooge::data_length test #
+#############################
+
+is(Scrooge::data_length($array), $arr_len,
+	'Scrooge::data_length knows how to measure array lengths');
+
+
+###############################
+$class = 'Scrooge::Test::Fail';
+###############################
+
+subtest $class => sub {
+	plan tests => 3;
+
+	# Build
+	$pattern = new_ok $class;
+
+	# scalar context
+	$length = $pattern->match($array);
+	is($length, undef,
+		'always fails, returning undef for length in scalar context');
+	
+	# list context
+	%match_info = $pattern->match($array);
+	is(scalar(keys %match_info), 0,
+		'always fails, returning an empty list in list context');
+};
+
+
+#####################################
+$class = 'Scrooge::Test::Fail::Prep';
+#####################################
+
+subtest $class => sub {
+	plan tests => 3;
+	
+	# Build
+	$pattern = new_ok $class;
+
+	# scalar context
+	$length = $pattern->match($array);
+	is($length, undef,
+		'always fails, returning undef for length in scalar context');
+	
+	# list context
+	%match_info = $pattern->match($array);
+	is(scalar(keys %match_info), 0,
+		 'always fails, returning an empty list in list context');
+};
+
+##############################
+$class = 'Scrooge::Test::All';
+##############################
+
+subtest $class => sub {
+	plan tests => 5;
+	
+	# Build
+	$pattern = new_ok $class;
+
+	# scalar context
+	$length = $pattern->match($array);
+	is($length, $arr_len,
+		'always matches all that it is given and reports the proper length in scalar context');
+
+	# list context
+	%match_info = $pattern->match($array);
+	is($match_info{length}, $arr_len,
+		'reports the proper match length in list context');
+	is($match_info{left}, 0,
+		'matches at the start of what it is given');
+	is($match_info{right}, $arr_len - 1,
+		'matches all the way to the end of what it is given');
+};
+
+
+################################
+$class = 'Scrooge::Test::Croak';
+################################
+
+subtest $class => sub {
+	plan tests => 2;
+	
+	# Build
+	$pattern = new_ok $class;
+	
+	# Run it
+	eval{$pattern->match($array)};
+	isnt($@, '', 'Engine croaks when its pattern croaks');
+};
+
+
+######################################
+$class = 'Scrooge::Test::ShouldCroak';
+######################################
+
+subtest $class => sub {
+	plan tests => 2;
+	
+	# Build
+	$pattern = new_ok $class;
+	
+	# Run
+	eval{$pattern->match($array)};
+	isnt($@, '', 'Engine croaks when pattern consumes more than it was given');
+};
+
+
+###############################
+$class = 'Scrooge::Test::Even';
+###############################
+
+subtest $class => sub {
+	plan tests => 7;
+	
+	# Build
+	$pattern = new_ok $class;
+	
+	# Scalar context
+	$length = $pattern->match($array);
+	is($length, $arr_len, 'matches full length if it is even');
+	$length = $pattern->match([1..$arr_len-1]);
+	is($length, $arr_len - 2, 'matches the longest even length');
+	$length = $pattern->match([1..$arr_len-2]);
+	is($length, $arr_len - 2, 'matches the longest even length');
+	$length = $pattern->match([1..$arr_len-3]);
+	is($length, $arr_len - 4, 'matches the longest even length');
+	
+	# List context
+	%match_info = $pattern->match($array);
+	is($match_info{left}, 0, 'list context matches at the beginning');
+	is($match_info{length}, $arr_len,
+		'list context matches the full length');
+};
+
 
 ##################################
-# Scrooge::data_length tests - 2 #
+$class = 'Scrooge::Test::Exactly';
 ##################################
 
-is(Scrooge::data_length(\@array), 10, 'Scrooge::data_length knows how to measure array lengths');
-is(Scrooge::data_length($piddle), 10, 'Scrooge::data_length knows how to measure piddle lengths');
-
-###########################################################################
-#                        Scrooge::Test::Fail - 4                       #
-###########################################################################
-
-# ---( Build and make sure it builds properly, 2 )---
-$regex = eval { Scrooge::Test::Fail->new };
-is($@, '', 'Test::Fail constructor does not croak');
-isa_ok($regex, 'Scrooge::Test::Fail');
-
-# ---( Basic application, 2 )---
-($length, $offset) = $regex->apply($piddle);
-is($length, undef, 'Test::Fail always fails, returning undef for length');
-is($offset, undef, 'Test::Fail always fails, returning undef for offset');
-
-
-###########################################################################
-#                     Scrooge::Test::Fail::Prep - 4                    #
-###########################################################################
-
-# ---( Build and make sure it builds properly, 2 )---
-$regex = eval { Scrooge::Test::Fail::Prep->new };
-is($@, '', 'Test::Fail::Prep constructor does not croak');
-isa_ok($regex, 'Scrooge::Test::Fail::Prep');
-
-# ---( Basic application, 2 )---
-($length, $offset) = $regex->apply($piddle);
-is($length, undef, 'Test::Fail::Prep always fails, returning undef for length');
-is($offset, undef, 'Test::Fail::Prep always fails, returning undef for offset');
+subtest $class => sub {
+	plan tests => 6;
+	
+	# Build
+	$pattern = new_ok $class => [N => 8];
+	
+	# Simple run in scalar context
+	$length = $pattern->match($array);
+	is($length, 8, 'matches if N is two less than the data length');
+	
+	# Try different lengths near the edge of failure
+	
+	$pattern->{N} = 9;
+	$length = $pattern->match($array);
+	is($length, 9, 'matches if N is one less than the data length');
+	
+	$pattern->{N} = 10;
+	$length = $pattern->match($array);
+	is($length, 10, 'matches if N is the data length');
+	
+	$pattern->{N} = 11;
+	$length = $pattern->match($array);
+	is($length, undef, 'fails if N is one greater than the data length');
+	
+	$pattern->{N} = 12;
+	$length = $pattern->match($array);
+	is($length, undef, 'fails if N is two greater than the data length');
+};
 
 
-###########################################################################
-#                        Scrooge::Test::All - 6                        #
-###########################################################################
+################################
+$class = 'Scrooge::Test::Range';
+################################
 
-# ---( Build and make sure it builds properly, 2 )---
-$regex = eval { Scrooge::Test::All->new };
-is($@, '', 'Test::All constructor does not croak');
-isa_ok($regex, 'Scrooge::Test::All');
-
-# ---( Basic regex application to a piddle, 2 )---
-($length, $offset) = $regex->apply($piddle);
-is($length, $piddle->nelem, 'Test::All always matches all that it is given');
-is($offset, 0, 'Test::All always matches at the start of what it is given');
-
-# ---( Basic regex application to a piddle, 2 )---
-($length, $offset) = $regex->apply(\@array);
-is($length, scalar(@array), 'Test::All always matches all that it is given');
-is($offset, 0, 'Test::All always matches at the start of what it is given');
-
-
-###########################################################################
-#                       Scrooge::Test::Croak - 3                       #
-###########################################################################
-
-# ---( Build and make sure it runs properly, 3 )---
-$regex = eval { Scrooge::Test::Croak->new };
-is($@, '', 'Test::Croak constructor does not croak (that comes during apply)');
-isa_ok($regex, 'Scrooge::Test::Croak');
-eval{$regex->apply($piddle)};
-isnt($@, '', 'Engine croaks when its regex croaks');
-
-
-###########################################################################
-#                    Scrooge::Test::ShouldCroak - 3                    #
-###########################################################################
-
-# ---( Build and make sure it runs properly, 3 )---
-$regex = eval { Scrooge::Test::ShouldCroak->new };
-is($@, '', 'Test::ShouldCroak constructor does not croak (that comes during apply)');
-isa_ok($regex, 'Scrooge::Test::ShouldCroak');
-eval{$regex->apply($piddle)};
-isnt($@, '', 'Engine croaks when regex consumes more than it was given');
+subtest $class => sub {
+	plan tests => 10;
+	
+	# Build
+	$pattern = new_ok $class;
+	
+	# Check defaults
+	is($pattern->{min_size}, 1, 'Default min_size is 1');
+	is($pattern->{max_size}, 1, 'Default max_size is 1');
+	
+	# Max length tests
+	$length = $pattern->match($array);
+	is($length, 1, 'matches the maximum possible specified number of elements');
+	
+	$pattern->{max_size} = 5;
+	$length = $pattern->match($array);
+	is($length, 5,
+		'matches the maximum possible specified number of elements, even if greater than min_size');
+	
+	$pattern->{max_size} = 12;
+	%match_info = $pattern->match($array);
+	is($match_info{length}, 10,
+		'matches the maximum possible specified number of elements, even if less than max_size');
+	is($match_info{left}, 0, 'matches at the beginning');
+	
+	# Min length tests
+	$pattern->{min_size} = 10;
+	$length = $pattern->match($array);
+	is($length, 10,
+		'matches the maximum possible specified number of elements, even when min is the full length');
+	
+	$pattern->{min_size} = 11;
+	$length = eval{ $pattern->match($array) };
+	is($@, '', 'failed match does not throw an exception');
+	is($length, undef, 'fails if data is smaller than min');
+};
 
 
-###########################################################################
-#                       Scrooge::Test::Even - 10                       #
-###########################################################################
+##########################################
+$class = 'Scrooge::Test::Exactly::Offset';
+##########################################
 
-# ---( Build and make sure it builds properly, 2 )---
-$regex = eval { Scrooge::Test::Even->new };
-is($@, '', 'Test::Even constructor does not croak');
-isa_ok($regex, 'Scrooge::Test::Even');
-
-# ---( Basic regex application, 8 )---
-($length, $offset) = $regex->apply($piddle);
-is($length, $piddle->nelem, 'Test::Even always matches the longest even length');
-is($offset, 0, 'Test::Even always matches at the start of what it is given');
-($length, $offset) = $regex->apply($piddle->slice("0:-2"));
-is($length, $piddle->nelem - 2, 'Test::Even always matches the longest even length');
-is($offset, 0, 'Test::Even always matches at the start of what it is given');
-($length, $offset) = $regex->apply($piddle->slice("0:-3"));
-is($length, $piddle->nelem - 2, 'Test::Even always matches the longest even length');
-is($offset, 0, 'Test::Even always matches at the start of what it is given');
-($length, $offset) = $regex->apply($piddle->slice("0:-4"));
-is($length, $piddle->nelem - 4, 'Test::Even always matches the longest even length');
-is($offset, 0, 'Test::Even always matches at the start of what it is given');
-
-
-###########################################################################
-#                      Scrooge::Test::Exactly - 12                     #
-###########################################################################
-
-# ---( Build and make sure it builds ok, 4 )---
-$regex = eval{ Scrooge::Test::Exactly->new(N => 5) };
-is($@, '', 'Test::Exactly constructor does not croak');
-isa_ok($regex, 'Scrooge::Test::Exactly');
-# Test that it matches 5 elements:
-($length, $offset) = $regex->apply($piddle);
-is($length, 5, 'Test::Exactly should match the exact specified number of elements');
-is($offset, 0, 'Test::Exactly should always have a matched offset of zero');
-
-# ---( Change to a length that is too long, 2 )---
-$regex->set_N(12);
-($length, $offset) = eval {$regex->apply($piddle)};
-is($length, undef, 'Test::Exactly does not match when data is too short');
-is($@, '', 'Failed evaluation does not throw an exception');
-
-# ---( Boundary conditions, 6 )---
-$regex->set_N(10);
-($length, $offset) = $regex->apply($piddle);
-is($length, 10, 'Test::Exactly should match the exact specified number of elements');
-is($offset, 0, 'Test::Exactly should always have a matched offset of zero');
-$regex->set_N(9);
-($length, $offset) = $regex->apply($piddle);
-is($length, 9, 'Test::Exactly should match the exact specified number of elements');
-is($offset, 0, 'Test::Exactly should always have a matched offset of zero');
-$regex->set_N(11);
-($length, $offset) = $regex->apply($piddle);
-is($length, undef, 'Test::Exactly does not match when data is too short');
-is($offset, undef, 'Test::Exactly does not match when data is too short');
-
-
-###########################################################################
-#                       Scrooge::Test::Range - 15                      #
-###########################################################################
-
-# ---( Build and make sure it builds properly, 4 )---
-$regex = eval { Scrooge::Test::Range->new };
-is($@, '', 'Test::Range constructor does not croak');
-isa_ok($regex, 'Scrooge::Test::Range');
-is($regex->{min_size}, 1, 'Default min_size is 1');
-is($regex->{max_size}, 1, 'Default max_size is 1');
-
-# ---( Basic tests, 6 )---
-($length, $offset) = $regex->apply($piddle);
-is($length, 1, 'Test::Range should match the maximum possible specified number of elements');
-is($offset, 0, 'Test::Range should always have a matched offset of zero');
-$regex->{max_size} = 5;
-($length, $offset) = $regex->apply($piddle);
-is($length, 5, 'Test::Range should match the maximum possible specified number of elements');
-is($offset, 0, 'Test::Range should always have a matched offset of zero');
-$regex->{max_size} = 12;
-($length, $offset) = $regex->apply($piddle);
-is($length, 10, 'Test::Range should match the maximum possible specified number of elements');
-is($offset, 0, 'Test::Range should always have a matched offset of zero');
-
-# ---( Min-length tests, 5 )---
-$regex->{min_size} = 10;
-($length, $offset) = $regex->apply($piddle);
-is($length, 10, 'Test::Range should match the maximum possible specified number of elements');
-is($offset, 0, 'Test::Range should always have a matched offset of zero');
-$regex->{min_size} = 11;
-($length, $offset) = eval{ $regex->apply($piddle) };
-is($@, '', 'Failed Test::Range match does not throw an exception');
-is($length, undef, 'Test::Range should not match if data is smaller than min');
-is($offset, undef, 'Test::Range should not match if data is smaller than min');
-
-
-###########################################################################
-#                  Scrooge::Test::Exactly::Offset - 13                 #
-###########################################################################
-
-# ---( Build and make sure it builds properly, 5 )---
-$regex = eval { Scrooge::Test::Exactly::Offset->new };
-is($@, '', 'Test::Exactly::Offset constructor does not croak');
-isa_ok($regex, 'Scrooge::Test::Exactly::Offset');
-is($regex->min_size, 1, 'Default min_size is 1');
-is($regex->max_size, 1, 'Default max_size is 1');
-is($regex->{offset}, 0, 'Default offset is 0');
-
-# ---( Compare with Test::Exactly, 1 )---
-my $exact_regex = Scrooge::Test::Exactly->new(N => 5);
-$regex = Scrooge::Test::Exactly::Offset->new(N => 5);
-is_deeply([$exact_regex->apply($piddle)], [$regex->apply($piddle)],
-	, 'Test::Exactly::Offset agrees with basic Test::Exactly');
-
-# ---( Nonzero offset, 4 )---
-$regex->set_offset(2);
-($length, $offset) = $regex->apply($piddle);
-is($length, 5, 'Test::Exactly::Offset matches specified length');
-is($offset, 2, 'Test::Exactly::Offset matches specified offset');
-# corner case:
-$regex->set_offset(5);
-($length, $offset) = $regex->apply($piddle);
-is($length, 5, 'Test::Exactly::Offset matches specified corner-case length');
-is($offset, 5, 'Test::Exactly::Offset matches specified corner-case offset');
-
-# ---( Failing situations, 3 )---
-$regex->set_offset(6);
-($length, $offset) = $regex->apply($piddle);
-is($length, undef, 'Test::Exactly::Offset fails at corner-case');
-# make sure it doesn't croak if offset is huge
-$regex->set_offset(20);
-($length, $offset) = eval{$regex->apply($piddle)};
-is($@, '', 'Huge offset does not make Test::Exactly::Offset croak');
-is($offset, undef, 'Test::Exactly::Offset fails for overly large offset');
-
+subtest $class => sub {
+	plan tests => 11;
+	
+	# Build, check defaults
+	$pattern = new_ok $class;
+	is($pattern->{N}, 1, 'default size is 1');
+	is($pattern->{offset}, 0, 'default offset is 0');
+	
+	# Compare with Test::Exactly
+	my $exact_pattern = Scrooge::Test::Exactly->new(N => 5);
+	$pattern = Scrooge::Test::Exactly::Offset->new(N => 5);
+	is_deeply({$exact_pattern->match($array)}, {$pattern->match($array)},
+		, 'agrees with basic Scrooge::Test::Exactly when no offset');
+	
+	# Simple nonzero offsets
+	$pattern->{offset} = 2;
+	%match_info = $pattern->match($array);
+	is($match_info{length}, 5, 'matches specified length');
+	is($match_info{left}, 2, 'matches specified offset');
+	
+	# corner case:
+	$pattern->{offset} = 5;
+	%match_info = $pattern->match($array);
+	is($match_info{length}, 5, 'matches when N + offset = data_length');
+	is($match_info{left}, 5, 'correct offset when N + offset = data_length');
+	
+	# ---( Failing situations, 3 )---
+	$pattern->{offset} = 6;
+	%match_info = $pattern->match($array);
+	is(scalar(keys %match_info), 0, 'fails when N + offset = data_length + 1');
+	# make sure it doesn't croak if offset is too large
+	$pattern->{offset} = 20;
+	$length = eval{$pattern->match($array)};
+	is($@, '', 'large offset does not cause death');
+	is($length, undef, 'large offset does cause failure');
+};

@@ -312,7 +312,7 @@ sub new {
 	my $self = bless {@_}, $class;
 	
 	# Initialize the class:
-	$self->_init;
+	$self->init;
 	
 	return $self;
 }

@@ -641,7 +641,7 @@ sub match {
 					next STOP;
 				}
 				# We're done if we got a successful match
-				last start if $consumed and $consumed >= 0;
+				last START if $consumed and $consumed >= 0;
 				# Move to the next starting position if the match at this
 				# position failed:
 				last STOP if $consumed == 0;

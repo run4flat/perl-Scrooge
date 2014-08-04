@@ -1,121 +1,81 @@
-=head1 Basics Test Suite Classes
-
-This file is part of the test suite. It provides a collection of simple
-regular expression classes for testing all manner of the regular expression
-funcionality. It also gives basic types for testing the Grouping regular
-expression classes that do not depend upon the Quantified class.
-
-=cut
-
 # Basics.pm
 #
-# A collection of basic classes for testing purposes. These classes let you
-# test the base class, Scrooge, with no dependence on the derived classes
-# in Regex.pm. This is good because it allows you to test the engine and the
-# Grouping regexes without depending on the operation of the Quantitative
-# regexes.
+# A collection of basic patterns for testing purposes. These patterns let
+# you test the base class, Scrooge, with no dependence on the derived
+# patterns. This is good because it lets you to test the engine and the
+# Grouping patterns without depending on the operation of the Quantitative
+# patterns.
 #
-# Tests for *these* classes (which ensure that they work as advertised)
-# can be found in -Basics.t
+# Tests for *these* patterns (which ensure that they work as advertised)
+# can be found in t/02-Basics.t
+#
+# Unless otherwise stated, to create a new pattern of any of these types,
+# say something like this:
+#
+#     my $pattern = classname->new;
 
+
+use strict;
+use warnings;
 use Scrooge;
 
 ###########################################################################
 #                           Scrooge::Test::Fail                           #
 ###########################################################################
-
-# A class that always fails during the apply stage. To create an object of
-# this class, you simply use:
-#
-#     my $regex = Scrooge::Test::Fail->new;
-#
+# Always fails during the apply stage.
 
 package Scrooge::Test::Fail;
-use strict;
-use warnings;
 our @ISA = qw(Scrooge);
 
-sub min_size { 1 }
-sub max_size { 1 }
-sub _apply { 0 }
+sub apply { 0 }
 
 ###########################################################################
 #                        Scrooge::Test::Fail::Prep                        #
 ###########################################################################
-
-# A class that always fails during the prep stage. To create an object of
-# this class, use this:
-#
-#     my $regex = Scrooge::Test::Fail::Prep->new;
-#
+# Always fails during the prep stage.
 
 package Scrooge::Test::Fail::Prep;
-use strict;
-use warnings;
 our @ISA = qw(Scrooge);
 
-sub _prep_data { 0 }
-sub _prep_invocation { 0 }
-sub _apply { 0 }
+sub prep { 0 }
+sub apply { 0 }
 
 ############################################################################
 #                            Scrooge::Test::All                            #
 ############################################################################
-
-# A class that always matches everything that it is given. To create an
-# object of this class, use this:
-#
-#     my $regex = Scrooge::Test::All->new;
-#
+# Matches everything that it is given.
 
 package Scrooge::Test::All;
-use strict;
-use warnings;
 our @ISA = qw(Scrooge);
-__PACKAGE__->coerce_as_data_property('max_size');
 
-sub _prep_data {
-	my $self = shift;
-	$self->min_size(0);
-	$self->max_size(Scrooge::data_length($self->data));
-	return 1;
-}
-
-sub _apply {
-	my (undef, $left, $right) = @_;
-	return '0 but true' if $right < $left;
-	return $right - $left + 1;
+sub apply {
+	my (undef, $match_info) = @_;
+	return $match_info->{length};
 }
 
 
 ############################################################################
 #                        Scrooge::Test::ShouldCroak                        #
 ############################################################################
-
-# This creates a class that always returns more than it is given, so it
-# should always elicit a croak from the engine:
+# Always returns more than it is given, so it should always elicit a croak
+# from the engine.
 package Scrooge::Test::ShouldCroak;
-use strict;
-use warnings;
-our @ISA = qw(Scrooge::Test::All);
+our @ISA = qw(Scrooge);
 
-sub _apply {
-	my (undef, $left, $right) = @_;
-	return $right - $left + 2;
+sub apply {
+	my (undef, $match_info) = @_;
+	return $match_info->{length} + 1;
 }
 
 
 ############################################################################
 #                           Scrooge::Test::Croak                           #
 ############################################################################
-
-# This creates a class that always croaks during the apply phase:
+# Always croaks during the apply phase
 package Scrooge::Test::Croak;
-use strict;
-use warnings;
-our @ISA = qw(Scrooge::Test::All);
+our @ISA = qw(Scrooge);
 
-sub _apply {
+sub apply {
 	die "This regex always croaks\n";
 }
 
@@ -123,155 +83,143 @@ sub _apply {
 #############################################################################
 #                            Scrooge::Test::Even                            #
 #############################################################################
+# Matches only even lengths:
 
-# A subclass of Test::All that matches only even lengths:
 package Scrooge::Test::Even;
-use strict;
-use warnings;
-our @ISA = (qw(Scrooge::Test::All));
+our @ISA = qw(Scrooge);
 
-sub _apply {
-	my (undef, $left, $right) = @_;
-	# Match for length of zero:
-	return '0 but true' if $right < $left;
+sub apply {
+	my (undef, $match_info) = @_;
+	my $length = $match_info->{length};
+	# Match for even lengths
+	return $length if $length % 2 == 0;
 	# Fail for odd length, return correction of -1
-	return -1 if (($left - $right + 1) % 2 == 1);
-	# Otherwise we have an even length, so match:
-	return $right - $left + 1;
+	return -1;
 }
 
 
 ############################################################################
 #                          Scrooge::Test::Exactly                          #
 ############################################################################
-
-# Successfully matches exactly the number of elements that you specify
+# Matches exactly the number of elements that you specify
+#
+# To create one of these patterns, say:
+#
+#     my $pattern = Scrooge::Test::Exactly->new(N => 5);
+#
+# You can also create it without specifying N (defaults to 1):
+# 
+#     my $pattern = Scrooge::Test::Exactly->new();
+#
+# You can change the number of items by modifying the N key of the pattern:
+#
+#     $pattern->{N} = 20;
+#
 
 package Scrooge::Test::Exactly;
-use strict;
-use warnings;
 our @ISA = qw(Scrooge);
 
-# To create an object of this class, you can call it as:
-#
-#     my $regex = Scrooge::Test::Exactly->new(N => 5);
-#
-# You can also call it without specifying N (defaults to 1):
-# 
-#     my $regex = Scrooge::Test::Exactly->new();
-#
-# You can change the number of items to exactly match:
-#
-#     $regex->set_N(20);
-#
-sub _init {
+sub init {
 	my $self = shift;
 	$self->{N} = 1 unless exists $self->{N};
 }
 
-sub set_N {
-	my ($self, $N) = @_;
-	$self->{N} = $N;
+sub prep {
+	my ($self, $match_info) = @_;
+	$match_info->{min_size} = $match_info->{max_size} = $self->{N};
+	1;
 }
 
-sub min_size { return $_[0]->{N} }
-sub max_size { return $_[0]->{N} }
-sub _apply   { return $_[0]->{N} }
+sub apply { return shift->{N} }
 
 ############################################################################
 #                           Scrooge::Test::Range                           #
 ############################################################################
-
-# Successfully matches anything within a range of lengths.
-# To use, specify min_size and max_size in the constructor:
-# 
-#     my $regex = Scrooge::Test::Range->new(min_size => 1, max_size => 5);
-# 
+# Matches anything within a range of lengths. To create one of these,
+# specify min_size and max_size in the constructor:
+#
+#     my $pattern = Scrooge::Test::Range->new(min_size => 1, max_size => 5);
+#
 # You can also call it without specifying any sizes, in which case it
 # defaults to 1, 1. You can change the size by setting $regex->{min_size} and
 # $regex->{max_size} directly. However, the class will not double-check values
 # for you, you must make sure that max_size > min_size.
-# 
-#     $regex->min_size(4);
-#     $regex->max_size(15);
+#
+#     $pattern->{min_size} = 4;
+#     $pattern->{max_size} = 15;
 # 
 
 package Scrooge::Test::Range;
-use strict;
-use warnings;
 our @ISA = qw(Scrooge);
 
-sub _init {
+sub init {
 	my $self = shift;
-	$self->min_size(1) unless defined $self->min_size;
-	$self->max_size(1) unless defined $self->max_size;
+	$self->{min_size} = 1 unless exists $self->{min_size};
+	$self->{max_size} = 1 unless exists $self->{max_size};
 }
 
-#sub min_size {
-#	return $_[0]->{min_size} unless @_ > 1;
-#	$_[0]->{min_size} = $_[1];
-#}
-#
-#sub max_size {
-#	return $_[0]->{max_size} unless @_ > 1;
-#	$_[0]->{max_size} = $_[1];
-#}
+sub prep {
+	my ($self, $match_info) = @_;
+	$match_info->{min_size} = $self->{min_size};
+	$match_info->{max_size} = $self->{max_size};
+	1;
+}
 
-sub _apply {
-	my ($self, $left, $right) = @_;
-	return $right - $left + 1;
+sub apply {
+	my ($self, $match_info) = @_;
+	return $match_info->{length};
 }
 
 ############################################################################
 #                      Scrooge::Test::Exactly::Offset                      #
 ############################################################################
-
-# Subclass of Test::Exactly that matches only when left is at a specified
-# offset. You can set the offset ussing the set_offset method:
-# 
-#     $regex->set_offset(10); 
+# Subclass of Scrooge::Test::Exactly that matches only when the left
+# position is at a specified offset. You can specify the offset in the
+# constructor:
+#
+#     my $pattern = Scrooge::Test::Exactly::Offset->new(offset => 5);
+#
+# or you can work with the default value of 0. To change the offset, simply
+# change the offset key:
+#
+#     $pattern->{offset} = 10;
 #
 package Scrooge::Test::Exactly::Offset;
-use strict;
-use warnings;
 our @ISA = (qw(Scrooge::Test::Exactly));
 
-sub _init {
+sub init {
 	my $self = shift;
-	$self->SUPER::_init;
+	$self->SUPER::init;
 	$self->{offset} = 0 if not defined $self->{offset};
 }
 
-sub set_offset {
-	my ($self, $offset) = @_;
-	$self->{offset} = $offset;
-}
-
-sub _apply {
-	my ($self, $left, $right) = @_;
+sub apply {
+	my ($self, $match_info) = @_;
 	
-	return 0 unless $left == $self->{offset};
-	return $self->SUPER::_apply($left, $right);
+	return 0 unless $match_info->{left} == $self->{offset};
+	return $self->{N};
 }
 
 ############################################################################
 #                          Scrooge::Test::Printer                          #
 ############################################################################
-
-# Useful for knowning the position of the current matching. Not presently used
-# in the test suite; used for debugging.
+# Zero-width pattern used for debugging. This pattern simply prints the
+# location at which it is called, making it useful for tracking the progress
+# of the engine and grouping patterns. This is not presently used in the
+# test suite.
 
 package Scrooge::Test::Printer;
-use strict;
-use warnings;
 our @ISA = qw(Scrooge);
 
-sub min_size { 0 }
-sub max_size { 0 }
+sub prep {
+	my ($self, $match_info) = @_;
+	$match_info->{min_size} = 0;
+	$match_info->{max_size} = 0;
+}
 
-sub _apply {
-	my ($self, $left) = @_;
-	Test::More::diag("Looking at $left\n");
+sub apply {
+	my ($self, $match_info) = @_;
+	Test::More::diag("Looking at position $match_info->{left}\n");
 	return '0 but true';
 }
 
