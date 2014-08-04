@@ -15,7 +15,7 @@ elsif (-f "t\\$module_name") {
 use strict;
 use warnings;
 use Scrooge;
-use Test::More tests => 10;
+use Test::More tests => 11;
 
 my ($pattern, $length, $class, %match_info);
 my $arr_len = 10;
@@ -274,4 +274,48 @@ subtest $class => sub {
 	$length = eval{$pattern->match($array)};
 	is($@, '', 'large offset does not cause death');
 	is($length, undef, 'large offset does cause failure');
+};
+
+
+####################################
+$class = 'Scrooge::Test::OffsetZWA';
+####################################
+
+subtest $class => sub {
+	plan tests => 13;
+	
+	# Build, check defaults
+	$pattern = new_ok $class;
+	is($pattern->{offset}, 0, 'default offset is 0');
+	
+	# Simple zero offsets, scalar and list contexts
+	$length = $pattern->match($array);
+	is($length, '0 but true',
+		'in scalar context, default matches with boolean true zero length');
+	%match_info = $pattern->match($array);
+	is($match_info{left}, 0,
+		'in list context, default indicates a left position of zero');
+	is($match_info{right}, -1,
+		'in list context, default indicates a right position of -1');
+	is($match_info{length}, 0,
+		'in list context, default indicates a length of numeric zero');
+	
+	# Simple nonzero offsets
+	$pattern->{offset} = 2;
+	%match_info = $pattern->match($array);
+	is($match_info{length}, 0, 'matches zero length for nonzero offset');
+	is($match_info{left}, 2, 'matches specified offset');
+	
+	# corner cases:
+	$pattern->{offset} = 9;
+	%match_info = $pattern->match($array);
+	is($match_info{length}, 0, 'zero length when offset = data_length - 1');
+	is($match_info{left}, 9, 'correct offset when offset = data_length - 1');
+	$pattern->{offset} = 10;
+	%match_info = $pattern->match($array);
+	is($match_info{length}, 0, 'zero length when offset = data_length');
+	is($match_info{left}, 10, 'correct offset when offset = data_length');
+	$pattern->{offset} = 11;
+	%match_info = $pattern->match($array);
+	is_deeply(\%match_info, {}, 'fails when offset = data_length + 1');
 };

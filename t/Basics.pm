@@ -201,6 +201,40 @@ sub apply {
 }
 
 ############################################################################
+#                         Scrooge::Test::OffsetZWA                         #
+############################################################################
+# Zero-width assertion that matches only at the specified location, which
+# defaults to zero. You can specify the offset in the constructor:
+#
+#     my $pattern = Scrooge::Test::OffsetZWA->new(offset => 5);
+#
+# To change the offset, simply change the offset key:
+#
+#     $pattern->{offset} = 10;
+#
+package Scrooge::Test::OffsetZWA;
+our @ISA = qw(Scrooge);
+
+sub init {
+	my $self = shift;
+	$self->{offset} = 0 if not defined $self->{offset};
+}
+
+sub prep {
+	my ($self, $match_info) = @_;
+	$match_info->{min_size} = 0;
+	$match_info->{max_size} = 0;
+	1;
+}
+
+sub apply {
+	my ($self, $match_info) = @_;
+	
+	return 0 unless $match_info->{left} == $self->{offset};
+	return '0 but true';
+}
+
+############################################################################
 #                          Scrooge::Test::Printer                          #
 ############################################################################
 # Zero-width pattern used for debugging. This pattern simply prints the
