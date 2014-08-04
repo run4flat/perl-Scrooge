@@ -662,7 +662,7 @@ sub match {
 	}
 	
 	# If we were successful, return the details:
-	if ($consumed) {
+	if ($consumed and $consumed >= 0) {
 		return $consumed unless wantarray;
 		# Make sure we update the length and right offset to reflect the
 		# final match condition
