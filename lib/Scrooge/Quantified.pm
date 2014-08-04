@@ -15,24 +15,24 @@ behavior for C</re_any>.
 
 This class uses the C<min_quant> and C<max_quant> keys and works by setting the
 C<min_size> and C<max_size> keys during the C<prep> stage. It provides its own
-C<_init>, C<_prep>, and C<_apply> methods. If you need a pattern object that
+C<init>, C<prep>, and C<apply> methods. If you need a pattern object that
 handles quantifiers but you do not care how it works, you should inheret from
-this base class and override the C<_apply> method.
+this base class and override the C<apply> method.
 
 Scrooge::Quantified provdes overrides for the following methods:
 
 =over
 
-=item _init
+=item init
 
-Scrooge::Quantified provides an C<_init> function that removes the C<quantifiers>
+Scrooge::Quantified provides an C<init> function that removes the C<quantifiers>
 key from the pattern object, validates the quantifier strings, and stores them
 under the C<min_quant> and C<max_quant> keys.
 
 This method can croak for many reasons. If you do not pass in an anonymous array
 with two arguments, you will get either this error:
 
- Quantifiers must be specified a defined value associated with key [quantifiers]
+ Quantifiers must be specified with a defined value associated with key [quantifiers]
 
 or this error:
 
@@ -63,12 +63,13 @@ call this class's C<_init> method to handle the quantifier parsing for you.
 
 =cut
 
-sub _init {
+use Scalar::Util qw(looks_like_number);
+sub init {
 	my $self = shift;
 	# Parse the quantifiers:
 	my ($ref) = delete $self->{quantifiers};
 	# Make sure the caller supplied a quantifiers key and that it's correct:
-	croak("Quantifiers must be specified a defined value associated with key [quantifiers]")
+	croak("Quantifiers must be specified with a defined value associated with key [quantifiers]")
 		unless defined $ref;
 	croak("Quantifiers must be supplied as a two-element anonymous array")
 		unless (ref($ref) eq ref([]) and @$ref == 2);
@@ -84,14 +85,14 @@ sub _init {
 			chop $to_check;
 			# Make sure it's a number between 0 and 100:
 			croak("Percentage quantifier must be a number; I got [$_]")
-				unless $to_check =~ /\d/;
+				unless looks_like_number($to_check);
 			croak("Percentage quantifier must be >= 0; I got [$_]")
-				unless 0 <= $to_check;
+				if $to_check < 0;
 			croak("Percentage quantifier must be <= 100; I got [$_]")
-				unless $to_check <= 100;
+				if $to_check > 100;
 		}
 		# Check that non-percentage quantifiers are strictly integers:
-		elsif ($_ !~ /^-?\d+$/) {
+		elsif ($_ !~ /^[+\-]?\d+$/) {
 			croak("Non-percentage quantifiers must be integers; I got [$_]");
 		}
 	}
@@ -103,29 +104,26 @@ sub _init {
 	return $self;
 }
 
-__PACKAGE__->coerce_as_data_property('min_size');
-__PACKAGE__->coerce_as_data_property('max_size');
-
-=item _prep_data
+=item prep
 
 This method calculates the minimum and maximum number of elements that will
 match based on the current data and the quantifiers stored in C<min_quant> and
 C<max_quant>. If it turns out that the minimum size is larger than the maximum
 size, this method returns 0 to indicate that this pattern will never match. It
 also does not set the min and max sizes in that case. That means that if you
-inheret from this class, you should invoke this C<_prep_data> method; if the
-return value is zero, your own C<_prep_data> method should also be zero (or you
+inheret from this class, you should invoke this C<prep> method; if the
+return value is zero, your own C<prep> method should also be zero (or you
 should have a means for handling the min/max sizes in a sensible way), and if
-the return value is 1, you should proceed with your own C<_prep_data> work.
+the return value is 1, you should proceed with your own C<prep> work.
 
 =cut
 
 # Prepare the current quantifiers:
-sub _prep_data {
-	my $self = shift;
+sub prep {
+	my ($self, $match_info) = @_;
 	
 	# Compute and store the numeric values for the min and max quantifiers:
-	my $N = Scrooge::data_length($self->data);
+	my $N = $match_info->{data_length};
 	my ($min_size, $max_size);
 	my $min_quant = $self->{min_quant};
 	my $max_quant = $self->{max_quant};
@@ -161,21 +159,22 @@ sub _prep_data {
 	return 0 if ($max_size < $min_size);
 	
 	# If we're good, store the sizes:
-	$self->min_size($min_size);
-	$self->max_size($max_size);
+	$match_info->{min_size} = $min_size;
+	$match_info->{max_size} = $max_size;
 	return 1;
 }
 
-=item _apply
+=item apply
 
-This very simple method returns the full length as a successful match. It does
-not provide any extra match details.
+This very simple method returns the full length as a successful match. It
+does not provide any extra match details. It assumes that the pattern engine
+honors the min and max sizes that were set during C<prep>.
 
 =cut
 
-sub _apply {
-	my (undef, $left, $right) = @_;
-	return $right - $left + 1;
+sub apply {
+	my (undef, $match_info) = @_;
+	return $match_info->{length};
 }
 
 =back
@@ -195,7 +194,7 @@ to its constructor. Scrooge::Sub overrides the following Scrooge methods:
 
 =over
 
-=item _init
+=item init
 
 The initialization method verifies that you did indeed provide a subroutine
 under the C<subref> key. If you did not, you will get this error:
@@ -211,7 +210,7 @@ that the quantifiers are valid.
 
 =cut
 
-sub _init {
+sub init {
 	my $self = shift;
 	
 	# Check that they actually supplied a subref:
@@ -221,12 +220,12 @@ sub _init {
 	}
 	
 	# Perform the quantifier initialization
-	$self->SUPER::_init;
+	$self->SUPER::init;
 }
 
-=item _apply
+=item apply
 
-Scrooge::Sub's C<_apply> method that evaluates the supplied subroutine at the
+Scrooge::Sub's C<apply> method evaluates the supplied subroutine at the
 left and right offsets of current interest. See the documentation for L</re_sub>
 for details about the arguments passed to the subroutine and return values. In
 particular, if you return any match details, they will be included in the saved
@@ -235,10 +234,10 @@ pattern, you can still return extra match details though there's no point).
 
 =cut
 
-sub _apply {
-	my ($self, $left, $right) = @_;
+sub apply {
+	my ($self, $match_info) = @_;
 	# Apply the rule and see what we get:
-	my ($consumed, %details) = eval{$self->{subref}->($self->data, $left, $right)};
+	my $consumed = eval{$self->{subref}->($match_info)};
 	
 	# handle any exceptions:
 	unless ($@ eq '') {
@@ -247,13 +246,13 @@ sub _apply {
 	}
 	
 	# Make sure they didn't break any rules:
-	if ($consumed > $right - $left + 1) {
+	if ($consumed > $match_info->{length}) {
 		my $name = $self->get_bracketed_name_string;
 		die "Subroutine pattern$name consumed more than it was allowed to consume\n";
 	}
 	
 	# Return the result:
-	return ($consumed, %details);
+	return $consumed;
 }
 
 =back

@@ -5,6 +5,7 @@ use Scrooge;
 package Scrooge::Grouped;
 our @ISA = qw(Scrooge);
 use Carp;
+use Safe::Isa;
 
 =head2 Scrooge::Grouped
 
@@ -41,7 +42,7 @@ The methods that Scrooge::Grouped overrides include:
 
 =over
 
-=item _init
+=item init
 
 This method provides basic verification of the input. In particular, it
 verifies that the there is a C<patterns> key that holds an array of
@@ -66,7 +67,7 @@ error:
 
 =cut
 
-sub _init {
+sub init {
 	my $self = shift;
 	croak("Grouped patterns must supply a key [patterns] with an array of patterns")
 		unless exists $self->{patterns} and ref($self->{patterns}) eq ref([]);
@@ -80,9 +81,9 @@ sub _init {
 	$self->{names}->{$self->{name}} = $self if defined $self->{name};
 	
 	# Check each of the child patterns and add their names:
-	foreach (@{$self->{patterns}}) {
-		croak("Invalid pattern") unless eval {$_->isa('Scrooge')};
-		$_->add_name_to($self->{names});
+	for my $pattern (@{$self->{patterns}}) {
+		croak("Invalid pattern") unless $pattern->$_isa('Scrooge');
+		$pattern->add_name_to($self->{names});
 	}
 	
 	return $self;
@@ -110,92 +111,88 @@ sub add_name_to {
 	}
 }
 
-=item _prep
+=item prep
 
-The C<_prep> method calls C<prep> on all the children patterns (via the
-C<prep_all_data> method). The patterns that succeeded are associated with the key
-C<patterns_to_apply> and success is determined by the result of the
-C<_prep_success> method. The result of that last method will depend on the
-sort of grouping pattern: 'or' patterns will consider it a successful prep
-if any of the patterns were successful, but 'and' and 'sequence' patterns
-will only be happy if all the patterns had successful preps. Of course, the
-prep could still fail if the accumulated minimum size is larger than the
-data's length. Otherwise, this method returns true.
+The C<prep> method calls C<prep> on all the children patterns (via the
+C<prep_all> method). The patterns that do not give trouble are associated
+with the key C<group_infos> and success is determined by the
+result of the C<prep_success> method. The result of that last method will
+depend on the sort of grouping pattern: 'or' patterns will consider it a
+successful prep if any of the patterns were successful, but 'and' and
+'sequence' patterns will only be happy if all the patterns had successful
+preps. Of course, the prep could still fail if the accumulated minimum size
+is larger than the data's length. Otherwise, this method returns true.
 
 =cut
 
-# XXX document patterns_to_apply etc
-__PACKAGE__->add_special_property('patterns_to_apply', 'data', 'invocation');
-__PACKAGE__->add_special_property('cache_keys', 'data', 'invocation');
-__PACKAGE__->add_special_property('positive_matches', 'data', 'invocation');
-__PACKAGE__->coerce_as_data_property('min_size');
-__PACKAGE__->coerce_as_data_property('max_size');
-
-# _prep_invocation simply calls the child prep methods, and ony returns failure
-# if they all fail:
-sub _prep_invocation {
-	my $self = shift;
-	
-	return 0 unless $self->SUPER::_prep_invocation;
-	
-	my $N_succeeded = 0;
-	foreach my $pattern (@{$self->{patterns}}) {
-		$pattern->prep_invocation and $N_succeeded++;
-	}
-	
-	return $N_succeeded > 0;
-}
-
-# _prep_data will call prep_data on all its children via the prep_all_data method.
-# That method returns the list of successful child patterns and their data
+# The prep_all method returns the list of successful child patterns and their data
 # cache keys. Success or failure is based upon the inherited method
 # _prep_success.
 
-sub _prep_data {
-	my $self = shift;
+sub prep {
+	my ($self, $match_info) = @_;
 	
 	# Bail out if inherited method fails
-	return 0 unless $self->SUPER::_prep_data;
+	return 0 unless $self->SUPER::prep($match_info);
 	
-	# Run prep_data on all children
-	my ($succeeded, $cache_keys) = $self->prep_all_data;
+	# Call the prep function for each of them, keeping track of all those
+	# that succeed.
+	my @succeeded;
+	for my $pattern (@{$self->{patterns}}) {
+		# Make a copy of the match info for the child pattern
+		my $child_match_info = { %$match_info };
+		
+		# Make sure the min size is not too large:
+		if ($pattern->prep($child_match_info) and
+			$child_match_info->{min_size} <= $match_info->{data_length}
+		) {
+			$child_match_info->{_pattern} = $pattern;
+			push @succeeded, $child_match_info;
+		}
+		else {
+			# Call cleanup immediately if prep failed
+			$pattern->cleanup($child_match_info);
+		}
+	}
 	
-	# Store the patterns to apply. If _prep_success returns zero, we do not
+	# Store the patterns to apply. If prep returns zero, we do not
 	# need to call cleanup: that will be called by our parent:
-	$self->patterns_to_apply($succeeded);
-	return 0 unless $self->_prep_success;
-	$self->cache_keys($cache_keys);
-	$self->positive_matches([]);
+	$match_info->{infos_to_apply} = \@succeeded;
+	return 0 unless $self->prep_success($match_info);
 	
 	# Cache the minimum and maximum number of elements to match:
-	$self->_minmax;
-	my $data_size = Scrooge::data_length($self->data);
-	$self->max_size($data_size) if $self->max_size > $data_size;
+	$self->minmax($match_info);
 	
 	# Check those values for sanity:
-	return 0 if $self->max_size < $self->min_size
-			or $self->min_size > $data_size;
-
+	return 0 if $match_info->{max_size} < $match_info->{min_size}
+			or $match_info->{min_size} > $match_info->{data_size};
+	
+	# Create the empty match array, onto which we'll push child pattern
+	# info hashes that match
+	$match_info->{positive_matches} = [];
+	
 	# If we're here, then all went well, so return as much:
 	return 1;
 }
 
-=item _cleanup
+=item cleanup
 
-The C<_cleanup> method is responsible for calling C<_cleanup> on B<all> the
-patterns. The patterns can croak in their C<_cleanup> stage, if they think
+The C<cleanup> method is responsible for calling C<cleanup> on B<all> the
+patterns. The patterns can croak in their C<cleanup> stage, if they think
 that's a good idea: all such deaths will be captured and stored until all
-patterns have had a chance to C<_cleanup>, at which point they will be
+patterns have had a chance to C<cleanup>, at which point they will be
 rethrown in agregate.
 
 =cut
 
-sub _cleanup {
-	my $self = shift;
-	# Call the cleanup method for *all* child patterns:
+sub cleanup {
+	my ($self, $match_info) = @_;
+	
+	# Call the cleanup method for all successfully prepped child patterns
 	my @errors;
-	foreach (@{$self->{patterns}}) {
-		eval {$_->cleanup};
+	for my $pattern_info (@{$match_info->{infos_to_apply}}) {
+		my $pattern = delete $pattern_info->{_pattern};
+		eval { $pattern->cleanup($pattern_info) };
 		push @errors, $@ if $@ ne '';
 	}
 	
@@ -206,6 +203,10 @@ sub _cleanup {
 	elsif (@errors > 1) {
 		die(join(('='x20) . "\n", 'Multiple Errors', @errors));
 	}
+	
+	# Remove tracking of group infos (also consider making direct links
+	# to child patterns based on key names; working here)
+	delete $match_info->{infos_to_apply};
 }
 
 =item clear_stored_match
@@ -215,95 +216,19 @@ reported successful matches, as well as this grouping pattern.
 
 =cut
 
-# Clear stored match assumes that all the patterns matched, so this will
-# need to be overridden for re_or:
 sub clear_stored_match {
-	my $self = shift;
-	# Call the parent's method:
-	$self->SUPER::clear_stored_match;
+	my ($self, $match_info) = @_;
+	# Clear the group pattern's positive match results:
+	$self->SUPER::clear_stored_match($match_info);
 	
 	# Call all the positively matched patterns' clear function:
-	foreach my $pattern (@{$self->positive_matches}) {
-		$pattern->clear_stored_match;
+	for my $pattern_info (@{$match_info->{positive_matches}}) {
+		my $pattern = $pattern_info->{_pattern};
+		$pattern->clear_stored_match($pattern_info);
 	}
 	
 	# Always return zero:
 	return 0;
-}
-
-=item is_prepping, is_applying, is_cleaning
-
-Each of these methods ensure that the base Scrooge method is called on the
-current Grouping pattern and that the C<is_I<method>>s are called on all of
-the children patterns. Note that these methods are called on B<all> the
-patterns, whether or not they reported a successful prep.
-
-=cut
-
-# State functions need to be called on all children.
-sub is_prepping {
-	my $self = shift;
-	$self->SUPER::is_prepping;
-	
-	# Collect any exceptions
-	my @errors;
-	foreach my $pattern (@{$self->{patterns}}) {
-		eval {
-			$pattern->is_prepping;
-			1
-		} or do {
-			push @errors, $@;
-		}
-	}
-	
-	# Throw exceptions, if any
-	if (@errors > 1) {
-		die "Multiple patterns died just before prep:\n"
-			. join("\n!!! AND !!!\n", @errors);
-	}
-	elsif (@errors == 1) {
-		die "Pattern died just before prep:\n$errors[0]";
-	}
-}
-
-sub is_applying {
-	my $self = shift;
-	$self->SUPER::is_applying;
-	foreach my $pattern (@{$self->{patterns}}) {
-		$pattern->is_applying;
-	}
-}
-
-# Call the inherited is_cleaning, and all child is_cleaning methods:
-sub is_cleaning {
-	my $self = shift;
-	$self->SUPER::is_cleaning;
-	foreach my $pattern (@{$self->{patterns}}) {
-		$pattern->is_cleaning;
-	}
-}
-
-=item get_details_for
-
-This method overloads the base Scrooge method to check if this pattern or 
-any children patterns have the requested name and returning the match
-details for that pattern. (The base class just checks if the this pattern
-has the requested name; it has no notion of children and, thus, no notion
-of checking for them.)
-
-The return values in scalar and list context are the same as for the base
-L</get_details_for>.
-
-=cut
-
-sub get_details_for {
-	my ($self, $name) = @_;
-	# This is a user-level function. Croak if the name does not exist.
-	croak("Unknown pattern name $name") unless exists $self->{names}->{$name};
-	
-	# Propogate the callin context:
-	return ($self->{names}->{$name}->get_details) if wantarray;
-	return $self->{names}->{$name}->get_details;
 }
 
 =back
@@ -313,100 +238,22 @@ including:
 
 =over
 
-=item prep_all_data
+=item prep_success
 
-The C<prep_all_data> method of Scrooge::Grouped calls the C<prep_data> method on
-each sub-pattern, tracking their success or failure. Even a successful
-C<prep_data> does not guarantee that the pattern will be considered successful:
-if the successfully prepped pattern has a minimum size that consumes more data
-than is available, it's a failed prep overall and cannot lead to a successful
-match. Unless there were exceptions, C<prep_all_data> returns an anonymous list
-of successful patterns and a second list of their cache keys.
-
-=cut
-
-sub prep_all_data {
-	my $self = shift;
-	my $data = $self->data;
-	my $cache_key = $self->cache_key;
-	
-	# Call the prep function for each of them, keeping track of all those
-	# that succeed. Notice that I capture errors and continue because every
-	# single pattern needs to run its prep method in order for it to be 
-	# safe for it to call its cleanup method.
-	my @succeeded;
-	my @cache_keys;
-	foreach (@{$self->{patterns}}) {
-		$_->add_data($data);
-		my $successful_prep = $_->prep_data;
-		
-		# Make sure the min size is not too large:
-		if ($successful_prep and $_->min_size <= Scrooge::data_length($data)) {
-			push @succeeded, $_;
-			push @cache_keys, $cache_key;
-		}
-	}
-	
-	return \@succeeded, \@cache_keys;
-}
-
-=item _prep_success
-
-The C<_prep_success> method is an overridable method that is supposed to
-analyze the contents of the C<patterns> and C<patterns_to_apply> keys to
-determine if the the group's prep was successful. 'or' patterns will be happy
-if there is at least one pattern to apply, but 'and' and 'seq' patterns will
-want all of their patterns to have succeeded. The base-class behavior follows
-the latter case and returns false unless there are as many patterns to apply
-as their are patterns in the group.
+The C<prep_success> method is an overridable method that is supposed to
+analyze the contents of the C<patterns> key in the group, and C<group_infos>
+key in the match info, to determine if the the group's prep was successful.
+'or' patterns will be happy if there is at least one pattern to apply, but
+'and' and 'seq' patterns will want all of their patterns to have succeeded.
+The base-class behavior follows the latter case and returns false unless
+there are as many patterns to apply as their are patterns in the group.
 
 =cut
 
 # The default success happens when we plan to apply *all* the patterns
-sub _prep_success {
-	my $self = shift;
-	return @{$self->{patterns}} == @{$self->patterns_to_apply};
-}
-
-=item push_match
-
-Successful matches are tracked with a call to C<push_match>, which stores a
-reference to the pattern in the array associated with C<positive_matches>,
-and invokes the C<store_match> method on the pattern. This method expects
-two arguments: the pattern object and a reference to a hash of match details.
-
-Because the same grouping pattern can appear multiple times as part of a 
-larger pattern, and because all such appearances share the same match stac,
-it is critical that any and all patterns added with C<push_match> be tracked,
-somehow, so that if something fails and they must be removed, corresponding
-calls to C<pop_match> only pop off the matches associated with the matches
-at the current appearance, and not with previous appearances of the pattern.
-
-=cut
-
-sub push_match {
-	croak('Scrooge::Grouped::push_match is a method that expects two arguments')
-		unless @_ == 3;
-	my ($self, $pattern, $details) = @_;
-	push @{$self->positive_matches}, $pattern;
-	$pattern->store_match($details);
-}
-
-=item pop_match
-
-The C<pop_match> method removes the most recent addition to the
-C<positive_matches> stack and calls its C<clear_stored_match> method. This
-only marks a bad match on a single pattern, not all the patterns on the
-stack of C<positive_matches>.
-
-=cut
-
-# This should only be called when we know that something is on the
-# positive_matches stack. recursive check this XXX
-sub pop_match {
-	my $self = shift;
-	$self->positive_matches->[-1]->clear_stored_match;
-	pop @{$self->positive_matches};
+sub prep_success {
+	my ($self, $match_info) = @_;
+	return @{$self->{patterns}} == @{$match_info->{infos_to_apply}};
 }
 
 =back
@@ -416,18 +263,17 @@ Classes that inherit from Scrooge::Grouped must implement these methods:
 
 =over
 
-=item _minmax
+=item minmax
 
-Scrooge::Grouped calls the method C<_minmax> during the C<prep> stage. This
+Scrooge::Grouped calls the method C<minmax> during the C<prep> stage. This
 method is supposed to calculate the grouping pattern's minimum and maximum
-lengths and store them using the class setters
-C<< $self->min_size($new_min) >> and C<< $self->max_size($new_max) >>. The
-minimum match size for an Or group will be very different from the minimum
-match size for a Sequence group, for example.
+lengths and store them in the group's match info using the class setters.
+The minimum match size for an Or group will be very different from the
+minimum match size for a Sequence group, for example.
 
-=item _apply
+=item apply
 
-Scrooge::Grouped does not provide an C<_apply> method, so derived classes
+Scrooge::Grouped does not provide an C<apply> method, so derived classes
 must provide one of their own.
 
 =back
@@ -450,35 +296,32 @@ methods from the parent classes. The overrides include
 
 =over
 
-=item _minmax
+=item minmax
 
 For Or groups, the minimum possible match size is the smallest minimum
-reported by all the children, and thel maximum possible match size is the
+reported by all the children, and the maximum possible match size is the
 largest maximum reported by all the children.
 
 =cut
 
 # Called by the _prep method; sets the internal minimum and maximum match
 # sizes.
-sub _minmax {
-	my ($self) = @_;
+sub minmax {
+	my ($self, $match_info) = @_;
 	my ($full_min, $full_max);
 	
-	my @patterns = @{$self->patterns_to_apply};
-	my @cache_keys = @{$self->cache_keys};
-	# Compute the min as the least minimum, and max as the greatest maximum:
-	for my $i (0 .. $#patterns) {
-		$patterns[$i]->cache_key($cache_keys[$i]);
-		my $min = $patterns[$i]->min_size;
-		my $max = $patterns[$i]->max_size;
+	for my $child_info (@{$match_info->{infos_to_apply}}) {
+		my $min = $child_info->{min_size};
+		my $max = $child_info->{max_size};
 		$full_min = $min if not defined $full_min or $full_min > $min;
 		$full_max = $max if not defined $full_max or $full_max < $max;
 	}
-	$self->min_size($full_min);
-	$self->max_size($full_max);
+	
+	$match_info->{min_size} = $full_min;
+	$match_info->{max_size} = $full_max;
 }
 
-=item _prep_success
+=item prep_success
 
 Or groups consider a C<prep> to be successful if any one of is children
 succeeds, which differs from the base class implementation in which all the
@@ -486,16 +329,14 @@ children are expected to succeed.
 
 =cut
 
-# Must override the default _prep_success method. If we have *any* patterns
-# that will run, that is considered a success.
-sub _prep_success {
-	my ($self) = @_;
-	return @{$self->patterns_to_apply} > 0;
+sub prep_success {
+	my ($self, $match_info) = @_;
+	return @{$match_info->{infos_to_apply}} > 0;
 }
 
-=item _apply
+=item apply
 
-The C<_apply> method of Scrooge::Or takes all the patterns that returned a
+The C<apply> method of Scrooge::Or takes all the patterns that returned a
 successful C<prep> and tries to match each of them in turn. Order matters in
 so far as the successful match is the first match in the list that returns a
 successful match. A pattern is tried on the full range of right offsets
@@ -503,45 +344,48 @@ before moving to the next pattern.
 
 =cut
 
-sub _apply {
-	my ($self, $left, $right) = @_;
-	my @patterns = @{$self->patterns_to_apply};
-	my @cache_keys = @{$self->cache_keys};
-	my $max_size = $right - $left + 1;
-	my $min_r = $left + $self->min_size - 1;
-	my $i = 0;
-	PATTERN: for (my $i = 0; $i < @patterns; $i++) {
-		my $pattern = $patterns[$i];
-		$pattern->cache_key($cache_keys[$i]);
+sub apply {
+	my ($self, $match_info) = @_;
+	my $left = $match_info->{left};
+	my $max_size = $match_info->{length};
+	INFO: for my $info (@{$match_info->{infos_to_apply}}) {
+		my $pattern = $info->{_pattern};
 		
 		# skip if it wants too many:
-		next if $pattern->min_size > $max_size;
+		next if $info->{min_size} > $max_size;
+		
+		# Set up the info for this round of matching
+		$info->{left} = $left;
 		
 		# Determine the minimum allowed right offset
-		my $min_r = $left + $pattern->min_size - 1;
+		my $min_r = $left + $info->{min_size} - 1;
 		
 		# Start from the maximum allowed right offset and work our way down:
-		my $r = $left + $pattern->max_size - 1;
-		$r = $right if $r > $right;
+		my $r = $left + $info->{max_size} - 1;
+		$r = $match_info->{right} if $r > $match_info->{right};
 		
 		RIGHT_OFFSET: while($r >= $min_r) {
+			# Set up the info for this round of matching
+			$info->{right} = $r;
+			$info->{length} = $r - $left + 1 || '0 but true';
+			
 			# Apply the pattern:
-			my ($consumed, %details) = eval{$pattern->_apply($left, $r)};
+			my $consumed = eval{ $pattern->apply($info) };
 			
 			# Check for exceptions:
 			if ($@ ne '') {
 				my $name = $self->get_bracketed_name_string;
 				my $child_name = $pattern->get_bracketed_name_string;
-				die "In re_or pattern$name, ${i}th pattern$child_name failed:\n$@"; 
+				die "In re_or pattern$name, subpattern$child_name failed:\n$@"; 
 			}
 			
 			# Make sure that the pattern didn't consume more than it was supposed
 			# to consume:
-			if ($consumed > $r - $left + 1) {
+			if ($consumed > $info->{length}) {
 				my $name = $self->get_bracketed_name_string;
 				my $child_name = $pattern->get_bracketed_name_string;
-				die "In re_or pattern$name, ${i}th pattern$child_name consumed $consumed\n"
-					. "but it was only allowed to consume " . ($r - $left + 1) . "\n"; 
+				die "In re_or pattern$name, subpattern$child_name consumed $consumed\n"
+					. "but it was only allowed to consume $info->{length}\n"; 
 			}
 			
 			# Check for a negative return value, which means 'try again at a
@@ -553,38 +397,18 @@ sub _apply {
 			
 			# Save the results and return if we have a good match:
 			if ($consumed) {
-				$self->push_match($pattern => {left =>$left, %details
-										, right => $left + $consumed - 1});
+				push @{$match_info->{positive_matches}}, $info;
+				$info->{length} = $consumed + 0;
+				$info->{right} = $left + $consumed - 1;
 				return $consumed;
 			}
 			
 			# At this point, the only option remaining is that the pattern
 			# returned zero, which means the match will fail at this value
-			# of left, so move to the next pattern:
-			next PATTERN;
+			# of left, so move to the next pattern.
+			next INFO;
 		}
 	}
-	return 0;
-}
-
-=item clear_stored_match
-
-Scrooge::Or only stores a single matched pattern at a time, so it only needs
-to clear the last match if its parent tells it to clear its stored match.
-
-=cut
-
-# This only needs to clear out the current matching pattern:
-# recursive check this
-sub clear_stored_match {
-	my $self = shift;
-	# Call the Scrooge's method:
-	Scrooge::clear_stored_match($self);
-	
-	# Only pop off the latest match:
-	$self->pop_match;
-	
-	# Always return zero:
 	return 0;
 }
 
@@ -605,7 +429,7 @@ this class overrides two methods:
 
 =over
 
-=item _minmax
+=item minmax
 
 The minimum and maximum sizes reported by Scrooge::And must correspond with
 the most restricted possible combination of options. If one child pattern
@@ -616,27 +440,24 @@ more than 30, the two can only match at most 20 elements.
 
 =cut
 
-# Called by the _prep method; stores minimum and maximum match sizes in an
-# internal cache:
-sub _minmax {
-	my $self = shift;
+# Called by the prep method; stores minimum and maximum match sizes in the
+# info hashref
+sub minmax {
+	my ($self, $match_info) = @_;
 	my ($full_min, $full_max);
 	
-	my @patterns = @{$self->patterns_to_apply};
-	my @cache_keys = @{$self->cache_keys};
 	# Compute the min as the greatest minimum, and max as the least maximum:
-	for my $i (0 .. $#patterns) {
-		$patterns[$i]->cache_key($cache_keys[$i]);
-		my $min = $patterns[$i]->min_size;
-		my $max = $patterns[$i]->max_size;
+	for my $info (@{$match_info->{infos_to_apply}) {
+		my $min = $info->{min_size};
+		my $max = $info->{max_size};
 		$full_min = $min if not defined $full_min or $full_min < $min;
 		$full_max = $max if not defined $full_max or $full_max > $max;
 	}
-	$self->min_size($full_min);
-	$self->max_size($full_max);
+	$match_info->{min_size} = $full_min;
+	$match_info->{max_size} = $full_max;
 }
 
-=item _apply
+=item apply
 
 Applying Scrooge::And at a given left and right offsets involves applying
 all the child patterns at the same left and right offsets and adjusting the
@@ -657,23 +478,29 @@ than they were allowed to consume with this error message:
 
 =cut
 
-# Return false if any of them fail or if they disagree on the matched length
-sub _apply {
-	my ($self, $left, $right) = @_;
-	my $consumed_length = $right - $left + 1;
-	my @to_store;
-	my @patterns = @{$self->patterns_to_apply};
-	my @cache_keys = @{$self->cache_keys};
-	for (my $i = 0; $i < @patterns; $i++) {
-		$patterns[$i]->cache_key($cache_keys[$i]);
-		my ($consumed, %details) = eval{$patterns[$i]->_apply($left, $right)};
+# Return false if any of them fail or if they cannot agree on the matched
+# length
+sub apply {
+	my ($self, $match_info) = @_;
+	my $left = $match_info->{left};
+	my $consumed_length = $match_info->{length};
+	my @infos = @{$match_info->{infos_to_apply};
+	for (my $i = 0; $i < @infos; $i++) {
+		# Set up this info's match parameters
+		my $info = $infos[$i];
+		$info->{left} = $left;
+		$info->{right} = $match_info->{right};
+		$info->{length} = $match_info->{length};
+		
+		# Figure out how much the pattern consumes
+		my $consumed = eval{ $info->{_pattern}->apply($info) };
 		
 		# Croak problems if found:
 		if($@ ne '') {
 			my $name = $self->get_bracketed_name_string;
-			my $child_name = $patterns[$i]->get_bracketed_name_string;
+			my $child_name = $info->{_pattern}->get_bracketed_name_string;
 			# Clear the stored matches before dying, just in case:
-			$self->pop_match for (1..$i);
+			$match_info->{positive_matches} = [];
 			# Make sure i starts counting from 1 in death note:
 			$i++;
 			die "In re_and pattern$name, ${i}th pattern$child_name died:\n$@"; 
@@ -682,16 +509,16 @@ sub _apply {
 		# Return failure immediately:
 		if (not $consumed) {
 			# Clear the stored matches before failing:
-			$self->pop_match for (1..$i);
+			$match_info->{positive_matches} = [];
 			return 0;
 		}
 		
 		# Croak if the pattern consumed more than it was given:
 		if ($consumed > $consumed_length) {
 			my $name = $self->get_bracketed_name_string;
-			my $child_name = $patterns[$i]->get_bracketed_name_string;
+			my $child_name = $info->{_pattern}->get_bracketed_name_string;
 			# Clear the stored matches before dying, just in case:
-			$self->pop_match for (1..$i);
+			$match_info->{positive_matches} = [];
 			# Make sure i starts counting from 1 in death note:
 			$i++;
 			die "In re_and pattern$name, ${i}th pattern$child_name consumed $consumed\n"
@@ -706,10 +533,10 @@ sub _apply {
 			
 			# We're either about to quit or about to start over, so clear
 			# the stored matches:
-			$self->pop_match for (1..$i);
+			$match_info->{positive_matches} = [];
 			
 			# Fail if the new length would be too small:
-			return 0 if $consumed_length < $self->min_size;
+			return 0 if $consumed_length < $match_info->{min_size};
 			
 			# Adjust the right offset and start over:
 			$right = $consumed_length + $left - 1;
@@ -718,9 +545,9 @@ sub _apply {
 		}
 		
 		# Otherwise, we have a successful match, so add it:
-		$self->push_match($patterns[$i], {left => $left, %details
-							, right => $consumed_length + $left - 1});
-		
+		push @{$match_info->{positive_matches}}, $info;
+		$info->{length} = $consumed + 0;
+		$info->{right} = $left + $consumed - 1;
 	}
 	
 	# If we've reached here, we have a positive match!
@@ -745,7 +572,7 @@ work. The overridden methods include:
 
 =over
 
-=item _minmax
+=item minmax
 
 For a sequential pattern, the minimum possible match length is the sum of
 the minimal lengths; the maximum possible match length is the sum of the
@@ -753,24 +580,23 @@ maximal lengths.
 
 =cut
 
-# Called by the _prep method, sets the internal minimum and maximum sizes:
-sub _minmax {
-	my $self = shift;
+# Called by the prep method, sets the internal minimum and maximum sizes:
+sub minmax {
+	my ($self, $match_info) = @_;
 	my ($full_min, $full_max);
 	
-	my @patterns = @{$self->patterns_to_apply};
-	my @cache_keys = @{$self->cache_keys};
-	# Compute the min and max as the sum of the mins and maxes
-	for my $i (0 .. $#patterns) {
-		$patterns[$i]->cache_key($cache_keys[$i]);
+	# Compute the min as the greatest minimum, and max as the least maximum:
+	for my $info (@{$match_info->{infos_to_apply}) {
+		my $min = $info->{min_size};
+		my $max = $info->{max_size};
 		$full_min += $patterns[$i]->min_size;
 		$full_max += $patterns[$i]->max_size;
 	}
-	$self->min_size($full_min);
-	$self->max_size($full_max);
+	$match_info->{min_size} = $full_min;
+	$match_info->{max_size} = $full_max;
 }
 
-=item _apply
+=item apply
 
 Applying a sequential pattern involves matching all the children in order,
 one after the other. Scrooge::Sequence achieves this by calling its own
@@ -778,10 +604,12 @@ C<seq_apply> method recursively on the list of patterns.
 
 =cut
 
-sub _apply {
-	my ($self, $left, $right) = @_;
-	return $self->seq_apply($left, $right
-		, $self->patterns_to_apply, $self->cache_keys);
+sub apply {
+	my ($self, $match_info) = @_;
+	my $left = $match_info->{left};
+	my $right = $match_info->{right};
+	return $self->seq_apply($match_info, $left, $right,
+		@{$match_info->{infos_to_apply}});
 }
 
 =back
@@ -794,8 +622,8 @@ match:
 =item seq_apply
 
 This method provides the heavy lifting for the greedy sequential matching.
-It takes a left offset, a right offset, and a list of patterns to apply
-and operates recursively.
+It takes the sequence's match info, the left offset, the right offset, and a
+list of patterns to apply, and operates recursively on the list of patterns.
 
 If there is only one pattern, the method evaluates the pattern for the
 given left and right offsets and returns the number of consumed elements.
@@ -846,32 +674,31 @@ matches again, at which point it resumes with step 4.
 =cut
 
 sub seq_apply {
-	my ($self, $left, $right, $patterns_ref, $cache_keys_ref) = @_;
-	my @patterns = @$patterns_ref;
-	my @cache_keys = @$cache_keys_ref;
-	my $pattern = shift @patterns;
-	my $cache_key = shift @cache_keys;
+	my ($self, $match_info, $left, $right, @infos_to_apply) = @_;
+	my $info = shift @infos_to_apply;
+	my $pattern = $info->{_pattern};
 	
-	# Set this pattern's cache key before we get going
-	$pattern->cache_key($cache_key);
+	$info->{left} = $left;
 	
 	# Handle edge case of this being the only pattern:
-	if (@patterns == 0) {
+	if (@infos_to_apply == 0) {
 		
 		# Make sure we don't send any more or any less than the pattern said
 		# it was willing to handle:
 		my $size = $right - $left + 1;
-		return 0 if $size < $pattern->min_size;
-		
+		return 0 if $size < $info->{min_size};
 		# Adjust the right edge if the size is too large:
-		$size = $pattern->max_size if $size > $pattern->max_size;
+		$size = $info->{max_size} if $size > $info->{max_size};
 		$right = $left + $size - 1;
 		
-		my ($consumed, %details) = eval{$pattern->_apply($left, $right)};
+		$info->{right} = $right;
+		$info->{length} = $size;
+		
+		my $consumed = eval{ $pattern->apply($info) };
 		
 		# If the pattern croaked, emit a death:
 		if ($@ ne '') {
-			my $i = scalar @{$self->patterns_to_apply};
+			my $i = scalar @{$match_info->{infos_to_apply}};
 			my $name = $self->get_bracketed_name_string;
 			my $child_name = $pattern->get_bracketed_name_string;
 			die "In re_seq pattern$name, ${i}th pattern$child_name failed:\n$@"; 
@@ -882,31 +709,31 @@ sub seq_apply {
 			my $name = $self->get_bracketed_name_string;
 			my $child_name = $pattern->get_bracketed_name_string;
 			# Make sure i starts counting from 1 in death note:
-			my $i = scalar @{$self->patterns_to_apply};
+			my $i = scalar @{$match_info->{infos_to_apply}};
 			die "In re_seq pattern$name, ${i}th pattern$child_name consumed $consumed\n"
 				. "but it was only allowed to consume $size\n";
 		}
 		
 		# Save the match if the match succeeded (i.e. '0 but true', or a
 		# positive number):
-		$self->push_match($pattern, {left => $left, %details,
-				right => $left + $consumed - 1})
-			if $consumed and $consumed >= 0;
-		
+		if ($consumed and $consumed >= 0) {
+			push @{$match_info->{positive_matches}}, $info;
+			$info->{length} = $consumed + 0;
+			$info->{right} = $left + $consumed - 1;
+		}
 		return $consumed;
 	}
 	
 	# Determine the largest possible size based on the requirements of the
 	# remaining patterns:
 	my $max_consumable = $right - $left + 1;
-	for my $i (0 .. $#patterns) {
-		$patterns[$i]->cache_key($cache_keys[$i]);
-		$max_consumable -= $patterns[$i]->min_size;
+	for my $info (@infos_to_apply) {
+		$max_consumable -= $info->{min_size};
 	}
 	
 	# Fail if the maximum consumable size is smaller than this pattern's
 	# minimum requirement. working here: this condition may never occurr:
-	my $min_size = $pattern->min_size;
+	my $min_size = $info->{min_size};
 	return 0 if $max_consumable < $min_size;
 
 	# Set up for the loop:
@@ -920,12 +747,13 @@ sub seq_apply {
 	
 	LEFT_SIZE: for (my $size = $max_consumable; $size >= $min_size; $size--) {
 		# Apply this pattern to this length:
-		($left_consumed, %details)
-			= eval{$pattern->_apply($left, $left + $size - 1)};
+		$info->{right} = $left + $size - 1;
+		$info->{length} = $size;
+		$left_consumed = eval{ $pattern->apply($info) };
 		# Croak immediately if we encountered a problem:
 		if ($@ ne '') {
-			my $i = scalar @{$self->patterns_to_apply}
-				- scalar(@patterns);
+			my $i = scalar @{$match_info->{infos_to_apply}}
+				- scalar(@infos_to_apply);
 			my $name = $self->get_bracketed_name_string;
 			my $child_name = $pattern->get_bracketed_name_string;
 			die "In re_seq pattern$name, ${i}th pattern$child_name failed:\n$@"; 
@@ -939,8 +767,8 @@ sub seq_apply {
 			my $name = $self->get_bracketed_name_string;
 			my $child_name = $pattern->get_bracketed_name_string;
 			# Make sure i starts counting from 1 in death note:
-			my $i = scalar @{$self->patterns_to_apply}
-				- scalar(@patterns);
+			my $i = scalar @{$match_info->{infos_to_apply}}
+				- scalar(@infos_to_apply);
 			die "In re_seq pattern$name, ${i}th pattern$child_name consumed $left_consumed\n"
 				. "but it was only allowed to consume $size\n";
 		}
@@ -961,8 +789,9 @@ sub seq_apply {
 		# If we are here, we know that the current pattern matched starting at
 		# left with a size of $size. Store that and then make sure that the
 		# remaining patterns match:
-		$self->push_match($pattern, {left => $left, %details,
-				right => $left + $size - 1});
+		$info->{size} = $left_consumed + 0;
+		$info->{right} = $left + $left_consumed - 1;
+		push @{$match_info->{positive_matches}}, $info;
 		
 		$right_consumed = 0;
 		my $curr_right = $right;
@@ -971,14 +800,14 @@ sub seq_apply {
 				# Shrink the current right edge:
 				$curr_right += $right_consumed;
 				# Try the pattern:
-				$right_consumed = $self->seq_apply($left + $size, $curr_right
-					, \@patterns, \@cache_keys);
+				$right_consumed = $self->seq_apply($match_info, $left + $size,
+					$curr_right, @infos_to_apply);
 			} while ($right_consumed < 0);
 		};
 		
 		# Rethrow any problems after cleaning up the match stack:
 		if ($@ ne '') {
-			$self->pop_match;
+			pop @{$match_info->{positive_matches}};
 			die $@;
 		}
 		
@@ -987,7 +816,7 @@ sub seq_apply {
 		# that it failed. If it failed, clear the left pattern's match and
 		# try again at a shorter size:
 		if (!$right_consumed) {
-			$self->pop_match;
+			pop @{$match_info->{positive_matches}};
 			next LEFT_SIZE;
 		}
 		

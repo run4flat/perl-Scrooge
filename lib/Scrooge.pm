@@ -499,31 +499,27 @@ for using your patterns once you've built them. Class authors should B<not>
 override these methods, but instead should override methods with leading
 underscores discussed under L</AUTHOR METHODS>.
 
-=head2 apply ($data)
+=head2 match ($data)
 
-This method applies the pattern object on the given container. The
-return value is a bit complicated to explain, but in general it Does What You
-Mean. In boolean context, it returns a truth value indicating whether the pattern
-matched or not. In scalar context, it returns a scalar indicating the number of
-elements that matched if something matched, and undef otherwise. In particular,
-if the pattern matched zero elements, it returns the string "0 but true", which
-evaluates to zero in numeric context, but true in boolean context. Finally, in
-list context, if the pattern fails you get an empty list, and if it succeeds you
-get two numbers indicating the number of matched elements and the offset
-(without any of that zero-but-true business to worry about).
+This method applies the pattern object on the given container. In list
+context this returns a whole host of key/value pairs with information about
+the match, or an empty list on failure. In scalar context this returns the
+number of elements matched (including the magical string "0 but true" if
+it matches zero elements), or undef on failure. In boolean context, it
+return true if the match succeeded, or false if it failed.
 
-To put it all together, the following three expressions all Do Something when
-your pattern matches:
+For example, the following three expressions all Do Something when your
+pattern matches, and do not Do Something when it fails:
 
- if (my ($matched, $offset) = $pattern->apply($data)) {
+ if (my %match_info = $pattern->match($data)) {
      # Do Something
  }
  
- if (my $matched = $pattern->apply($data)) {
+ if (my $amount_matched = $pattern->match($data)) {
      # Do Something 
  }
  
- if ($pattern->apply($data)) {
+ if ($pattern->match($data)) {
      # Do Something
  }
  
@@ -534,49 +530,30 @@ exception for the string "0 but true".) However, if you plan on
 printing the matched length, you should assure a numeric value with either of
 these two approaches:
 
- if (my $matched = $pattern->apply($data)) {
+ if (my $matched = $pattern->match($data)) {
      $matched += 0; # ensure $matched is numeric
      print "Matched $matched elements\n";
  }
 
 or
 
- if (my ($matched) = $pattern->apply($data)) {
-     print "Matched $matched elements\n";
+ if (my %match_info = $pattern->match($data)) {
+     print "Matched $match_info->{length} elements\n";
  }
 
-Note that you will get the empty list if your pattern fails, so if this fails:
 
- my ($matched, $offset) = $pattern->apply($data);
-
-both C<$matched> and C<$offset> will be the undefined value, and if you use
-the expression in the conditional as in the first example above, the
-condition will evaluate to boolean false. The only major gotcha in this
-regard is that Perl's list flatting means this will B<NOT> do what you think it
-is supposed to do:
-
- my ($first_matched, $first_off, $second_matched, $second_off)
-     = ($pattern1->apply($data), $pattern2->apply($data));
-
-If C<$pattern1> fails to match and C<$pattern2> succeeds, the values for the
-second pattern will be stored in C<$first_matched> and C<$first_off>. So, do
-not use the return values from a pattern in a large list
-assignment like this.
-
-If you only want to know where a sub-pattern matches, you can name that sub-pattern
-and retrieve sub-match results using C<get_offsets_for>, as discussed below.
 
 This method can croak for a few reasons. If any of the patterns croak
-during the preparation or matching stage, C<apply> will do its best to
+during the preparation or matching stage, C<match> will do its best to
 package the error message in a useful way and rethrow the error. Also, if
 you are trying to use a data container for which Scrooge does not know how
-to compute the length, C<apply> will die saying as much. (See L</data_length>
+to compute the length, C<match> will die saying as much. (See L</data_length>
 to learn how to teach Scrooge about your data container.)
 
 =cut
 
 # User-level method, not to be overridden.
-sub apply {
+sub match {
 	my $self = shift;
 	my $data;
 	if (@_ == 1) {
@@ -586,7 +563,7 @@ sub apply {
 		$data = {@_};
 	}
 	else {
-		croak('Scrooge::apply expects either a data argument or key/value data pairs');
+		croak('Scrooge::match expects either a data argument or key/value data pairs');
 	}
 	
 	# Get the data's length and verify that the container is a known type
@@ -594,25 +571,22 @@ sub apply {
 	croak('Could not get length of the supplied data')
 		if not defined $N or $N eq '';
 	
+	# Create the match info hash with some basic info already set:
+	my %match_info = (
+		data => $data, min_size => 1, max_size => $N, data_length => $N
+	);
+	
 	# Prepare the pattern for execution. This may involve computing low and
 	# high quantifier limits, keeping track of $data, stashing
 	# intermediate data if this is a nested pattern, and many other things.
 	# The actual prep method can fail, so look out for that.
 	my (@croak_messages, $prep_results);
 	eval {
-		$self->is_prepping;
-		if ($self->prep_invocation == 0) {
-			$prep_results = 0;
-			return 1;
-		}
-		$self->add_data($data);
-		$prep_results = $self->prep_data;
+		$prep_results = $self->prep(\%match_info);
 		1;
 	} or push @croak_messages, $@;
 	unless ($prep_results) {
-		# update to cleanup state:
-		$self->is_cleaning;
-		eval { $self->cleanup };
+		eval { $self->cleanup(\%match_info) };
 		push @croak_messages, $@ if $@ ne '';
 		
 		# Croak if there was an exception during prep or cleanup:
@@ -625,11 +599,8 @@ sub apply {
 		return;
 	}
 	
-	# Note change in local state:
-	$self->is_applying;
-	
-	my $min_diff = $self->min_size - 1;
-	my $max_diff = $self->max_size - 1;
+	my $min_diff = $match_info{min_size} - 1;
+	my $max_diff = $match_info{max_size} - 1;
 
 	# Left and right offsets, maximal right offset, and number of consumed
 	# elements:
@@ -638,33 +609,39 @@ sub apply {
 	# Wrap all of this in an eval block to make sure croaks and other deaths
 	# do not prevent cleanup:
 	eval {
-		# Run through all sensible left and right offsets:
+		# Run through all sensible left and right offsets. If the min size
+		# is zero, it IS POSSIBLE for $l_off to equal $N. This would be the
+		# case for a zero-width-assertion that is supposed to match at the
+		# end of the data, for example.
 		START: for ($l_off = 0; $l_off < $N - $min_diff; $l_off++) {
 			# Start with the maximal possible r_off:
 			$r_off = $l_off + $max_diff;
 			$r_off = $N-1 if $r_off >= $N;
 			
+			$match_info{left} = $l_off;
+			
 			STOP: while ($r_off >= $l_off + $min_diff) {
-				($consumed, %details) = $self->_apply($l_off, $r_off);
-				if ($consumed > $r_off - $l_off + 1) {
+				$match_info{right} = $r_off;
+				$match_info{length} = $r_off - $l_off + 1
+					|| '0 but true';
+				
+				$consumed = $self->apply(\%match_info);
+				my $allowed_length = $r_off - $l_off + 1;
+				if ($consumed > $allowed_length) {
 					my $class = ref($self);
 					my $name = $self->get_bracketed_name_string;
 					croak("Internal error: pattern$name of class <$class> consumed $consumed,\n"
-						. "but it was only allowed to consume " . ($r_off - $l_off + 1));
+						. "but it was only allowed to consume $allowed_length");
 				}
 				# If they returned less than zero, adjust r_off and try again:
 				if ($consumed < 0) {
-					# At the moment, negative values of $consumed that are "too
-					# large" do not cause the engine to croak. Should this be
-					# changed? working here (add this to the to-do list)
+					# Note that negative values of $consumed that are "too
+					# large" do not cause the engine to croak, or even carp.
 					$r_off += $consumed;
 					next STOP;
 				}
 				# We're done if we got a successful match
-				if ($consumed and $consumed >= 0) {
-					$self->store_match({left => $l_off, right => $r_off, %details});
-					last START;
-				}
+				last start if $consumed and $consumed >= 0;
 				# Move to the next starting position if the match at this
 				# position failed:
 				last STOP if $consumed == 0;
@@ -675,8 +652,7 @@ sub apply {
 	push @croak_messages, $@ if $@ ne '';
 	
 	# Run cleanup, backing up any error messages:
-	$self->is_cleaning;
-	eval {$self->cleanup};
+	eval { $self->cleanup(\%match_info) };
 	push @croak_messages, $@ if $@ ne '';
 	
 	# Croak if there was an exception during prep or cleanup:
@@ -688,113 +664,25 @@ sub apply {
 	# If we were successful, return the details:
 	if ($consumed) {
 		return $consumed unless wantarray;
-		return (0 + $consumed, $l_off);
+		# Make sure we update the length and right offset to reflect the
+		# final match condition
+		$match_info{length} = $consumed + 0;
+		$match_info{right} = $match_info{left} + $consumed - 1;
+		return %match_info;
 	}
 	# Otherwise return an empty list:
 	return;
 }
 
-=head2 get_details_for ($name)
+=head2 clear_stored_match ($self, $match_info)
 
-After running a successful pattern, you can use this method to query the match
-details for named patterns. This method returns an anonymous hash containing
-the left and right offsets along with any other details that the pattern
-decided to return to you. (For example, a pattern could return the average
-value of the matched data since that information might be useful, and it
-was part of the calculation.)
-
-Actually, you can have the same pattern appear multiple times within a larger
-pattern. In that case, the return value will be a list of hashes,
-each of which contains the pertinent details. So if this named pattern appears
-five times but only matches twice, you will get a list of two hashes with
-the details.
-
-The returned results also depend upon the calling context. If you ask for
-the match details in scalar context, only the first such hash will be
-returned, or undef if there were no matches. In list context, you get a list
-of all the hashes, or an empty list of there were not matches. As such, the
-following expressions Do What You Mean:
-
- if (my @details = $pattern->get_details_for('constant')) {
-     for my $match_details (@details) {
-         # unpack the left and right boundaries of the match:
-         my %match_hash = %$match_details;
-         my ($left, $right) = @match_details{'left', 'right'};
-         # ...
-     }
- }
- 
- for my $details ($pattern->get_details_for('constant')) {
-     print "Found a constant region between $details->{left} "
-		. "and $details->{right} with average value "
-		. "$details->{average}\n";
- }
- 
- if (my $first_details = $pattern->get_details_for('constant')) {
-     print "The first constant region had an average of "
-		. "$details->{average}\n";
- }
-
-Note that for zero-width matches that succeed, the value of right will be one
-less than the value of left.
-
-Finally, note that you can call this method on container patterns such as
-C<re_and>, C<re_or>, and C<re_seq> to get the information for named sub-patterns
-within the containers. That's probably exactly what you expected, so if this
-last paragraph seems a bit confusing, you're probably best off just ignoring 
-it.
+This removes any internal information about a previously successful match.
+This should remove anything that won't get overwritten at the start of the
+next attempt (if any such attempt arises).
 
 =cut
 
-sub get_details_for {
-	croak('Scrooge::get_details_for is a one-argument method')
-		unless @_ == 2;
-	my ($self, $name) = @_;
-	
-	# Croak if this pattern is not named:
-	croak("This pattern was not told to capture anything!")
-		unless defined $self->{name};
-	
-	# Croak if this pattern has a different name (shouldn't happen, but let's
-	# be gentle to our users):
-	croak("This pattern is named $self->{name}, not $name.")
-		unless $self->{name} eq $name;
-	
-	# Be sure to propogate calling context. Note that these return an empty
-	# list or an undefined value in their respective contexts if not items
-	# matched 
-	return ($self->get_details) if wantarray;	# list context
-	return $self->get_details;					# scalar context
-}
-
-=head2 get_details
-
-Returns the match details for the current pattern, as described under
-C<get_details_for>. The difference between this method and the previous one is
-that (1) if this pattern was not named, it simply returns the undefined value
-rather than croaking and (2) this method will not search sub-patterns for
-container patterns such as C<re_and>, C<re_or>, and C<re_seq> since it has no
-name with which to search.
-
-=cut
-
-# This returns the details stored by this pattern. Note that this does not
-# croak as it assumes you know what you're doing calling this method
-# directly.
-sub get_details {
-	croak('Scrooge::get_details is a method that takes no arguments')
-		unless @_ == 1;
-	my ($self) = @_;
-	
-	# Return undef or the empty list if nothing matched
-	return unless defined $self->{final_details};
-	
-	# Return the collection of match details in list context
-	return @{$self->{final_details}} if wantarray;
-	
-	# Return the first match details in scalar context
-	return $self->{final_details}->[0];
-}
+sub clear_stored_match { }
 
 # THE magic value that indicates this module compiled correctly:
 1;
