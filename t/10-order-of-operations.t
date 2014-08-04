@@ -1,12 +1,11 @@
 # The documentation guarantees the order of operations for certain functions
 # as well as guaranteeing that certain functions will not be called if
-# _prep returns zero. This checks those guarantees by creating test regex
+# prep returns zero. This checks those guarantees by creating test pattern
 # classes that track the behavior.
 
-use PDL;
 use strict;
 use warnings;
-use Test::More tests => 15;
+use Test::More tests => 6;
 use Scrooge;
 use Data::Dumper;
 
@@ -28,224 +27,172 @@ else {
 }
 
 
-#######################################################################
-#                        Constructor Tests - 2                        #
-#######################################################################
-
+####################################
 package Scrooge::Test::Tracker::New;
-our @ISA = ('Scrooge');
-Tracker::track({_apply => '1', _prep => '1', _init => '1', _cleanup => '1'},
-	qw(new _to_stash apply is_prepping prep min_size max_size is_applying
-			store_match clear_stored_match is_cleaning cleanup)
+####################################
+@Scrooge::Test::Tracker::New::ISA = ('Scrooge');
+use Test::More;
+Tracker::track({apply => '1', prep => '1', init => '1', cleanup => '1'},
+	qw(new match clear_stored_match)
 );
 
-my $regex = Scrooge::Test::Tracker::New->new();
-# Ensure the class was properly created:
-isa_ok($regex, 'Scrooge::Test::Tracker::New')
-	or diag($regex);
+subtest __PACKAGE__, sub {
+	# Build
+	my $pattern = new_ok (__PACKAGE__);
 
-# The call order for new should look like this:
-my $expected = [
-	new => [
-		_init => [],
-	],
-];
-our @call_structure;
-is_deeply(\@call_structure, $expected, 'New calls _init');
+	# The call order for new should look like this:
+	my $expected = [
+		new => [
+			init => [],
+		],
+	];
+	our @call_structure;
+	is_deeply(\@call_structure, $expected, 'New calls init');
+};
 
-#######################################################################
-#                         Successful Prep - 4                         #
-#######################################################################
 
+#########################################
 package Scrooge::Test::Tracker::Override;
-our @ISA = ('Scrooge');
+#########################################
+# This makes it very easy to change the behavior of the pattern: I simply
+# change the subref associated with the packge variable.
+use Test::More;
+@Scrooge::Test::Tracker::Override::ISA = ('Scrooge');
 Tracker::track(
 	{
-		_apply		=> q{ our $apply_returns->() },
-		_cleanup	=> q{ our $cleanup_returns -> () },
-		_prep		=> q{ our $prep_returns->() },
-		_init		=> q{ $self->min_size(1); $self->max_size(1) },
+		apply    => q{ our $apply_returns->() },
+		cleanup  => q{ our $cleanup_returns->() },
+		prep     => q{ our $prep_returns->() },
+		init     => q{ $self->{min_size} = 1; $self->{max_size} = 1 },
 	},
-	qw(new _to_stash apply is_prepping prep is_applying min_size max_size
-			store_match clear_stored_match is_cleaning cleanup)
+	qw(new match clear_stored_match)
 );
 
 our $prep_returns = sub {1};
 our $apply_returns = sub {1};
 our $cleanup_returns = sub {1};
-
-$regex = Scrooge::Test::Tracker::Override->new;
-our @call_structure = ();
-
-my $data = sequence(50);
-$@ = '';
-my ($length, $offset) = eval{$regex->apply($data)};
-is($@, '', 'Regex does not croak on simple regex');
-is($length, 1, 'Matched length should be 1');
-is($offset, 0, 'Matched offset should be 0');
-
-# For the basic application ($regex->{data} not defined), the call order
-# should look like this:
-$expected = [
-	apply => [
-		is_prepping		=> [],
-		prep			=> [ _prep => [] ],
-		is_applying		=> [],
-		min_size		=> [],
-		max_size		=> [],
-		_apply			=> [],
-		store_match		=> [],
-		is_cleaning		=> [],
-		cleanup			=> [ _cleanup => [] ],
-	]
-];
+my $pattern = Scrooge::Test::Tracker::Override->new;
+my $data = [1 .. 50];
 
 
-is_deeply(\@call_structure, $expected, 'Basic call order agrees with expectations');
+##################################
+my $test_name = 'Successful Prep';
+##################################
 
-#######################################################################
-#                           Failed Prep - 4                           #
-#######################################################################
+subtest $test_name => sub {
+	plan tests => 3;
+	
+	# Clear out the call structure
+	our @call_structure = ();
+	
+	$@ = '';
+	my $length = eval{$pattern->match($data)};
+	is($@, '', 'does not croak on simple pattern');
+	is($length, 1, 'matched length agrees with min/max size (1)');
+	
+	# For the basic application, the call order should look like this:
+	my $expected = [
+		match => [
+			prep			=> [],
+			apply			=> [],
+			cleanup			=> [],
+		]
+	];
+	
+	is_deeply(\@call_structure, $expected, 'Basic call order agrees with expectations');
+};
 
-@call_structure = ();
-$prep_returns = sub {0};
-$expected = [
-	apply => [
-		is_prepping		=> [],
-		prep			=> [ _prep => [] ],
-		is_cleaning		=> [],
-		cleanup			=> [ _cleanup => [] ],
-	]
-];
 
-($length, $offset) = eval{$regex->apply($data)};
-is($@, '', 'Regex does not croak on failed prep');
-is($length, undef, 'Matched length should be undef for failed prep');
-is($offset, undef, 'Matched offset should be undef for failed prep');
+###########################
+$test_name = 'Failed Prep';
+###########################
 
-is_deeply(\@call_structure, $expected, 'Failed prep agrees with expectations')
-	or diag(Dumper(\@call_structure));
+subtest $test_name => sub {
+	plan tests => 3;
+	
+	our @call_structure = ();
+	$prep_returns = sub {0};
+	my $expected = [
+		match => [
+			prep			=> [],
+			cleanup			=> [],
+		]
+	];
 
-#######################################################################
-#                          Croaking Prep - 1                          #
-#######################################################################
+	my $length = eval{$pattern->match($data)};
+	is($@, '', 'pattern does not croak');
+	is($length, undef, 'matched length is not defined');
+	is_deeply(\@call_structure, $expected,
+		'function call order agrees with expectations')
+		or diag(Dumper(\@call_structure));
+};
 
+
+#############################
+$test_name = 'Croaking Prep';
+#############################
 # Note: croaking functions are notated with a dash
 
-@call_structure = ();
-$prep_returns = sub {die 'test'};
-$expected = [
-	-apply => [
-		is_prepping		=> [],
-		-prep			=> [ -_prep => [] ],
-		is_cleaning		=> [],
-		cleanup			=> [ _cleanup => [] ],
-	]
-];
+do {
+	our @call_structure = ();
+	$prep_returns = sub {die 'test'};
+	my $expected = [
+		-match => [
+			-prep			=> [],
+			cleanup			=> [],
+		]
+	];
 
-eval{$regex->apply($data)};
-is_deeply(\@call_structure, $expected, 'Croaking prep agrees with expectations')
-	or diag(Dumper(\@call_structure));
+	eval{$pattern->match($data)};
+	is_deeply(\@call_structure, $expected, 'cleanup follows croaking prep')
+		or diag(Dumper(\@call_structure));
+	
+	# Reset the prep function so it does not die
+	$prep_returns = sub {1};
+};
 
-$prep_returns = sub {1};
 
-########################################################################
-#                          Croaking Apply - 1                          #
-########################################################################
+##############################
+$test_name = 'Croaking Apply';
+##############################
 
-@call_structure = ();
-$apply_returns = sub {die 'test'};
-$expected = [
-	-apply => [
-		is_prepping		=> [],
-		prep			=> [ _prep => [] ],
-		is_applying		=> [],
-		min_size		=> [],
-		max_size		=> [],
-		-_apply			=> [],
-		is_cleaning		=> [],
-		cleanup			=> [ _cleanup => [] ],
-	]
-];
+do {
+	our @call_structure = ();
+	$apply_returns = sub {die 'test'};
+	my $expected = [
+		-match => [
+			prep    => [],
+			-apply  => [],
+			cleanup => [],
+		]
+	];
 
-eval{$regex->apply($data)};
-is_deeply(\@call_structure, $expected, 'Croaking apply agrees with expectations')
-	or diag(Dumper(\@call_structure));
+	eval{$pattern->match($data)};
+	is_deeply(\@call_structure, $expected, 'cleanup follows croaking apply')
+		or diag(Dumper(\@call_structure));
+	
+	# Reset the apply function so it works as expected
+	$apply_returns = sub {1};
+};
 
-$apply_returns = sub {1};
+################################
+$test_name = 'Croaking Cleanup';
+################################
 
-########################################################################
-#                         Croaking Cleanup - 1                         #
-########################################################################
+do {
+	our @call_structure = ();
+	$cleanup_returns = sub { die 'test' };
+	my $expected = [
+		-match => [
+			prep     => [],
+			apply    => [],
+			-cleanup => [],
+		]
+	];
 
-@call_structure = ();
-$cleanup_returns = sub { die 'test' };
-$expected = [
-	-apply => [
-		is_prepping		=> [],
-		prep			=> [ _prep => [] ],
-		is_applying		=> [],
-		min_size		=> [],
-		max_size		=> [],
-		_apply			=> [],
-		store_match		=> [],
-		is_cleaning		=> [],
-		-cleanup			=> [ -_cleanup => [] ],
-	]
-];
+	eval{$pattern->match($data)};
+	is_deeply(\@call_structure, $expected, 'croaking cleanup... croaks')
+		or diag(Dumper(\@call_structure));
 
-eval{$regex->apply($data)};
-is_deeply(\@call_structure, $expected, 'Croaking cleanup agrees with expectations')
-	or diag(Dumper(\@call_structure));
-
-$cleanup_returns = sub {1};
-
-#########################################################################
-#                     Croaking Prep and Cleanup - 1                     #
-#########################################################################
-
-@call_structure = ();
-$cleanup_returns = sub { die 'test' };
-$prep_returns = sub {die 'test'};
-$expected = [
-	-apply => [
-		is_prepping		=> [],
-		-prep			=> [ -_prep => [] ],
-		is_cleaning		=> [],
-		-cleanup			=> [ -_cleanup => [] ],
-	]
-];
-
-eval{$regex->apply($data)};
-is_deeply(\@call_structure, $expected, 'Croaking prep and cleanup agrees with expectations')
-	or diag(Dumper(\@call_structure));
-
-$cleanup_returns = sub {1};
-$prep_returns = sub {1};
-
-########################################################################
-#                    Croaking Apply and Cleanup - 1                    #
-########################################################################
-
-@call_structure = ();
-$apply_returns = sub { die 'test' };
-$cleanup_returns = sub { die 'test' };
-$expected = [
-	-apply => [
-		is_prepping		=> [],
-		prep			=> [ _prep => [] ],
-		is_applying		=> [],
-		min_size		=> [],
-		max_size		=> [],
-		-_apply			=> [],
-		is_cleaning		=> [],
-		-cleanup			=> [ -_cleanup => [] ],
-	]
-];
-
-eval{$regex->apply($data)};
-is_deeply(\@call_structure, $expected, 'Croaking apply and cleanup agrees with expectations')
-	or diag(Dumper(\@call_structure));
-
-$apply_returns = sub { 1 };
-$cleanup_returns = sub { 1 };
+	$cleanup_returns = sub {1};
+}
