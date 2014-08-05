@@ -246,14 +246,17 @@ The details are stored via the C<store_match> method. In addition to the
 key/value pairs returned by C<apply>, the left and right offsets of the match
 are stored under the keys C<left> and C<right>.
 
-=head2 cleanup ($self, $match_info)
+=head2 cleanup ($self, $top_match_info, $match_info)
 
 The overridable method C<cleanup> allows you to declutter the C<$match_info>
 hashref and clean up any resources at the end of a match. For example, during
 the C<prep> stage, some of Scrooge's patterns actually construct small,
 optimized subrefs that get called by reference during the match process.
 These subrefs get removed during C<cleanup> so they do not show up in the
-final, returned hash.
+final, returned hash. The default behavior includes functionality for putting
+the match info for this pattern in the top-level match info under the
+pattern's name, if it exists. This makes it easie to look up information
+about the match.
 
 C<cleanup> may be called many times, so be sure your code does not cause
 trouble on multiple invocations. (Note that deleting non-existent keys from
@@ -261,8 +264,25 @@ a Perl hash is just fine, because Perl is cool like that.)
 
 =cut
 
-# Default _cleanup does nothing
-sub cleanup { }
+# Default cleanup simply ensures its info gets added under its name (if
+# named) to the top match info hash
+sub cleanup {
+	my ($self, $top_match_info, $my_match_info) = @_;
+	return unless exists $self->{name};
+	
+	# Don't clean more than once.
+	return if $my_match_info->{cleaned}++;
+	
+	# Store ourself in top_match_info, unless the top_match is us (it'll be
+	# handled by the match function itself)
+	return if $top_match_info == $my_match_info;
+	
+	# Add our match info to the top match info under $name. I don't need to
+	# weaken since $top_match_info is "exploded" as it is returned
+	my $name = $self->{name};
+	$top_match_info->{$name} ||= [];
+	push @{$top_match_info->{$name}}, $my_match_info;
+}
 
 =head1 DEEP METHODS
 
@@ -298,38 +318,6 @@ sub new {
 	$self->init;
 	
 	return $self;
-}
-
-=head2 add_name_to ($hashref)
-
-This method is called called during the initialization stage of grouping
-patterns. It takes the given anonymous hash and, if it is named, adds itself
-under its name to the hash. This is used to build a quick look-up table for
-pattern names, which is handy both for retrieval of results after a successful
-match and for ensuring that named patterns do not clash when building complex
-patterns.
-
-If you are writing a new grouping pattern, in addition to adding your own name,
-you should check for and add all of your childrens' names. (This behavior is
-handled for you by L</Scrooge::Grouped>.) Note that if your pattern's name
-is already taken, you should croak with a meaningful message, like
-
- croak("Found multiple patterns named $name.");
-
-=cut
-
-sub add_name_to {
-	croak('Scrooge::add_name_to is a one-argument method')
-		unless @_ == 2;
-	my ($self, $hashref) = @_;
-	return unless exists $self->{name};
-	
-	my $name = $self->{name};
-	# check if the name exists:
-	croak("Found multiple patterns named $name")
-		if exists $hashref->{$name} and $hashref->{$name} != $self;
-	# Add self to the hashref under $name:
-	$hashref->{$name} = $self;
 }
 
 =head2 get_bracketed_name_string

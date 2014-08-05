@@ -652,7 +652,7 @@ sub match {
 	push @croak_messages, $@ if $@ ne '';
 	
 	# Run cleanup, backing up any error messages:
-	eval { $self->cleanup(\%match_info) };
+	eval { $self->cleanup(\%match_info, \%match_info) };
 	push @croak_messages, $@ if $@ ne '';
 	
 	# Croak if there was an exception during prep or cleanup:
@@ -668,7 +668,8 @@ sub match {
 		# final match condition
 		$match_info{length} = $consumed + 0;
 		$match_info{right} = $match_info{left} + $consumed - 1;
-		return %match_info;
+		my @name_kv = ($self->{name} => \%match_info) if $self->{name};
+		return %match_info, @name_kv;
 	}
 	# Otherwise return an empty list:
 	return;

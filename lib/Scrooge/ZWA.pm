@@ -141,7 +141,8 @@ The cleanup for Scrooge::ZWA removes the subref under C<zwa_position_subref>.
 =cut
 
 sub cleanup {
-	my ($self, $match_info) = @_;
+	my ($self, $top_match_info, $my_match_info) = @_;
+	$self->SUPER::cleanup($top_match_info, $my_match_info);
 	delete $match_info->{zwa_position_subref};
 }
 

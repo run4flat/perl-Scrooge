@@ -89,28 +89,6 @@ sub init {
 	return $self;
 }
 
-=item add_name_to ($hashref)
-
-This method is called by grouping methods on their enclosed patterns during
-the initialization stage. If a grouping pattern is a child of a larger
-grouping pattern, it needs to ensure that both its own name and its chilren's
-names are added to the given hash, hence this overload.
-
-=cut
-
-# This is only called by patterns that *hold* this one, in the process of
-# building their own name tables. Add this and all children to the hashref.
-sub add_name_to {
-	my ($self, $hashref) = @_;
-	# Go through each named value in this group's collection of names:
-	while( my ($name, $ref) = each %{$self->{names}}) {
-		croak("Found multiple patterns named $name")
-			if defined $hashref->{$name} and $hashref->{$name} != $ref;
-		
-		$hashref->{$name} = $ref;
-	}
-}
-
 =item prep
 
 The C<prep> method calls C<prep> on all the children patterns (via the
@@ -125,10 +103,7 @@ is larger than the data's length. Otherwise, this method returns true.
 
 =cut
 
-# The prep_all method returns the list of successful child patterns and their data
-# cache keys. Success or failure is based upon the inherited method
-# _prep_success.
-
+# Success or failure is based upon the overrideable method prep_success.
 sub prep {
 	my ($self, $match_info) = @_;
 	
@@ -186,13 +161,16 @@ rethrown in agregate.
 =cut
 
 sub cleanup {
-	my ($self, $match_info) = @_;
+	my ($self, $top_match_info, $match_info) = @_;
+	
+	# Call our own cleanup (handling named matching)
+	$self->SUPER::cleanup($top_match_info, $match_info);
 	
 	# Call the cleanup method for all successfully prepped child patterns
 	my @errors;
 	for my $pattern_info (@{$match_info->{infos_to_apply}}) {
 		my $pattern = delete $pattern_info->{_pattern};
-		eval { $pattern->cleanup($pattern_info) };
+		eval { $pattern->cleanup($top_match_info, $pattern_info) };
 		push @errors, $@ if $@ ne '';
 	}
 	
