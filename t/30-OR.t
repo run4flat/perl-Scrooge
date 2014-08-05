@@ -1,6 +1,6 @@
 use strict;
 use warnings;
-use Test::More tests => 7;
+use Test::More tests => 8;
 use Scrooge;
 
 # Load the basics module:
@@ -26,6 +26,7 @@ my $even = Scrooge::Test::Even->new(name => 'even');
 my $exact = Scrooge::Test::Exactly->new(name => 'exact');
 my $range = Scrooge::Test::Range->new(name => 'range');
 my $offset = Scrooge::Test::Exactly::Offset->new(name => 'offset');
+my $zwa = Scrooge::Test::OffsetZWA->new(name => 'zwa');
 
 #####################
 # Constructor tests #
@@ -73,7 +74,7 @@ subtest 'Croaking patterns' => sub {
 
 subtest 'Wrapping re_or around a single pattern' => sub {
 	my @keys_to_compare = qw(left right length);
-	for my $pattern ($fail, $all, $even, $exact, $range, $offset) {
+	for my $pattern ($fail, $all, $even, $exact, $range, $offset, $zwa) {
 		my %got = re_or($pattern)->match($data);
 		%got = map {$_ => $got{$_}} @keys_to_compare;
 		my %expected = $pattern->match($data);
@@ -131,6 +132,23 @@ subtest 're_or for many patterns that match' => sub {
 	ok(not (exists $match_info{even}), 'No match info for even')
 		or diag explain \%match_info;
 	ok(not (exists $match_info{range}), 'No match info for range')
+		or diag explain \%match_info;
+};
+
+subtest 're_or where zero-width-assertion should win' => sub {
+	$offset->{offset} = 5;
+	$zwa->{offset} = 3;
+	my %match_info = re_or($fail, $zwa, $offset)->match($data);
+	if(ok(exists($match_info{zwa}), 'matches against the zwa pattern')) {
+		is($match_info{left}, 3, 'offset');
+		is($match_info{length}, 0, 'length');
+	}
+	else {
+		diag explain \%match_info;
+	}
+	ok(not (exists $match_info{fail}), 'No match info for fail')
+		or diag explain \%match_info;
+	ok(not (exists $match_info{offset}), 'No match info for offset')
 		or diag explain \%match_info;
 };
 
