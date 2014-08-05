@@ -126,6 +126,7 @@ sub init {
 
 sub prep {
 	my ($self, $match_info) = @_;
+	return 0 unless $self->SUPER::prep($match_info);
 	$match_info->{min_size} = $match_info->{max_size} = $self->{N};
 	1;
 }
@@ -160,6 +161,7 @@ sub init {
 
 sub prep {
 	my ($self, $match_info) = @_;
+	return 0 unless $self->SUPER::prep($match_info);
 	$match_info->{min_size} = $self->{min_size};
 	$match_info->{max_size} = $self->{max_size};
 	1;
@@ -222,6 +224,7 @@ sub init {
 
 sub prep {
 	my ($self, $match_info) = @_;
+	return 0 unless $self->SUPER::prep($match_info);
 	$match_info->{min_size} = 0;
 	$match_info->{max_size} = 0;
 	1;
@@ -247,6 +250,7 @@ our @ISA = qw(Scrooge);
 
 sub prep {
 	my ($self, $match_info) = @_;
+	return 0 unless $self->SUPER::prep($match_info);
 	$match_info->{min_size} = 0;
 	$match_info->{max_size} = 0;
 }

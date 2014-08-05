@@ -73,6 +73,9 @@ returns subroutine that will give you a meaningful answer.
 sub prep {
 	my ($self, $match_info) = @_;
 	
+	# Bail out if inherited method fails
+	return 0 unless $self->SUPER::prep($match_info);
+	
 	# Create a position assertion that always matches if no position was
 	# specified.
 	if (not exists $self->{position}) {

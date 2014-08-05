@@ -122,6 +122,9 @@ the return value is 1, you should proceed with your own C<prep> work.
 sub prep {
 	my ($self, $match_info) = @_;
 	
+	# Bail out if inherited method fails
+	return 0 unless $self->SUPER::prep($match_info);
+	
 	# Compute and store the numeric values for the min and max quantifiers:
 	my $N = $match_info->{data_length};
 	my ($min_size, $max_size);

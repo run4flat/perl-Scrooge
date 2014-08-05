@@ -1,4 +1,4 @@
-# This tests the naming/capturing of patternes
+# This tests the naming/capturing of patterns
 
 use strict;
 use warnings;

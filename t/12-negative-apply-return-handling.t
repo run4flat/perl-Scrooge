@@ -23,6 +23,7 @@ my ($apply_returns, $data, $min_size, $max_size);
 my @got;
 sub prep {
 	my ($self, $match_info) = @_;
+	return 0 unless $self->SUPER::prep($match_info);
 	$match_info->{min_size} = $min_size;
 	$match_info->{max_size} = $max_size;
 	@got = ();

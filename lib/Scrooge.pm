@@ -66,20 +66,11 @@ sub match {
 		croak('Scrooge::match expects either a data argument or key/value data pairs');
 	}
 	
-	# Get the data's length and verify that the container is a known type
-	my $N = data_length($data);
-	croak('Could not get length of the supplied data')
-		if not defined $N or $N eq '';
-	
 	# Create the match info hash with some basic info already set:
-	my %match_info = (
-		data => $data, min_size => 1, max_size => $N, data_length => $N
-	);
+	my %match_info = (data => $data);
 	
-	# Prepare the pattern for execution. This may involve computing low and
-	# high quantifier limits, keeping track of $data, stashing
-	# intermediate data if this is a nested pattern, and many other things.
-	# The actual prep method can fail, so look out for that.
+	# Prepare the pattern for execution. The actual prep method can fail, so
+	# look out for that.
 	my (@croak_messages, $prep_results);
 	eval {
 		$prep_results = $self->prep(\%match_info);
@@ -101,6 +92,7 @@ sub match {
 	
 	my $min_diff = $match_info{min_size} - 1;
 	my $max_diff = $match_info{max_size} - 1;
+	my $N = $match_info{data_length};
 
 	# Left and right offsets, maximal right offset, and number of consumed
 	# elements:
@@ -175,8 +167,61 @@ sub match {
 	return;
 }
 
-# Default prep simply returns true, meaning a successful prep:
-sub prep { return 1 }
+# I broke this into its own method so that early exits work in a way that is
+# well understood: return statements.
+sub prep_on_key {
+	my ($self, $match_info) = @_;
+	
+	my $key = $self->{on_key};
+	# No on_key? No problem!
+	return 1 unless defined $key;
+	
+	my $data = $match_info->{data};
+	
+	# Cannot work if the data is not a hashref. Fail in that case.
+	return 0 unless ref($data) eq ref({});
+	
+	# String, which simply gives the key: look for it
+	if (ref($key) eq '') {
+		return 0 unless exists $data->{$key};
+		$match_info->{data} = $data->{$key};
+		return 1;
+	}
+	
+	# Regex, which we run against the list of keys in the dataset
+	if (ref($key) eq ref(qr//)) {
+		for my $k (sort keys %$data) {
+			if ($k =~ $key) {
+				$match_info->{data} = $data->{$k};
+				return 1;
+			}
+		}
+		return 0;
+	}
+	
+	# Neither string nor regex: croak
+	croak("Unknown on_key type " . ref($key) . "; expected scalar or qr//");
+}
+
+# Default prep handles the on_key option
+sub prep {
+	my ($self, $match_info) = @_;
+	
+	# check for on_key handling.
+	return 0 unless $self->prep_on_key($match_info);
+	
+	# Get the data's length and verify that the container is a known type
+	my $N = data_length($match_info->{data});
+	croak('Could not get length of the supplied data')
+		if not defined $N or $N eq '';
+	
+	# Set up the default min, max, and length information
+	$match_info->{min_size} = 1;
+	$match_info->{max_size} = $N;
+	$match_info->{data_length} = $N;
+	
+	return 1;
+}
 
 # Default cleanup simply ensures its info gets added under its name (if
 # named) to the top match info hash
@@ -542,6 +587,12 @@ for most uses, you should not need to call this directly.
 This method croaks if, after the class name, there is not an even number of 
 remaining arguments since it blesses the hash of key/value pairs into the
 supplied class.
+
+It is possible to supply a hashref to a pattern, and have the pattern
+work on a given element of that hashref. You do this by supplying the
+C<on_key> key/value pair to the constructor. Then, when the pattern is run
+on the data, it will check that the data is a hashref and use the data
+under the specified key instead of the bare hashref.
 
 
 =head2 re_any

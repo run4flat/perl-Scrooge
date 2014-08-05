@@ -62,12 +62,17 @@ Tracker::track(
 	{
 		apply    => q{ our $apply_returns->() },
 		cleanup  => q{ our $cleanup_returns->() },
-		prep     => q{ our $prep_returns->() },
+		prep     => q{ our $_prep_returns->($self, @_) },
 		init     => q{ $self->{min_size} = 1; $self->{max_size} = 1 },
 	},
 	qw(new match)
 );
 
+our $_prep_returns = sub {
+	my ($self, $match_info) = @_;
+	return 0 unless $self->Scrooge::prep($match_info);
+	return our $prep_returns->()
+};
 our $prep_returns = sub {1};
 our $apply_returns = sub {1};
 our $cleanup_returns = sub {1};
