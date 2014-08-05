@@ -324,7 +324,7 @@ sub apply {
 			
 			# Save the results and return if we have a good match:
 			if ($consumed) {
-				push @{$match_info->{positive_matches}}, $info;
+				$match_info->{positive_matches} = [$info];
 				$info->{length} = $consumed + 0;
 				$info->{right} = $left + $consumed - 1;
 				return $consumed;
