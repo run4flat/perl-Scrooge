@@ -162,11 +162,16 @@ sub cleanup {
 	# Call our own cleanup (handling named matching)
 	$self->SUPER::cleanup($top_match_info, $match_info);
 	
-	# Call the cleanup method for all successfully prepped child patterns
+	# Differentiate between successful matches (which might store results
+	# in top_match_info under their name) and failed matches (which won't)
+	my %top_match_info_for = map { $_ => $top_match_info }
+		@{$match_info->{positive_matches}};
+	# Call the cleanup method for all successfully prepped child patterns,
+	# holding off on dieing until the very end
 	my @errors;
-	for my $pattern_info (@{$match_info->{infos_to_apply}}) {
-		my $pattern = delete $pattern_info->{_pattern};
-		eval { $pattern->cleanup($top_match_info, $pattern_info) };
+	for my $info (@{$match_info->{infos_to_apply}}) {
+		my $pattern = delete $info->{_pattern};
+		eval { $pattern->cleanup($top_match_info_for{$info}, $info) };
 		push @errors, $@ if $@ ne '';
 	}
 	

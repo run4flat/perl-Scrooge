@@ -232,12 +232,11 @@ sub cleanup {
 	my ($self, $top_match_info, $my_match_info) = @_;
 	return unless exists $self->{name};
 	
-	# Don't clean more than once.
-	return if $my_match_info->{cleaned}++;
+	# We're not supposed to set up our name if there is no top match
+	return if not defined $top_match_info;
 	
-	# Store ourself in top_match_info, unless the top_match is us (it'll be
-	# handled by the match function itself)
-	return if $top_match_info == $my_match_info;
+	# Don't set up names more than once.
+	return if $my_match_info->{cleaned}++;
 	
 	# Add our match info to the top match info under $name. I don't need to
 	# weaken since $top_match_info properly unlinks this informaton before
