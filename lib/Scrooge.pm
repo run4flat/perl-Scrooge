@@ -162,7 +162,8 @@ sub match {
 		# final match condition
 		$match_info{length} = $consumed + 0;
 		$match_info{right} = $match_info{left} + $consumed - 1;
-		my @name_kv = ($self->{name} => \%match_info) if $self->{name};
+		my @name_kv = ($self->{name}, delete $match_info{$self->{name}})
+			if $self->{name};
 		return %match_info, @name_kv;
 	}
 	# Otherwise return an empty list:
@@ -239,7 +240,8 @@ sub cleanup {
 	return if $top_match_info == $my_match_info;
 	
 	# Add our match info to the top match info under $name. I don't need to
-	# weaken since $top_match_info is "exploded" as it is returned
+	# weaken since $top_match_info properly unlinks this informaton before
+	# returning the results
 	my $name = $self->{name};
 	$top_match_info->{$name} ||= [];
 	push @{$top_match_info->{$name}}, $my_match_info;

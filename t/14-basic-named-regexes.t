@@ -32,8 +32,8 @@ subtest 'Named pattern' => sub {
 		pass('pattern matched as expected');
 		ok(exists($match_results{test_name}),
 			'pattern name is a key in the match results');
-		is($match_results{test_name}{left}, $test_offset, 'correct left offset');
-		is($match_results{test_name}{right}, $match_results{left} + $N_to_match - 1
+		is($match_results{test_name}[0]{left}, $test_offset, 'correct left offset');
+		is($match_results{test_name}[0]{right}, $match_results{left} + $N_to_match - 1
 			, 'correct right offset');
 	}
 	else {
