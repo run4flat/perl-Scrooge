@@ -66,6 +66,8 @@ call this class's C<_init> method to handle the quantifier parsing for you.
 use Scalar::Util qw(looks_like_number);
 sub init {
 	my $self = shift;
+	$self->SUPER::init;
+	
 	# Parse the quantifiers:
 	my ($ref) = delete $self->{quantifiers};
 	

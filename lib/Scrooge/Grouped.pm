@@ -69,6 +69,8 @@ error:
 
 sub init {
 	my $self = shift;
+	$self->SUPER::init;
+	
 	croak("Grouped patterns must supply a key [patterns] with an array of patterns")
 		unless exists $self->{patterns} and ref($self->{patterns}) eq ref([]);
 	

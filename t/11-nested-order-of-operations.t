@@ -47,6 +47,7 @@ sub init {
 	my $self = shift;
 	$self->{min_size} = 1;
 	$self->{max_size} = 1;
+	$self->SUPER::init;
 }
 
 my $pattern = __PACKAGE__->new;

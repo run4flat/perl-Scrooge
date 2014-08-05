@@ -35,6 +35,7 @@ valid value: a scalar or a two-element array.
 
 sub init {
 	my $self = shift;
+	$self->SUPER::init;
 	
 	# No position is ok
 	return if not exists $self->{position};
