@@ -1,81 +1,68 @@
 # Make sure that re_sub works as advertised.
 use strict;
 use warnings;
-use Test::More tests => 8;
+use Test::More tests => 4;
 use Scrooge;
-use PDL;
 
-my $data = sequence(20);
+my $data = [-10 .. 20];
 
 ##################################
 # Basic subroutines for matching #
 ##################################
 
 my $match_all_subref = sub {
-	my (undef, $left, $right) = @_;
+	my ($match_info) = @_;
 	# Match all values:
-	return $right - $left + 1;
+	return $match_info->{length};
 };
 
-my $match_positive = re_sub(sub {
-	# Supplied args are the piddle, the left slice offset,
-	# and the right slice offset:
-	my ($piddle, $left, $right) = @_;
+my $match_positive = sub {
+	# Supplied args are the piddle and the match_info hash
+	my ($match_info) = @_;
 	
-	# Ensure that the first element is positive:
-	return 0 unless all $piddle->slice($left) > 0;
-	
-	my $sub_piddle = $piddle->slice("$left:$right");
-	# See if there are any negative values at all:
-	if (any $sub_piddle <= 0) {
-		# Get the list of the first coordinates of the switches:
-		my ($switches) = whichND($sub_piddle < 0);
-		# Find the first zero crossing:
-		my $switch_offset = $switches->min;
-		# The offset of the first zero crossing
-		# corresponds with the number of matched values
-		return $switch_offset;
+	# Find the number of positive elements starting from left
+	my $data = $match_info->{data};
+	my ($left, $length) = ($match_info->{left}, $match_info->{length});
+	for (my $i = 0; $i < $length; $i++) {
+		# If this offset is zero, then the previous entry was the last
+		# positive number. The length of that sequence is equal to this
+		# offset, $i.
+		return $i if $data->[$i + $left] <= 0;
 	}
+	return $length;
+};
+
+
+subtest 'Explicit Constructor' => sub {
+	my $explicit = new_ok 'Scrooge::Sub',
+		[quantifiers => [1,1], subref => $match_all_subref];
 	
-	# If no negative values, then the whole thing matches:
-	return $right - $left + 1;
-});
+	my %match_info = $explicit->match($data);
+	is($match_info{length}, 1, 'length');
+	is($match_info{left}, 0, 'offset');
+};
 
+subtest 're_sub, no quantifiers' => sub {
+	my $simple = eval {re_sub($match_all_subref)};
+	is($@, '', 're_sub does not croak');
+	isa_ok($simple, 'Scrooge::Sub');
+	
+	my %match_info = $simple->match($data);
+	is($match_info{length}, 1, 'length');
+	is($match_info{left}, 0, 'offset');
+};
 
-# ---( Explicit Constructor: 4 )---
+subtest 're_sub, quantifiers, nontrivial match function' => sub {
+	my $pattern = re_sub([1 => '100%'], $match_positive);
+	
+	my %match_info = $pattern->match($data);
+	is($match_info{length}, 20, 'length');
+	is($match_info{left}, 11, 'offset');
+};
 
-# Check that the explicit constructor works:
-$@ = '';
-my $explicit = eval {Scrooge::Sub->new(quantifiers => [1,1], subref => $match_all_subref)};
-is ($@, '', 'Scrooge::Sub::->new does not croak');
-isa_ok($explicit, 'Scrooge::Sub');
-my ($matched, $offset) = $explicit->apply($data);
-is($matched, 1, 'Properly interprets single-element quantifier and runs subref');
-is($offset, 0, 'Correctly identified first element as matching');
-
-# ---( Simple Constructor, No Quantifiers: 4 )---
-
-# Make sure the simple constructor works and uses quantifiers [1,1]
-$@ = '';
-my $simple = eval {re_sub($match_all_subref)};
-is($@, '', 're_sub does not croak');
-isa_ok($simple, 'Scrooge::Sub');
-($matched, $offset) = $simple->apply($data);
-is($matched, 1, 'Simple constructor defaults to a single-element match');
-is($offset, 0, 'Simple constructor correctly identified first element as matching');
-
-# ---( Simple Constructor, quantifiers: N )---
-
-# working here
-
-# ---( Simple Constructor, named: N )---
-
-# working here
-
-# ---( Simple Constructor, named and quantified: N )---
-
-# working here
-
-# ---( Positivity Match: N )---
-
-# working here
+subtest 're_sub, impossible quantifiers, nontrivial match function' => sub {
+	my $pattern = re_sub([21 => '100%'], $match_positive);
+	
+	my %match_info = $pattern->match($data);
+	is_deeply(\%match_info, {}, 'fails due to quantifiers');
+};
