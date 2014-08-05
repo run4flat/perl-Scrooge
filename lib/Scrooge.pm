@@ -6,6 +6,7 @@ use Carp;
 use Exporter;
 use Scalar::Util;
 use Scrooge::Quantified;
+use Scrooge::Grouped;
 
 our @ISA = qw(Exporter);
 

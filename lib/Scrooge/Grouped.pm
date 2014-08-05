@@ -75,15 +75,9 @@ sub init {
 	croak("You must give me at least one pattern in your group")
 		unless @{$self->{patterns}} > 0;
 	
-	# Create the list of names, starting with self's name. Adding self
-	# simplifies the logic later.
-	$self->{names} = {};
-	$self->{names}->{$self->{name}} = $self if defined $self->{name};
-	
-	# Check each of the child patterns and add their names:
+	# Check each of the child patterns
 	for my $pattern (@{$self->{patterns}}) {
 		croak("Invalid pattern") unless $pattern->$_isa('Scrooge');
-		$pattern->add_name_to($self->{names});
 	}
 	
 	return $self;
@@ -140,7 +134,7 @@ sub prep {
 	
 	# Check those values for sanity:
 	return 0 if $match_info->{max_size} < $match_info->{min_size}
-			or $match_info->{min_size} > $match_info->{data_size};
+			or $match_info->{min_size} > $match_info->{data_length};
 	
 	# Create the empty match array, onto which we'll push child pattern
 	# info hashes that match
@@ -378,7 +372,7 @@ sub minmax {
 	my ($full_min, $full_max);
 	
 	# Compute the min as the greatest minimum, and max as the least maximum:
-	for my $info (@{$match_info->{infos_to_apply}) {
+	for my $info (@{$match_info->{infos_to_apply}}) {
 		my $min = $info->{min_size};
 		my $max = $info->{max_size};
 		$full_min = $min if not defined $full_min or $full_min < $min;
@@ -415,7 +409,7 @@ sub apply {
 	my ($self, $match_info) = @_;
 	my $left = $match_info->{left};
 	my $consumed_length = $match_info->{length};
-	my @infos = @{$match_info->{infos_to_apply};
+	my @infos = @{$match_info->{infos_to_apply}};
 	for (my $i = 0; $i < @infos; $i++) {
 		# Set up this info's match parameters
 		my $info = $infos[$i];
@@ -466,7 +460,8 @@ sub apply {
 			return 0 if $consumed_length < $match_info->{min_size};
 			
 			# Adjust the right offset and start over:
-			$right = $consumed_length + $left - 1;
+			$match_info->{right} = $consumed_length + $left - 1;
+			$match_info->{length} = $consumed_length;
 			$i = 0;
 			redo;
 		}
@@ -513,11 +508,9 @@ sub minmax {
 	my ($full_min, $full_max);
 	
 	# Compute the min as the greatest minimum, and max as the least maximum:
-	for my $info (@{$match_info->{infos_to_apply}) {
-		my $min = $info->{min_size};
-		my $max = $info->{max_size};
-		$full_min += $patterns[$i]->min_size;
-		$full_max += $patterns[$i]->max_size;
+	for my $info (@{$match_info->{infos_to_apply}}) {
+		$full_min += $info->{min_size};
+		$full_max += $info->{max_size};
 	}
 	$match_info->{min_size} = $full_min;
 	$match_info->{max_size} = $full_max;
