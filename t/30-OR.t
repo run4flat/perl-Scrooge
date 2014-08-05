@@ -1,6 +1,6 @@
 use strict;
 use warnings;
-use Test::More tests => 5;
+use Test::More tests => 7;
 use Scrooge;
 
 # Load the basics module:
@@ -110,40 +110,48 @@ subtest 're_or for two patterns that will fail and one that will succeed' => sub
 		or diag explain \%match_info;
 };
 
-__END__
+subtest 're_or for many patterns that match' => sub {
 	$exact->{N} = 15;
-	@results = re_or($fail, $exact, $even, $range)->match($data);
-	is_deeply(\@results, [15, 0], 'Second complex pattern should match against the exact pattern');
-	my $first_result_ref = $exact->get_details;
-	my %first_result_hash = %$first_result_ref;
-	my ($left, $right) = @first_result_hash{'left', 'right'};
-	isnt($left, undef, '    Exact has match info');
-	is($left, 0, '    Exact has proper left offset');
-	is($right, 14, '    Exact has proper right offset');
-	is_deeply([$fail->get_details], [], '    Fail does not have match info');
-	is_deeply([$even->get_details], [], '    Even does not have match info');
-	is_deeply([$range->get_details], [], '    Range does not have match info');
-
-	@results = re_or($even, $exact, $range)->match($data);
-	is_deeply(\@results, [20, 0], 'Third complex pattern should match against the even pattern');
-	my %even_results_hash = %{ $even->get_details };
-	($left, $right) = @even_results_hash{'left', 'right'};
-	isnt($left, undef, '    Even has match info');
-	is($left, 0, '    Even has proper left offset');
-	is($right, 19, '    Even has proper right offset');
-	is_deeply([$exact->get_details], [], '    Exact does not have match info');
-	is_deeply([$range->get_details], [], '    Range does not have match info');
-
-	$range->min_size(10);
-	$range->max_size(18);
-	@results = re_or($fail, $range, $even, $exact)->match($data);
-	is_deeply(\@results, [18, 0], 'Fourth complex pattern should match against the range pattern');
-	my %range_results_hash = %{ $range->get_details };
-	($left, $right) = @range_results_hash{'left', 'right'};
-	isnt($left, undef, '    Range has match info');
-	is($left, 0, '    Range has proper left offset');
-	is($right, 17, '    Range has proper right offset');
-	is_deeply([$fail->get_details], [], '    Fail does not have match info');
-	is_deeply([$even->get_details], [], '    Even does not have match info');
-	is_deeply([$exact->get_details], [], '    Exact does not have match info');
+	my %match_info = re_or($fail, $exact, $even, $range)->match($data);
+	if(ok(exists($match_info{exact}), 'matches against the Exact pattern')) {
+		is($match_info{left}, 0, 'offset');
+		is($match_info{exact}[0]{left}, 0, 'subpattern offset via name');
+		is($match_info{positive_matches}[0]{left}, 0,
+			'subpattern offset via positive_matches');
+		is($match_info{length}, 15, 'length');
+		is($match_info{exact}[0]{length}, 15, 'subpattern length via name');
+		is($match_info{positive_matches}[0]{length}, 15,
+			'subpattern length via positive_matches');
+	}
+	else {
+		diag explain \%match_info;
+	}
+	ok(not (exists $match_info{fail}), 'No match info for fail')
+		or diag explain \%match_info;
+	ok(not (exists $match_info{even}), 'No match info for even')
+		or diag explain \%match_info;
+	ok(not (exists $match_info{range}), 'No match info for range')
+		or diag explain \%match_info;
 };
+
+subtest 're_or for many patterns that match' => sub {
+	my %match_info = re_or($even, $exact, $range)->match($data);
+	if(ok(exists($match_info{even}), 'matches against the even pattern')) {
+		is($match_info{left}, 0, 'offset');
+		is($match_info{even}[0]{left}, 0, 'subpattern offset via name');
+		is($match_info{positive_matches}[0]{left}, 0,
+			'subpattern offset via positive_matches');
+		is($match_info{length}, 20, 'length');
+		is($match_info{even}[0]{length}, 20, 'subpattern length via name');
+		is($match_info{positive_matches}[0]{length}, 20,
+			'subpattern length via positive_matches');
+	}
+	else {
+		diag explain \%match_info;
+	}
+	ok(not (exists $match_info{exact}), 'No match info for exact')
+		or diag explain \%match_info;
+	ok(not (exists $match_info{range}), 'No match info for range')
+		or diag explain \%match_info;
+};
+
