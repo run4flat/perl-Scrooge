@@ -14,22 +14,32 @@ positions at which it should match, although you are not required to specify
 match B<positions> to use this class.
 
 Besides setting the min and max allowed size to zero during the prep stage,
-this class also overrides C<prep> and C<apply>
-so that its basic behavior is sensible and useful. During the C<prep> stage,
-if there is a C<position> key, it creates a subroutine cached under the key
-C<zwa_position_subref> that evaluates the position assertion codified by the
-one or two values asssociated with the C<position> key and returns boolean
-values indicating matching or failing to match the position.
+this class also overrides C<prep> and C<apply> so that its basic behavior is
+sensible and useful. During the C<prep> stage, if there is a C<position>
+key, it creates a subroutine in the match_info cached under the key
+C<zwa_position_subref>. This subroutine evaluates the position assertion
+codified by the one or two values asssociated with the C<position> key and
+returns boolean values indicating matching or failing to match the position.
 
 For a discussion of the strings allowed in positional asertions, see
-L</re_zwa_position>.
+L<Scrooge/parse_position>.
+
+The position key can be associated either with a single position (scalar) or
+a two-element array ref, each being position strings. If a single position
+is given, then this assertion will only match at the given position. If a
+pair of positions is given, then this assertion will match at any location
+between the first and second positions. If the second position ends up
+being "in front of" the first position, the assertion never matches. This
+is allowed and will not issue an error or warning.
 
 =over
 
 =item init
 
-This method ensures that the position key, if suppplied, is associated with a
-valid value: a scalar or a two-element array.
+This method ensures that the position key, if suppplied, is associated with
+a valid value: a scalar or a two-element array. The position string is
+parsed for validity during initialization, so you'll know about any errors
+before actually applying the pattern.
 
 =cut
 
@@ -55,32 +65,30 @@ sub init {
 
 =item prep
 
-Scrooge::ZWA provides a C<prep> method that examines the value associated
-with the C<position> key for the data in question. If that value is a scalar
-then the exact positiion indicated by that scalar must match. If that value is
-an anonymous array with two values, the two values indicate a range of positions
-at which the assertion can match. Either way, if there is such a C<position> key
-with values as described, the C<prep> method will store an anonymous
-subroutine under C<zwa_position_subref> that returns a true or false value
-indicating whether the position is matched. Note that the subroutine accepts
-no arguments; it closes over the match_info hashref, so it can retrieve the
-match position directly, without needing to have arguments passed.
-C<zwa_position_subref> will always be associated with a usable subref: if
-there is no C<position> key, the returned subroutine simply always returns a
-true value. Thus, if you derive a class from C<Scrooge::ZWA>, running
-C<< $self->SUPER::prep >> will ensure that C<< $match_info->{zwa_position_subref} >>
-returns subroutine that will give you a meaningful answer.
+Scrooge::ZWA provides a C<prep> method that converts the value(s) in the
+C<position> key to hard offset numbers, based on the length of provided data.
+It prepares an optimized subref that is able to quickly evaluate whether the
+current positiong satisfies the position constraints, and if no C<position>
+is given the subref simply returns true. Thus, if you derive a class from
+C<Scrooge::ZWA>, running C<< $self->SUPER::prep >> will ensure that
+C<< $match_info->{zwa_position_subref} >> returns subroutine that will give
+you a meaningful answer.
+
+If you ever need to call that subref (during apply, presumably), you should
+be aware that the subroutine does not expect any arguments; it closes over
+the match_info hashref so it can retrieve the match position directly,
+without needing to have arguments passed.
 
 =cut
 
-# Prepares the zero-width assertion; parses the position strings and constructs
-# an anonymous subroutine that gets evaluated against the current left/right
-# position.
 sub prep {
 	my ($self, $match_info) = @_;
 	
 	# Bail out if inherited method fails
 	return 0 unless $self->SUPER::prep($match_info);
+	
+	# Set the min and max size both to zero
+	$match_info->{min_size} = $match_info->{max_size} = 0;
 	
 	# Create a position assertion that always matches if no position was
 	# specified.
@@ -100,9 +108,9 @@ sub prep {
 		return 0 if $match_offset < 0 or $match_offset > $data_length;
 		
 		# Set the match function:
-		$self->zwa_position_subref(sub {
-			return $match_info->{left} == $match_offset;
-		});
+		$match_info->{zwa_position_subref} = sub {
+			return $match_info->{left} == $match_offset ? '0 but true' : 0;
+		};
 		return 1;
 	}
 	# Check if they specified a start and finish position
@@ -118,10 +126,11 @@ sub prep {
 		return 0 if $left_offset > $right_offset;
 		
 		# Otherwise, set up the position match function
-		$self->zwa_position_subref(sub {
+		$match_info->{zwa_position_subref} = sub {
 			my $position = $match_info->{left};
-			return $left_offset <= $position and $position <= $right_offset;
-		});
+			return $left_offset <= $position and $position <= $right_offset
+				? '0 but true' : 0;
+		};
 		return 1;
 	}
 	
@@ -131,10 +140,10 @@ sub prep {
 
 =item apply
 
-The default C<apply> for Scrooge::ZWA simply applies the subroutine associated
-with C<zwa_position_subref>, which asserts the positional
-request codified under the key C<position>. If there is no such key/value pair,
-then any position matches.
+The default C<apply> for Scrooge::ZWA simply applies the subroutine
+associated with C<zwa_position_subref>, which asserts the positional request
+codified under the key C<position>. If there is no such key/value pair, then
+any position matches, making this something of a no-op.
 
 =cut
 
@@ -152,7 +161,7 @@ The cleanup for Scrooge::ZWA removes the subref under C<zwa_position_subref>.
 sub cleanup {
 	my ($self, $top_match_info, $my_match_info) = @_;
 	$self->SUPER::cleanup($top_match_info, $my_match_info);
-	delete $match_info->{zwa_position_subref};
+	delete $my_match_info->{zwa_position_subref};
 }
 
 =back
@@ -197,15 +206,18 @@ sub init {
 =item apply
 
 The C<apply> method of Scrooge::ZWA::Sub proceeds in two stages. First it
-evaluates the positional subroutine, returning false if the position does
-not match the position spec. Recall that the position subroutine will return
-a true value if there was no position spec. At any rate, if the position
-subroutine returns true, C<apply> evaluates the subroutine under the 
-C<subref> key, passing along the C<$match_info>.
+evaluates the positional subroutine. If the current position does not match
+the position spec, it return immediately and does not even call your
+function. (Recall that the position subroutine will return a true value if
+there was no position spec.) C<apply> then evaluates the subroutine under
+the  C<subref> key, passing along the C<$match_info> hashref.
 
-The subroutine associated with C<subref> must return a value that evaluates
-to zero in numeric context, either the string C<'0 but true'> for a successful
-match or the numeric value 0 on a failed one.
+The subroutine associated with C<subref> B<must> return a value that
+evaluates to zero in numeric context, either the string C<'0 but true'> for
+a successful match or the numeric value 0 on a failed one. We're not messing
+around with this: failure to comply results in a runtime exception stating
+
+  Zero-width assertion did not consume zero elements
 
 =cut
 
