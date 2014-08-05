@@ -45,6 +45,11 @@ sub init {
 	# Two-element position is ok
 	croak('Scrooge::ZWA optional position key must be associated with a scalar or two-element array')
 		unless ref($self->{position}) eq ref([]) and @{$self->{position}} == 2;
+	
+	# Be sure that the position(s) parse
+	my @pos = ref($self->{position}) eq ref([]) ? @{$self->{position}}
+		: ($self->{position});
+	Scrooge::parse_position(1, $_) foreach (@pos);
 }
 
 =item prep
@@ -88,7 +93,7 @@ sub prep {
 	
 	# Check if they specified an exact position
 	if (ref($position) eq ref('scalar')) {
-		my $match_offset = parse_position($data_length, $position);
+		my $match_offset = Scrooge::parse_position($data_length, $position);
 		
 		# Fail the prep if the position cannot match
 		return 0 if $match_offset < 0 or $match_offset > $data_length;
@@ -104,8 +109,8 @@ sub prep {
 		my ($left_string, $right_string) = @$position;
 		
 		# Parse the left and right offsets
-		my $left_offset = parse_position($data_length, $left_string);
-		my $right_offset = parse_position($data_length, $right_string);
+		my $left_offset = Scrooge::parse_position($data_length, $left_string);
+		my $right_offset = Scrooge::parse_position($data_length, $right_string);
 		
 		# If the left offset is to the right of the right offset, it can never
 		# match so return a value of zero for the prep
@@ -147,63 +152,6 @@ sub cleanup {
 	my ($self, $top_match_info, $my_match_info) = @_;
 	$self->SUPER::cleanup($top_match_info, $my_match_info);
 	delete $match_info->{zwa_position_subref};
-}
-
-=back
-
-Scrooge::ZWA also provides a useful utility for parsing positions:
-
-=over
-
-=item parse_position
-
-C<Scrooge::ZWA::parse_position> takes a max index and a position string
-and evaluates the position. The allowed strings are documented under
-L</re_zwa_position>.
-
-=cut
-
-# Parses a position string and return an offset for a given piece of data.
-use Scalar::Util qw(looks_like_number);
-sub parse_position{
-	my ($max_index, $position_string) = @_;
-	
-	# Create the percentage scale
-	my $pct = $max_index/100;
-	
-	my $original_position_string = $position_string;
-	my $position;
-	
-	# Strip edge whitespace
-	$position_string =~ s/^\s+//;
-	$position_string =~ s/\s+$//;
-	
-	# Return zero for empty strings
-	return 0 if $position_string eq '';
-	
-	if ($position_string =~ s/^\[(.*)\]/$1/s) {
-		# Handle truncation
-		my $to_truncate = parse_position($max_index, $position_string);
-		$position = 0 if $position < 0;
-		$position = $max_index if $position > $max_index;
-	}
-	elsif ($position_string =~ s/^([+\-]?\d+(\.\d*)?)%//) {
-		# Handle percentage strings
-		my $pct = $1 * $max_index / 100;
-		$position = parse_position($max_index, $position_string) + $pct;
-	}
-	elsif (not looks_like_number($position_string)) {
-		croak"parse_position expected a number but got $original_position_string");
-	}
-	
-	# handle negative offsets
-	$position += $max_index if $position < 0;
-	
-	# Round the result if it's not an integer
-	return int($position + 0.5) if $position != int($position);
-	
-	# otherwise just return the position
-	return $position;
 }
 
 =back
@@ -262,11 +210,6 @@ match or the numeric value 0 on a failed one.
 
 sub apply {
 	my ($self, $match_info) = @_;
-	unless ($match_info->{right} < $match_info->{right}) {
-		my $name = $self->get_bracketed_name_string;
-		croak("Internal error in calling re_zwa pattern$name: $match_info->{right} is not "
-			. "less that $match_info->{right}");
-	}
 	
 	# Make sure the position matches the specification (and if they didn't
 	# indicate a position, it will always match)

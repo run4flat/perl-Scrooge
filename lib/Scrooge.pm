@@ -276,6 +276,67 @@ sub data_length {
 }
 
 
+# Parses a position string and return an offset for a given piece of data.
+sub parse_position {
+	my ($max_index, $position_string, $stop_at_closing_bracket) = @_;
+	
+	# Return zero for empty strings (and, incidentially, the number 0)
+	return 0 unless $position_string;
+	
+	# Copy so we can modify the string
+	my $original_position_string = $position_string;
+	
+	# check for malformed input before removing whitespace
+	croak("Found whitespace between two numbers without an operator "
+		. "in position string $original_position_string")
+		if $position_string =~ /[%\d\]]\s+[\d\[]/;
+	
+	# Remove all whitespace
+	$position_string =~ s/\s+//g;
+	
+	# This will be our final position number. Start off at the natural
+	# position.
+	my $position = 0;
+	
+	ROUND: while($position_string ne '') {
+		my $dp;
+		$stop_at_closing_bracket = 'found' and last ROUND
+			if $position_string =~ s/^\]// and $stop_at_closing_bracket;
+		if ($position_string =~ s/^\[//) {
+			# parse the interior, which strips off the final square bracket
+			($dp, $position_string)
+				= parse_position($max_index, $position_string, 1);
+			# truncate
+			$dp = 0 if $dp < 0; # thus, this will never get adjusted below
+			$dp = $max_index if $dp > $max_index;
+		}
+		elsif ($position_string =~ s/^([+\-]?\d+(\.\d*)?)%//) {
+			# percentage strings
+			$dp = $1 * $max_index / 100;
+		}
+		elsif ($position_string =~ s/^([+\-]?\d+(\.\d*)?)//) {
+			# bare number
+			$dp = $1;
+		}
+		else {
+			croak("Invalid position string $original_position_string");
+		}
+		$position += $dp;
+	}
+	
+	# Indicate we didn't find the closing bracket
+	croak("Did not find closing bracket in position string $original_position_string")
+		if $stop_at_closing_bracket and $stop_at_closing_bracket ne 'found';
+	
+	# Round the result if it's not an integer
+	$position = int($position + 0.5) if $position != int($position);
+	
+	# Return the result. If we are parsing a truncation, also return the
+	# clipped position string.
+	return ($position, $position_string) if $stop_at_closing_bracket;
+	return $position;
+}
+
 
 ############################
 # Short-named constructors #
@@ -1093,6 +1154,12 @@ C<Scrooge::data_length($object)> to get the length of C<$object>.
 
 This is the only requirement that Scrooge has if you wish to use your class as
 a container for Scrooge patterns.
+
+=head2 Scrooge::parse_position ($max_offset, $position_string)
+
+C<Scrooge::parse_position> is a utility function that takes a max index and
+a position string and evaluates the position. The allowed strings are
+documented under L</re_zwa_position>.
 
 =head1 TODO
 

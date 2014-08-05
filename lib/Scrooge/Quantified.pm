@@ -68,34 +68,15 @@ sub init {
 	my $self = shift;
 	# Parse the quantifiers:
 	my ($ref) = delete $self->{quantifiers};
+	
 	# Make sure the caller supplied a quantifiers key and that it's correct:
 	croak("Quantifiers must be specified with a defined value associated with key [quantifiers]")
 		unless defined $ref;
 	croak("Quantifiers must be supplied as a two-element anonymous array")
 		unless (ref($ref) eq ref([]) and @$ref == 2);
 	
-	# Check that indices are integers and percentages are between 0 and 100
-	foreach (@$ref) {
-		if (/%/) {
-			# make sure percentage is at the end:
-			croak("Looks like a mal-formed percentage quantifier: [$_]")
-				unless (/%$/);
-			# Copy the quantifier string and strip out the percentage:
-			my $to_check = $_;
-			chop $to_check;
-			# Make sure it's a number between 0 and 100:
-			croak("Percentage quantifier must be a number; I got [$_]")
-				unless looks_like_number($to_check);
-			croak("Percentage quantifier must be >= 0; I got [$_]")
-				if $to_check < 0;
-			croak("Percentage quantifier must be <= 100; I got [$_]")
-				if $to_check > 100;
-		}
-		# Check that non-percentage quantifiers are strictly integers:
-		elsif ($_ !~ /^[+\-]?\d+$/) {
-			croak("Non-percentage quantifiers must be integers; I got [$_]");
-		}
-	}
+	# Be sure that the quantifiers parse
+	Scrooge::parse_position(1, $_) foreach (@$ref);
 	
 	# Put the quantifiers in self:
 	$self->{min_quant} = $ref->[0];
@@ -127,38 +108,13 @@ sub prep {
 	
 	# Compute and store the numeric values for the min and max quantifiers:
 	my $N = $match_info->{data_length};
-	my ($min_size, $max_size);
-	my $min_quant = $self->{min_quant};
-	my $max_quant = $self->{max_quant};
 	
-	if ($min_quant =~ s/%$//) {
-		$min_size = int(($N - 1) * ($min_quant / 100.0));
-	}
-	elsif ($min_quant < 0) {
-		$min_size = int($N + $min_quant);
-		# Set to a reasonable value if min_quant was too negative:
-		$min_size = 0 if $min_size < 0;
-	}
-	else {
-		$min_size = int($min_quant);
-		# Stop now if the min size is too large:
-		return 0 if $min_size > $N;
-	}
-	if ($max_quant =~ s/%$//) {
-		$max_size = int(($N - 1) * ($max_quant / 100.0));
-	}
-	elsif ($max_quant < 0) {
-		$max_size = int($N + $max_quant);
-		# Stop now if the max quantifier was too negative:
-		return 0 if $max_size < 0;
-	}
-	else {
-		$max_size = int($max_quant);
-		# Set to a reasonable value if max_quant was too large:
-		$max_size = $N if $max_size > $N;
-	}
+	my $min_size = Scrooge::parse_position($N, $self->{min_quant});
+	my $max_size = Scrooge::parse_position($N, $self->{max_quant});
 	
-	# One final sanity check:
+	# Evaluate the null situations
+	return 0 if $min_size > $N;
+	return 0 if $max_size < 0;
 	return 0 if ($max_size < $min_size);
 	
 	# If we're good, store the sizes:
