@@ -17,7 +17,7 @@ my $match_all_subref = sub {
 };
 
 my $match_positive = sub {
-	# Supplied args are the piddle and the match_info hash
+	# called with the match_info hash
 	my ($match_info) = @_;
 	
 	# Find the number of positive elements starting from left
