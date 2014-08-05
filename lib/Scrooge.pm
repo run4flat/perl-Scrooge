@@ -118,7 +118,7 @@ sub match {
 				$match_info{length} = $r_off - $l_off + 1
 					|| '0 but true';
 				
-				$consumed = $self->apply(\%match_info);
+				$consumed = $self->apply(\%match_info) || 0;
 				my $allowed_length = $r_off - $l_off + 1;
 				if ($consumed > $allowed_length) {
 					my $class = ref($self);

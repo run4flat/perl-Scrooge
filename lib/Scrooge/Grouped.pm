@@ -301,7 +301,7 @@ sub apply {
 			$info->{length} = $r - $left + 1 || '0 but true';
 			
 			# Apply the pattern:
-			my $consumed = eval{ $pattern->apply($info) };
+			my $consumed = eval{ $pattern->apply($info) } || 0;
 			
 			# Check for exceptions:
 			if ($@ ne '') {
@@ -424,7 +424,7 @@ sub apply {
 		$info->{length} = $match_info->{length};
 		
 		# Figure out how much the pattern consumes
-		my $consumed = eval{ $info->{_pattern}->apply($info) };
+		my $consumed = eval{ $info->{_pattern}->apply($info) } || 0;
 		
 		# Croak problems if found:
 		if($@ ne '') {
@@ -621,7 +621,7 @@ sub seq_apply {
 		$info->{right} = $right;
 		$info->{length} = $size;
 		
-		my $consumed = eval{ $pattern->apply($info) };
+		my $consumed = eval{ $pattern->apply($info) } || 0;
 		
 		# If the pattern croaked, emit a death:
 		if ($@ ne '') {
@@ -676,7 +676,7 @@ sub seq_apply {
 		# Apply this pattern to this length:
 		$info->{right} = $left + $size - 1;
 		$info->{length} = $size;
-		$left_consumed = eval{ $pattern->apply($info) };
+		$left_consumed = eval{ $pattern->apply($info) } || 0;
 		# Croak immediately if we encountered a problem:
 		if ($@ ne '') {
 			my $i = scalar @{$match_info->{infos_to_apply}}

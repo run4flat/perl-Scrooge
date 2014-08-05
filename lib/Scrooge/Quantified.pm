@@ -195,8 +195,10 @@ pattern, you can still return extra match details though there's no point).
 
 sub apply {
 	my ($self, $match_info) = @_;
-	# Apply the rule and see what we get:
-	my $consumed = eval{$self->{subref}->($match_info)};
+	
+	# Apply the rule and see what we get, defaulting to a match length of
+	# 0 if nothing (or zero) is returned
+	my $consumed = eval{$self->{subref}->($match_info)} || 0;
 	
 	# handle any exceptions:
 	unless ($@ eq '') {
