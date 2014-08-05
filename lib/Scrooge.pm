@@ -301,8 +301,10 @@ sub parse_position {
 	
 	ROUND: while($position_string ne '') {
 		my $dp;
-		$stop_at_closing_bracket = 'found' and last ROUND
-			if $position_string =~ s/^\]// and $stop_at_closing_bracket;
+		if ($position_string =~ s/^\]// and $stop_at_closing_bracket) {
+			$stop_at_closing_bracket = 'found';
+			last ROUND;
+		}
 		if ($position_string =~ s/^\[//) {
 			# parse the interior, which strips off the final square bracket
 			($dp, $position_string)
