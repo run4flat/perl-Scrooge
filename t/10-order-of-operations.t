@@ -33,7 +33,7 @@ package Scrooge::Test::Tracker::New;
 @Scrooge::Test::Tracker::New::ISA = ('Scrooge');
 use Test::More;
 Tracker::track({apply => '1', prep => '1', init => '1', cleanup => '1'},
-	qw(new match clear_stored_match)
+	qw(new match)
 );
 
 subtest __PACKAGE__, sub {
@@ -65,7 +65,7 @@ Tracker::track(
 		prep     => q{ our $prep_returns->() },
 		init     => q{ $self->{min_size} = 1; $self->{max_size} = 1 },
 	},
-	qw(new match clear_stored_match)
+	qw(new match)
 );
 
 our $prep_returns = sub {1};

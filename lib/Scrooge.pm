@@ -674,16 +674,6 @@ sub match {
 	return;
 }
 
-=head2 clear_stored_match ($self, $match_info)
-
-This removes any internal information about a previously successful match.
-This should remove anything that won't get overwritten at the start of the
-next attempt (if any such attempt arises).
-
-=cut
-
-sub clear_stored_match { }
-
 # THE magic value that indicates this module compiled correctly:
 1;
 

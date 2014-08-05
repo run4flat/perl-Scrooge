@@ -209,53 +209,6 @@ sub cleanup {
 	delete $match_info->{infos_to_apply};
 }
 
-=item clear_stored_match
-
-This calls the C<clear_stored_match> method on all the children that
-reported successful matches, as well as this grouping pattern.
-
-=cut
-
-sub clear_stored_match {
-	my ($self, $match_info) = @_;
-	# Clear the group pattern's positive match results:
-	$self->SUPER::clear_stored_match($match_info);
-	
-	# Call all the positively matched patterns' clear function:
-	for my $pattern_info (@{$match_info->{positive_matches}}) {
-		my $pattern = $pattern_info->{_pattern};
-		$pattern->clear_stored_match($pattern_info);
-	}
-	
-	# Always return zero:
-	return 0;
-}
-
-=back
-
-In addition, Scrooge::Grouped provides many new overridable methods,
-including:
-
-=over
-
-=item prep_success
-
-The C<prep_success> method is an overridable method that is supposed to
-analyze the contents of the C<patterns> key in the group, and C<group_infos>
-key in the match info, to determine if the the group's prep was successful.
-'or' patterns will be happy if there is at least one pattern to apply, but
-'and' and 'seq' patterns will want all of their patterns to have succeeded.
-The base-class behavior follows the latter case and returns false unless
-there are as many patterns to apply as their are patterns in the group.
-
-=cut
-
-# The default success happens when we plan to apply *all* the patterns
-sub prep_success {
-	my ($self, $match_info) = @_;
-	return @{$self->{patterns}} == @{$match_info->{infos_to_apply}};
-}
-
 =back
 
 Finally, this class has a couple of requirements for derived classes.
