@@ -460,11 +460,7 @@ sub apply {
 		}
 		
 		# Return failure immediately:
-		if (not $consumed) {
-			# Clear the stored matches before failing:
-			$match_info->{positive_matches} = [];
-			return 0;
-		}
+		$match_info->{positive_matches} = [] and return 0 if not $consumed;
 		
 		# Croak if the pattern consumed more than it was given:
 		if ($consumed > $consumed_length) {

@@ -3,23 +3,6 @@ use warnings;
 
 package Scrooge;
 
-=head1 PROPERTIES
-
-Confession time: one of the most difficult aspects of Scrooge to implement was
-robust caching. I figured it out, but it was harder than I had anticipated.
-Cached calculations and match details are surprisingly easy to overwrite when
-you just store them in the hash underlying C<$self>:
-
- $self->{some_value} = $self->calculate_something($self->data);
-
-After a long struggle, and then a good while off, I realized that I could
-achieve what I wanted by using Perl's stack, coupled with a simple lexically
-scoped hashref. The hashref is specific to the set of data you're working
-with, so you are safe to assume that any values in the hashref have been
-computed specifically with respect to your current data. This has
-substantially reduced the number of lines as well as the complexity of the
-code involved in this implementation.
-
 =head1 AUTHOR METHODS
 
 This section documents the basic class structure of Scrooge for those interested
