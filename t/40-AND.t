@@ -1,7 +1,6 @@
 use strict;
 use warnings;
-use Test::More tests => 31;
-use PDL;
+use Test::More tests => 1;
 use Scrooge;
 
 # Load the basics module:
@@ -16,58 +15,61 @@ elsif (-f "t\\$module_name") {
 	require "t\\$module_name";
 }
 
-# Assemble the data and a collection of regexes:
-my $data = sequence(20);
-my $fail_re = Scrooge::Test::Fail->new(name => 'fail');
-my $should_croak_re = Scrooge::Test::ShouldCroak->new(name => 'should_croak');
-my $croak_re = Scrooge::Test::Croak->new(name => 'croak');
-my $all_re = Scrooge::Test::All->new(name => 'all');
-my $even_re = Scrooge::Test::Even->new(name => 'even');
-my $exact_re = Scrooge::Test::Exactly->new(name => 'exact');
-my $range_re = Scrooge::Test::Range->new(name => 'range');
-my $offset_re = Scrooge::Test::Exactly::Offset->new(name => 'offset');
+# Assemble the data and a collection of patterns:
+my $arr_len = 20;
+my $data = [1 .. $arr_len];
+my $fail_pat = Scrooge::Test::Fail->new(name => 'fail');
+my $should_croak_pat = Scrooge::Test::ShouldCroak->new(name => 'should_croak');
+my $croak_pat = Scrooge::Test::Croak->new(name => 'croak');
+my $all_pat = Scrooge::Test::All->new(name => 'all');
+my $even_pat = Scrooge::Test::Even->new(name => 'even');
+my $exact_pat = Scrooge::Test::Exactly->new(name => 'exact');
+my $range_pat = Scrooge::Test::Range->new(name => 'range');
+my $offset_pat = Scrooge::Test::Exactly::Offset->new(name => 'offset');
 
 
 ########################
 # Constructor tests: 6 #
 ########################
 
-my $regex = eval{re_and('test regex', $all_re, $even_re)};
-is($@, '', 'Basic constructor does not croak');
-isa_ok($regex, 'Scrooge::And');
-is($regex->{name}, 'test regex', 'Constructor correctly interprets name');
+subtest 'Constructor tests' => sub {
+	my $pattern = re_and('test pattern', $all_pat, $even_pat);
+	isa_ok($pattern, 'Scrooge::And');
+	is($pattern->{name}, 'test pattern', 're_and correctly sets up name');
+	
+	my %match_info = $pattern->match($data);
+	is($match_info{length}, 20, 'length');
+	is($match_info{left}, 0, 'offset');
+};
 
-my ($length, $offset) = eval{$regex->apply($data)};
-is($@, '', 'Basic usage does not croak');
-is($length, 20, '    Matched length is correct');
-is($offset, 0, '    Matched offset is correct');
+__END__
 
 
 #####################
-# Croaking regex: 6 #
+# Croaking pattern: 6 #
 #####################
 
-$regex = eval{re_and($should_croak_re)};
+$pattern = eval{re_and($should_croak_pat)};
 is($@, '', 'Constructor without name does not croak');
-isa_ok($regex, 'Scrooge::And');
-eval{$regex->apply($data)};
-isnt($@, '', 're_and croaks when one of the regexes consumes too much');
-eval{re_and($croak_re, $fail_re)->apply($data)};
+isa_ok($pattern, 'Scrooge::And');
+eval{$pattern->match($data)};
+isnt($@, '', 're_and croaks when one of the patterns consumes too much');
+eval{re_and($croak_pat, $fail_pat)->match($data)};
 isnt($@, '', 're_and croaks when one of its constituents croaks');
-eval{re_and($all_re, $croak_re)->apply($data)};
+eval{re_and($all_pat, $croak_pat)->match($data)};
 isnt($@, '', 're_and only short-circuits on failure');
-eval{re_and($fail_re, $croak_re, $all_re)->apply($data)};
+eval{re_and($fail_pat, $croak_pat, $all_pat)->match($data)};
 is($@, '', 're_and short-circuits at the first failed constituent');
 
 
 #####################
-# Wrapping regex: 6 #
+# Wrapping pattern: 6 #
 #####################
 
-for $regex ($fail_re, $all_re, $even_re, $exact_re, $range_re, $offset_re) {
-	my (@results) = re_and($regex)->apply($data);
-	my (@expected) = $regex->apply($data);
-	is_deeply(\@results, \@expected, 'Wrapping re_and does not alter behavior of ' . $regex->{name} . ' regex');
+for $pattern ($fail_pat, $all_pat, $even_pat, $exact_pat, $range_pat, $offset_pat) {
+	my (@results) = re_and($pattern)->match($data);
+	my (@expected) = $pattern->match($data);
+	is_deeply(\@results, \@expected, 'Wrapping re_and does not alter behavior of ' . $pattern->{name} . ' pattern');
 }
 
 
@@ -75,48 +77,48 @@ for $regex ($fail_re, $all_re, $even_re, $exact_re, $range_re, $offset_re) {
 # Failing: 2 #
 ##############
 
-if(re_and($fail_re, $all_re)->apply($data)) {
-	fail('re_and regex should fail when first constituent fails');
+if(re_and($fail_pat, $all_pat)->match($data)) {
+	fail('re_and pattern should fail when first constituent fails');
 }
 else {
-	pass('re_and regex correctly fails when first constituent fails');
+	pass('re_and pattern correctly fails when first constituent fails');
 }
-if(re_and($all_re, $fail_re)->apply($data)) {
-	fail('re_and regex should fail when last constituent fails');
+if(re_and($all_pat, $fail_pat)->match($data)) {
+	fail('re_and pattern should fail when last constituent fails');
 }
 else {
-	pass('re_and regex correctly fails when last constituent fails');
+	pass('re_and pattern correctly fails when last constituent fails');
 }
 
 #######################
-# Complex Regexes: 11 #
+# Complex patterns: 11 #
 #######################
 
-$exact_re->set_N(14);
-my @results = re_and($all_re, $exact_re, $even_re)->apply($data);
-is_deeply(\@results, [14, 0], 'First complex regex matches');
+$exact_pat->set_N(14);
+my @results = re_and($all_pat, $exact_pat, $even_pat)->match($data);
+is_deeply(\@results, [14, 0], 'First complex pattern matches');
 my $expected = {left => 0, right => 13};
-is_deeply($all_re->get_details, $expected, '    All regex has correct offsets');
-is_deeply($exact_re->get_details, $expected, '    Exact regex has correct offsets');
-is_deeply($even_re->get_details, $expected, '    Even regex has correct offset');
+is_deeply($all_pat->get_details, $expected, '    All pattern has correct offsets');
+is_deeply($exact_pat->get_details, $expected, '    Exact pattern has correct offsets');
+is_deeply($even_pat->get_details, $expected, '    Even pattern has correct offset');
 
-$offset_re->set_N(4);
-$offset_re->set_offset(4);
-$range_re->min_size(1);
-$range_re->max_size(10);
-@results = re_and($offset_re, $all_re, $range_re)->apply($data);
-is_deeply(\@results, [4, 4], 'Second complex regex matches');
+$offset_pat->set_N(4);
+$offset_pat->set_offset(4);
+$range_pat->min_size(1);
+$range_pat->max_size(10);
+@results = re_and($offset_pat, $all_pat, $range_pat)->match($data);
+is_deeply(\@results, [4, 4], 'Second complex pattern matches');
 $expected = {left => 4, right => 7};
-is_deeply($all_re->get_details, $expected, '    All regex has correct offsets');
-is_deeply($range_re->get_details, $expected, '    Range regex has correct offsets');
-is_deeply($offset_re->get_details, $expected, '    Offset regex has correct offsets');
+is_deeply($all_pat->get_details, $expected, '    All pattern has correct offsets');
+is_deeply($range_pat->get_details, $expected, '    Range pattern has correct offsets');
+is_deeply($offset_pat->get_details, $expected, '    Offset pattern has correct offsets');
 
 # This one should fail:
-$exact_re->set_N(5);
-@results = re_and($exact_re, $even_re)->apply($data);
-is_deeply(\@results, [], 'Third complex regex should fail');
+$exact_pat->set_N(5);
+@results = re_and($exact_pat, $even_pat)->match($data);
+is_deeply(\@results, [], 'Third complex pattern should fail');
 # These return nothing when they did not match; compare by capturing in an
 # anonymous array and comparing with an empty array:
-is_deeply([$exact_re->get_details], [], '    Exact regex does not have any offsets');
-is_deeply([$even_re->get_details], [], '    Even regex does not have any offsets');
+is_deeply([$exact_pat->get_details], [], '    Exact pattern does not have any offsets');
+is_deeply([$even_pat->get_details], [], '    Even pattern does not have any offsets');
 

@@ -87,14 +87,10 @@ sub init {
 
 =item prep
 
-The C<prep> method calls C<prep> on all the children patterns (via the
-C<prep_all> method). The patterns that do not give trouble are associated
-with the key C<group_infos> and success is determined by the
-result of the C<prep_success> method. The result of that last method will
-depend on the sort of grouping pattern: 'or' patterns will consider it a
-successful prep if any of the patterns were successful, but 'and' and
-'sequence' patterns will only be happy if all the patterns had successful
-preps. Of course, the prep could still fail if the accumulated minimum size
+The C<prep> method calls C<prep> on all the children patterns. The patterns
+that do not give trouble are associated with the key C<infos_to_apply> and
+success is determined by the result of the C<prep_success> method, discussed
+below. Of course, the prep could still fail if the accumulated minimum size
 is larger than the data's length. Otherwise, this method returns true.
 
 =cut
@@ -144,6 +140,20 @@ sub prep {
 	
 	# If we're here, then all went well, so return as much:
 	return 1;
+}
+
+=item prep_success
+
+This method, which is overridden in Scrooge::Or, dictates whether the set of
+successfully prepped child patterns is sufficient. The default behavior,
+only happy when all patterns had successful preps, is consistent with the
+expectations of 'and' and 'sequence' patterns.
+
+=cut
+
+sub prep_success {
+	my ($self, $match_info) = @_;
+	return @{$match_info->{infos_to_apply}} == @{$self->{patterns}};
 }
 
 =item cleanup
