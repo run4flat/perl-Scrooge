@@ -5,6 +5,7 @@ package Scrooge;
 use Carp;
 use Exporter;
 use Scalar::Util;
+use Scrooge::Quantified;
 
 our @ISA = qw(Exporter);
 
