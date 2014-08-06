@@ -518,7 +518,7 @@ sub apply {
 			if ($@ ne '') {
 				my $name = $self->get_bracketed_name_string;
 				my $subname = $subpattern->get_bracketed_name_string;
-				die "In re_or pattern$name, subpattern$subname failed:\n$@"; 
+				die "In Scrooge::Repeat pattern$name, subpattern$subname failed:\n$@"; 
 			}
 			
 			# Make sure that the pattern didn't consume more than it was supposed
@@ -553,13 +553,15 @@ sub apply {
 	# return zero.
 	return 0 if @{$match_info->{positive_matches}} < $self->{min_rep};
 	
-	# If we have zero repetitions, return true (presumably if we've reached
-	# here, then $self->{min_rep} is zero, so this is OK).
-	return '0 but true' if @{$match_info->{positive_matches}} == 0;
+	# Calculate the consumed length
+	my $consumed = 0;
+	$consumed = $match_info->{positive_matches}[-1]{right}
+		- $match_info->{left} + 1 if @{$match_info->{positive_matches}} > 0;
 	
-	# Calculate and return the total amount consumed
-	my $consumed = $match_info->{positive_matches}[-1]{right}
-		- $match_info->{left} + 1;
+	# Indicate failure if this match is too short
+	return 0 if $consumed < $match_info->{min_size};
+	
+	# return the total amount consumed
 	return $consumed || '0 but true';
 }
 

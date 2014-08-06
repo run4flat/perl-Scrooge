@@ -1,7 +1,7 @@
 # Tests Scrooge::Repeat
 use strict;
 use warnings;
-use Test::More tests => 3;
+use Test::More tests => 6;
 use Scrooge;
 
 # Load the basics module:
@@ -113,18 +113,16 @@ subtest 'Croaking patterns' => sub {
 	isnt($@, '', 're_rep croaks when its pattern croaks');
 };
 
-__END__
-
 ####################
 # Wrapping pattern #
 ####################
 
-subtest 'Wrapping re_and around a single pattern' => sub {
+subtest 'Wrapping re_rep around a single pattern' => sub {
 	my @keys_to_compare = qw(left right length);
 	for my $pattern ($fail_pat, $all_pat, $even_pat, $exact_pat, $range_pat,
 		$offset_pat, $zwa_pat
 	) {
-		my %got = re_seq($pattern)->match($data);
+		my %got = re_rep(1 => $pattern)->match($data);
 		%got = map {$_ => $got{$_}} @keys_to_compare;
 		my %expected = $pattern->match($data);
 		%expected = map {$_ => $expected{$_}} @keys_to_compare;
@@ -133,47 +131,63 @@ subtest 'Wrapping re_and around a single pattern' => sub {
 	}
 };
 
-####################
-# Complex patterns #
-####################
+################
+# Corner Cases #
+################
 
-subtest 'Assertion sandwich: two position anchors surrounding match-anything' => sub {
-	# Create two zero-width assertion patterns:
-	$zwa_pat->{offset} = 4;
-	my $at_ten = Scrooge::Test::OffsetZWA->new(name => 'at_ten', offset => 10);
-	if(my %match_info = re_seq($zwa_pat, $all_pat, $at_ten)->match($data)) {
-		is($match_info{length}, 6, 'length');
-		is($match_info{left}, 4, 'offset');
-		is($match_info{zwa}[0]{left}, 4, 'left zwa offset');
-		is($match_info{all}[0]{left}, 4, "`all' offset");
-		is($match_info{all}[0]{length}, 6, "`all' length");
-		is($match_info{at_ten}[0]{left}, 10, 'at_ten offset');
-	}
-	else {
-		fail('pattern did not match!');
-	}
+subtest 'Corner cases' => sub {
+	my $length = re_rep(2 => $exact_pat)->match($data);
+	is($length, 12, 'easy-to-fit repetitions');
+	
+	$length = re_rep(3 => $exact_pat)->match($data);
+	is($length, 18, 'close-to-edge repetitions');
+	
+	$length = re_rep(4 => $exact_pat)->match($data);
+	is($length, undef, 'too many repetitions');
+	
+	$length = re_rep([0, 24], 4 => $exact_pat)->match($data);
+	is($length, undef,'too many repetitions (even though commensurate with too many quantifiers)');
+	
+	$length = re_rep([15 => 19], [2 => 3] => $exact_pat)->match($data);
+	is($length, 18, 'close-to-edge repetitions/quantifiers');
+	
+	$length = re_rep([14 => 18], [2 => 3] => $exact_pat)->match($data);
+	is($length, 18, 'on-edge repetitions/quantifiers');
+	
+	$length = re_rep([13 => 17], [2 => 3] => $exact_pat)->match($data);
+	is($length, undef, 'incommensurate repetitions/quantifiers');
+	
+	$length = re_rep([12 => 16], {2,3} => $exact_pat)->match($data);
+	is($length, 12, 'on-edge repetitions/quantifiers');
+	
 };
 
-# Perform a match at three different segments with the same pattern and make
-# sure it stores all three:
-subtest 'Reusing patterns' => sub {
-	my $at_ten = Scrooge::Test::OffsetZWA->new(name => 'at_ten', offset => 10);
-	if(my %match_info
-		= re_seq($all_pat, $zwa_pat, $all_pat, $at_ten, $all_pat)->match($data)
-	) {
-		is($match_info{length}, 20, 'full match length');
-		is($match_info{left}, 0, 'full match offset');
-		
-		is($match_info{all}[0]{left}, 0, 'first all offset');
-		is($match_info{all}[1]{left}, 4, 'second all offset');
-		is($match_info{all}[2]{left}, 10, 'third all offset');
-		
-		is($match_info{all}[0]{length}, 4, 'first all length');
-		is($match_info{all}[1]{length}, 6, 'second all length');
-		is($match_info{all}[2]{length}, 10, 'third all length');
-	}
-	else {
-		fail('sequence did not match');
-	}
-};
+######################################################
+# Repeat a pattern that matches on different lengths #
+######################################################
 
+subtest 'Pattern that matches on different lengths' => sub {
+	my $data = [1, 1, 1, 2, 2, 3, 4, 4, 5, 5, 5];
+	
+	# This pattern finds series of identical values
+	my $pattern = re_sub( [1 => '100%'], sub {
+		my $match_info = shift;
+		my $left = $match_info->{left};
+		my $to_find = $data->[$left];
+		my $length = 1;
+		for my $offset ($left+1 .. $match_info->{right}) {
+			return $length if $data->[$offset] != $to_find;
+			$length++;
+		}
+		return $match_info->{length};
+	});
+	
+	# Apply it to our data
+	my %match_info = re_rep($pattern)->match($data);
+	is($match_info{length}, 11, 'full match length');
+	is($match_info{positive_matches}[0]{length}, 3, 'first match length');
+	is($match_info{positive_matches}[1]{length}, 2, 'second match length');
+	is($match_info{positive_matches}[2]{length}, 1, 'third match length');
+	is($match_info{positive_matches}[3]{length}, 2, 'fourth match length');
+	is($match_info{positive_matches}[4]{length}, 3, 'fifth match length');
+};
