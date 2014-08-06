@@ -93,7 +93,7 @@ sub prep {
 	# Create a position assertion that always matches if no position was
 	# specified.
 	if (not exists $self->{position}) {
-		$match_info->{zwa_position_subref} = sub { 1 };
+		$match_info->{zwa_position_subref} = sub { '0 but true' };
 		return 1;
 	}
 	
@@ -128,8 +128,8 @@ sub prep {
 		# Otherwise, set up the position match function
 		$match_info->{zwa_position_subref} = sub {
 			my $position = $match_info->{left};
-			return $left_offset <= $position and $position <= $right_offset
-				? '0 but true' : 0;
+			return ($left_offset <= $position && $position <= $right_offset
+				? '0 but true' : 0);
 		};
 		return 1;
 	}
