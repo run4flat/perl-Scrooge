@@ -1,7 +1,6 @@
 use strict;
 use warnings;
-use Test::More tests => 28;
-use PDL;
+use Test::More tests => 1;
 use Scrooge;
 
 # Load the basics module:
@@ -16,84 +15,96 @@ elsif (-f "t\\$module_name") {
 	require "t\\$module_name";
 }
 
-# Assemble the data and a collection of regexes:
-my $data = sequence(20);
-my $fail_re = Scrooge::Test::Fail->new(name => 'fail');
-my $should_croak_re = Scrooge::Test::ShouldCroak->new(name => 'should_croak');
-my $croak_re = Scrooge::Test::Croak->new(name => 'croak');
-my $all_re = Scrooge::Test::All->new(name => 'all');
-my $even_re = Scrooge::Test::Even->new(name => 'even');
-my $exact_re = Scrooge::Test::Exactly->new(name => 'exact');
-my $range_re = Scrooge::Test::Range->new(name => 'range');
-my $offset_re = Scrooge::Test::Exactly::Offset->new(name => 'offset');
-
-########################
-# Constructor tests: 6 #
-########################
-
-my $regex = eval{re_seq('test regex', $all_re, $even_re)};
-is($@, '', 'Basic constructor does not croak');
-isa_ok($regex, 'Scrooge::Sequence');
-is($regex->{name}, 'test regex', 'Constructor correctly interprets name');
-
-my ($length, $offset) = eval{$regex->apply($data)};
-is($@, '', 'Basic usage does not croak');
-is($length, 20, '    Matched length is correct');
-is($offset, 0, '    Matched offset is correct');
-
+# Assemble the data and a collection of patterns:
+my $data = [1 .. 20];
+my $fail_pat = Scrooge::Test::Fail->new(name => 'fail');
+my $should_croak_pat = Scrooge::Test::ShouldCroak->new(name => 'should_croak');
+my $croak_pat = Scrooge::Test::Croak->new(name => 'croak');
+my $all_pat = Scrooge::Test::All->new(name => 'all');
+my $even_pat = Scrooge::Test::Even->new(name => 'even');
+my $exact_pat = Scrooge::Test::Exactly->new(name => 'exact');
+my $range_pat = Scrooge::Test::Range->new(name => 'range');
+my $offset_pat = Scrooge::Test::Exactly::Offset->new(name => 'offset');
+my $zwa_pat = Scrooge::Test::OffsetZWA->new(name => 'zwa');
 
 #####################
-# Croaking regex: 7 #
+# Constructor tests #
 #####################
 
-$regex = eval{re_seq($should_croak_re)};
+subtest 'Basic constructors' => sub {
+	my $pattern = re_seq('test pattern', $all_pat, $even_pat);
+	isa_ok($pattern, 'Scrooge::Sequence');
+	is($pattern->{name}, 'test pattern', 're_seq correctly sets up name');
+	
+	my %match_info = $pattern->match($data);
+	
+	# Check full match details
+	is($match_info{length}, 20, 'full match length');
+	is($match_info{left}, 0, 'full match offset');
+	
+	# Check "all" match detauls
+	is($match_info{all}[0]{left}, 0, "`all' match offset");
+	is($match_info{all}[0]{length}, 18, "`all' match length");
+	
+	# Check "even" match details
+	is($match_info{even}[0]{left}, 18, "`even' match offset");
+	is($match_info{even}[0]{length}, 2, "`even' match length");
+};
+
+__END__
+
+#####################
+# Croaking pattern: 7 #
+#####################
+
+$pattern = eval{re_seq($should_croak_pat)};
 is($@, '', 'Constructor without name does not croak');
-isa_ok($regex, 'Scrooge::Sequence');
-eval{$regex->apply($data)};
-isnt($@, '', 're_seq croaks when the last regex consumes too much');
-eval{re_seq($should_croak_re, $all_re)->apply($data)};
-isnt($@, '', 're_seq croaks when one of the not-last regexes consumes too much');
-eval{re_seq($croak_re, $fail_re)->apply($data)};
+isa_ok($pattern, 'Scrooge::Sequence');
+eval{$pattern->match($data)};
+isnt($@, '', 're_seq croaks when the last pattern consumes too much');
+eval{re_seq($should_croak_pat, $all_pat)->match($data)};
+isnt($@, '', 're_seq croaks when one of the not-last patterns consumes too much');
+eval{re_seq($croak_pat, $fail_pat)->match($data)};
 isnt($@, '', 're_seq croaks when one of its constituents croaks');
-eval{re_seq($all_re, $croak_re)->apply($data)};
+eval{re_seq($all_pat, $croak_pat)->match($data)};
 isnt($@, '', 're_seq only short-circuits on failure');
-eval{re_seq($fail_re, $croak_re, $all_re)->apply($data)};
+eval{re_seq($fail_pat, $croak_pat, $all_pat)->match($data)};
 is($@, '', 're_seq short-circuits at the first failed constituent');
 
 
 #####################
-# Wrapping regex: 6 #
+# Wrapping pattern: 6 #
 #####################
 
-for $regex ($fail_re, $all_re, $even_re, $exact_re, $range_re, $offset_re) {
-	my (@results) = re_seq($regex)->apply($data);
-	my (@expected) = $regex->apply($data);
-	is_deeply(\@results, \@expected, 'Wrapping re_seq does not alter behavior of ' . $regex->{name} . ' regex');
+for $pattern ($fail_pat, $all_pat, $even_pat, $exact_pat, $range_pat, $offset_pat) {
+	my (@results) = re_seq($pattern)->match($data);
+	my (@expected) = $pattern->match($data);
+	is_deeply(\@results, \@expected, 'Wrapping re_seq does not alter behavior of ' . $pattern->{name} . ' pattern');
 }
 
 
 ######################
-# Complex Regexes: 9 #
+# Complex patterns: 9 #
 ######################
 
-# Create two zero-width assertion regexes:
-$offset_re->set_N('0 but true');
-$offset_re->set_offset(4);
+# Create two zero-width assertion patterns:
+$offset_pat->set_N('0 but true');
+$offset_pat->set_offset(4);
 # XXX cannot set N => '0 but true'. Why?
 my $at_ten = Scrooge::Test::Exactly::Offset->new(N => 1, offset => 10);
-($length, $offset) = re_seq($offset_re, $all_re, $at_ten)->apply($data);
-ok($length, 'First complex regex matches');
+($length, $offset) = re_seq($offset_pat, $all_pat, $at_ten)->match($data);
+ok($length, 'First complex pattern matches');
 is($length, 7, '    Length was correctly determined to be 6');
 is($offset, 4, '    Offset was correctly determined to be 4');
 my $expected = {left => 4, right => 9};
-is_deeply($all_re->get_details, $expected, '    All has correct offset information');
+is_deeply($all_pat->get_details, $expected, '    All has correct offset information');
 $expected = {left => 4, right => 3};
-is_deeply($offset_re->get_details, $expected, '    Offset has correct offset information');
+is_deeply($offset_pat->get_details, $expected, '    Offset has correct offset information');
 
-# Perform a match at three different segments with the same regex and make
+# Perform a match at three different segments with the same pattern and make
 # sure it stores all three:
-($length, $offset) = re_seq($all_re, $offset_re, $all_re, $at_ten, $all_re)->apply($data);
-ok($length, 'Second complex regex matches');
+($length, $offset) = re_seq($all_pat, $offset_pat, $all_pat, $at_ten, $all_pat)->match($data);
+ok($length, 'Second complex pattern matches');
 is($length, 20, '    Length was correctly determined to be 20');
 is($offset, 0, '    Offset was correctly determined to be 0');
 $expected = [
@@ -101,6 +112,6 @@ $expected = [
 	{left => 4, right => 9},
 	{left => 11, right => 19},
 ];
-my @results = $all_re->get_details;
-is_deeply(\@results, $expected, '    Single regex stores multiple matches correctly');
+my @results = $all_pat->get_details;
+is_deeply(\@results, $expected, '    Single pattern stores multiple matches correctly');
 
