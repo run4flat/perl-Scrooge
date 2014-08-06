@@ -1,4 +1,4 @@
-# Make sure that parse_position works as advertizes.
+# Make sure that parse_position works as advertized.
 use strict;
 use warnings;
 use Test::More tests => 7;

@@ -222,3 +222,219 @@ sub apply {
 
 =cut
 
+package Scrooge::Repeat;
+our @ISA = qw(Scrooge::Quantified);
+use Carp;
+
+=head2 Scrooge::Repeat
+
+The Scrooge::Repeat class encloses another pattern and allows it to
+repeat, in sequence. Scrooge::Repeat provides a way to specify the number of
+allowed (or required) repetitions, and is itself Scrooge::Quantified. This
+means you can specify the minimum and maximum lengths that the aglomeration
+of repeated patterns must fill.
+
+You indiate the number of repetitions by providing a value for the
+C<repeat> key. Scalar and string arguments are supported, are two-element
+array refs. There is also a hashref form, used due to its likeness to the
+Perl regex quantifier limits.
+
+ my $other_pat = ...;
+ my $pat = Scrooge::Repeat->new(
+     subpattern => $other_pat,
+     repeat => 5,          # only 5 repetitions
+     repeat => "5",        #   ditto
+     repeat => [5 => 5],   #   ditto
+     repeat => {5,5},      #   ditto
+     repeat => '*',        # zero or more
+     repeat => '0,',       #   ditto
+     repeat => [0, undef], #   ditto
+     repeat => {0, undef}, #   ditto
+     repeat => ',',        #   ditto, but use '*' instead of ','
+     repeat => '+',        # one or more
+     repeat => [1, undef], #   ditto
+     repeat => {1, undef}, #   ditto
+     repeat => '1,',       #   ditto
+     repeat => '5,',       # five or more
+     repeat => [5, undef], #   ditto
+     repeat => [5=>undef], #   ditto
+     repeat => [5],        #   CROAKS
+     repeat => [0 => 5],   # up to 5
+     repeat => [0.1 => 5], #   ditto (rounds)
+     repeat => [0 => 5.2], #   ditto (rounds)
+     repeat => [0, 5],     #   ditto
+     repeat => {0,5},      #   ditto
+     repeat => ',5',       #   ditto
+     repeat => [undef, 5], #   ditto (but why would you?)
+     repeat => {undef, 5}, #   ditto but warns uninitialized
+     repeat => [undef=>5], # CROAKS     (undef is parsed by
+     repeat => {undef=>5}, #   ditto     Perl as a string)
+ );
+
+Scrooge::Repeat sets up its behavior by overriding the following methods:
+
+=over
+
+=item init
+
+Ensures that you provide an enclosing pattern to repeat; if not, the
+constructor fails saying
+
+ Scrooge::Repeat expects a subpattern
+
+If you provide a subpattern that is not a subclass of Scrooge, it will
+croak saying
+
+ Subpattern for Scrooge::Repeat must be a Scrooge object
+
+It then validates your repeat count using L</parse_repeat>,
+assigning the parsed quantifiers to C<min_rep> and C<max_rep>.
+
+=cut
+
+use Safe::Isa;
+sub init {
+	my $self = shift;
+	$self->SUPER::init;
+	
+	# Validate the subpattern
+	croak('Scrooge::Repeat expects a subpattern')
+		unless exists $self->{subpattern};
+	croak('Subpattern for Scrooge::Repeat must be a Scrooge object')
+		unless $self->{subpattern}->$_isa('Scrooge');
+	
+	# Validate and compute the repeat limits
+	($self->{min}, $self->{max}) = $self->parse_repeat($self->{repeat});
+}
+
+=item Scrooge::Repeat::parse_repeat
+
+Parses a repeat spec and returns a two-element list of the min and max
+repeat quantities. This is a class method, which means you can override
+repeat parsing in subclasses on the one hand, and on the other hand you can
+call this function outside the context of a Scrooge::Repeat object by saying
+
+ my ($min, $max) = Scrooge::Repeat->parse_repeat($rep);
+
+The return values will be the minimum and maximum repeat counts. The minimum
+count will always be an integer, greater than or equal to zero, while the
+maximum repeat count will either be a non-negative integer or C<undef>,
+which means "unlimited".
+
+Your repeat count could be invalid for a number of reason, and may lead to
+one of the following errors:
+
+=over
+
+=item Unable to parse scalar repeat of <string>
+
+You provided a scalar repeat count, but I was not able to parse
+it. Valid scalar repeat counts include the string C<+>, the string C<*>,
+and (non-negative) integers.
+
+=item Arrayref repeats must contain two elements
+
+Arrayref repeats can only contain two elements (one or both of which can be
+the undefined value). This may be relaxed some day if I get around to
+implementing a lexical warning system.
+
+=item Hashref repeats must have a single key/value pair
+
+You provided a hashref for the repeat count which was either empty or
+which contained more than one key/value pair.
+
+=item Scrooge::Repeat::parse_repeat does not know how to parse <type>
+
+parse_repeat only knows how to parse a scalar, an arrayref, or a hashref. If
+you give something else, it does not know what to do and issues this
+exception.
+
+=item Repeat must be a number
+
+=item Repeat must be non-negative
+
+When using an arrayref or hashref, the repeats ought to be positive
+integers, though any positive number will be accepted and truncated to the
+nearest integer. If you provide something that is not a number, you will get
+this error.
+
+=back
+
+=cut
+
+use Scalar::Util qw(looks_like_number);
+
+sub parse_repeat {
+	my ($class, $rep) = @_;
+	
+	# Default value
+	return (0, undef) if not defined $rep;
+	
+	# Scalar inputs
+	if(ref($rep) eq ref('scalar')) {
+		return (1, undef) if $rep eq '+';
+		return (0, undef) if $rep eq '*';
+		return ($rep, $rep) if $rep =~ /^\d+$/;
+		if ($rep =~ /^(\d*),(\d*)$/) {
+			my ($min, $max) = ($1, $2);
+			$min = 0 if $min eq '';
+			$max = undef if $max eq '';
+			return ($min, $max);
+		}
+		croak("Unable to parse scalar repeat of $rep");
+	}
+	
+	# hashref and arrayref inputs; pull out the min/max pair
+	my @minmax;
+	if (ref($rep) eq ref([])) {
+		croak('Arrayref repeats must contain two elements') if @$rep != 2;
+		@minmax = @$rep;
+	}
+	elsif (ref($rep) eq ref({})) {
+		croak('Hashref repeats must have a single key/value pair')
+			if keys(%$rep) != 1;
+		@minmax = %$rep;
+	}
+	else {
+		croak('Scrooge::Repeat::parse_repeat does not know how to parse '
+			. ref($rep));
+	}
+	
+	# Verify that we have good numbers and convert to integers (or leave
+	# undefined)
+	for (@minmax) {
+		if (defined $_) {
+			croak('Repeat must be a number') unless looks_like_number($_);
+			croak('Repeat must be non-negative') if $_ < 0;
+			$_ = int($_);
+		}
+	}
+	$minmax[0] ||= 0;
+	return (@minmax);
+}
+
+=item prep
+
+Prepares the enclosed pattern, and calculates the anticipated min/max
+consumption based on the enclosed pattern's min/max as well as the
+repetition limits.
+
+=cut
+
+sub prep {
+	my ($self, $match_info) = @_;
+	return 0 unless $self->SUPER::prep($match_info);
+	
+	# Copy our match info for the child match into
+	my $child_match_info = { %$match_info };
+	
+	# call child prep; figure out min_size and max_size...
+	
+}
+
+=back
+
+=cut
+
+1;
+
