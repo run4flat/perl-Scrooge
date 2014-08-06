@@ -438,6 +438,8 @@ sub re_seq {
 }
 
 sub re_rep {
+	croak('re_rep expects between 1 and 4 arguments')
+		if @_ > 4 or @_ == 0;
 	# Build up the key/value argument list based on what we expect for
 	# repetitions.
 	my @args;

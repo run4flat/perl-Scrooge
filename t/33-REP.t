@@ -1,7 +1,7 @@
 # Tests Scrooge::Repeat
 use strict;
 use warnings;
-use Test::More tests => 1;
+use Test::More tests => 3;
 use Scrooge;
 
 # Load the basics module:
@@ -44,53 +44,76 @@ subtest 'Basic constructor and simple sequence' => sub {
 	
 	# Check full match details
 	is($match_info{length}, 18, 'full match length');
+	is($match_info{left}, 0, 'full match offset');
 	
-	# XXX add parse tests for re_rep
-	
-#	$pattern = re_rep('test pattern', [0 => '100%'], [0 => 10], $exact_pat);
-#	isa_ok($pattern, 'Scrooge::Repeat');
-#	is($pattern->{name}, 'test pattern', 're_rep correctly sets up name');
-#	%match_info = $pattern->match($data);
-#	
-#	# Check full match details
-#	is($match_info{length}, 20, 'full match length');
-#	is($match_info{left}, 0, 'full match offset');
-#	
-#	# Check "all" match detauls
-#	is($match_info{all}[0]{left}, 0, "`all' match offset");
-#	is($match_info{all}[0]{length}, 18, "`all' match length");
-#	
-#	# Check "even" match details
-#	is($match_info{even}[0]{left}, 18, "`even' match offset");
-#	is($match_info{even}[0]{length}, 2, "`even' match length");
+	# Check the sub-match details
+	if(ok(exists($match_info{exact}), "`exact' key exists in match_info")) {
+		is(scalar(@{$match_info{exact}}), 3, 'three matches of exact');
+		is($match_info{exact}[0]{left}, 0, 'first offset');
+		is($match_info{exact}[1]{left}, 6, 'second offset');
+		is($match_info{exact}[2]{left}, 12, 'third offset');
+		is($match_info{exact}[0]{length}, 6, 'first length');
+		is($match_info{exact}[1]{length}, 6, 'second length');
+		is($match_info{exact}[2]{length}, 6, 'third length');
+	}
+	if(ok(exists($match_info{positive_matches}), "`positive_matches' key exists in match_info")) {
+		is(scalar(@{$match_info{positive_matches}}), 3, 'three positive matches');
+		is($match_info{positive_matches}[0]{left}, 0, 'first offset');
+		is($match_info{positive_matches}[1]{left}, 6, 'second offset');
+		is($match_info{positive_matches}[2]{left}, 12, 'third offset');
+		is($match_info{positive_matches}[0]{length}, 6, 'first length');
+		is($match_info{positive_matches}[1]{length}, 6, 'second length');
+		is($match_info{positive_matches}[2]{length}, 6, 'third length');
+	}
 };
 
-__END__
+#################################
+# re_rep short-name constructor #
+#################################
+
+subtest 're_rep' => sub {
+	my $pattern = eval{re_rep()};
+	isnt($@, '', 're_rep with nothing (croaks)');
+	
+	$pattern = eval{re_rep($exact_pat)};
+	is($@, '', 're_rep with just a pattern');
+	isa_ok($pattern, 'Scrooge::Repeat');
+	my $length = $pattern->match($data);
+	is($length, 18, 'produces viable Scrooge::Repeat');
+	
+	$pattern = re_rep(2, $exact_pat);
+	isa_ok($pattern, 'Scrooge::Repeat');
+	$length = $pattern->match($data);
+	is($length, 12, 'with two args is viable');
+	
+	$pattern = re_rep([5 => 10], q{,2}, $exact_pat);
+	isa_ok($pattern, 'Scrooge::Repeat');
+	$length = $pattern->match($data);
+	is($length, 6, 'with three args is viable');
+	
+	$pattern = re_rep('test_pattern', [5 => '100%'], q{,5}, $exact_pat);
+	isa_ok($pattern, 'Scrooge::Repeat');
+	$length = $pattern->match($data);
+	is($length, 18, 'with four args is viable');
+	
+	eval{re_rep(1 .. 5)};
+	like($@, qr/expects between 1 and 4 arguments/,
+		'croaks when given too many arguments');
+};
 
 ####################
 # Croaking pattern #
 ####################
 
 subtest 'Croaking patterns' => sub {
-	my $pattern = eval{re_seq($should_croak_pat)};
-	is($@, '', 'Constructor without name does not croak');
-	isa_ok($pattern, 'Scrooge::Sequence');
+	eval{re_rep($should_croak_pat)->match($data)};
+	isnt($@, '', 're_rep croaks when its pattern consumes too much');
 	
-	eval{$pattern->match($data)};
-	isnt($@, '', 're_seq croaks when the last pattern consumes too much');
-	
-	eval{re_seq($should_croak_pat, $all_pat)->match($data)};
-	isnt($@, '', 're_seq croaks when one of the not-last patterns consumes too much');
-	
-	eval{re_seq($croak_pat, $fail_pat)->match($data)};
-	isnt($@, '', 're_seq croaks when one of its constituents croaks');
-	
-	eval{re_seq($fail_pat, $croak_pat, $all_pat)->match($data)};
-	is($@, '', 're_seq short-circuits at the first failed constituent');
-	
-	eval{re_seq($all_pat, $croak_pat)->match($data)};
-	isnt($@, '', 're_seq only short-circuits on failure');
+	eval{re_rep($croak_pat)->match($data)};
+	isnt($@, '', 're_rep croaks when its pattern croaks');
 };
+
+__END__
 
 ####################
 # Wrapping pattern #
