@@ -177,7 +177,7 @@ sub cleanup {
 	my %top_match_info_for = map { $_ => $top_match_info }
 		@{$match_info->{positive_matches}};
 	# Call the cleanup method for all successfully prepped child patterns,
-	# holding off on dieing until the very end
+	# holding off on dying until the very end
 	my @errors;
 	for my $info (@{$match_info->{infos_to_apply}}) {
 		my $pattern = delete $info->{_pattern};
