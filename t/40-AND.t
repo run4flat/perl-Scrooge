@@ -74,7 +74,7 @@ subtest 'Wrapping re_and around a single pattern' => sub {
 	for my $pattern ($fail_pat, $all_pat, $even_pat, $exact_pat, $range_pat,
 		$offset_pat, $zwa_pat
 	) {
-		my %got = re_or($pattern)->match($data);
+		my %got = re_and($pattern)->match($data);
 		%got = map {$_ => $got{$_}} @keys_to_compare;
 		my %expected = $pattern->match($data);
 		%expected = map {$_ => $expected{$_}} @keys_to_compare;
