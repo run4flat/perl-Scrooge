@@ -232,7 +232,8 @@ The Scrooge::Repeat class encloses another pattern and allows it to
 repeat, in sequence. Scrooge::Repeat provides a way to specify the number of
 allowed (or required) repetitions, and is itself Scrooge::Quantified. This
 means you can specify the minimum and maximum lengths that the aglomeration
-of repeated patterns must fill.
+of repeated patterns must fill. Unlike Scrooge::Quantified, Scrooge::Repeat
+has default quantifiers, and they are C<0, '100%'>.
 
 You indiate the number of repetitions by providing a value for the
 C<repeat> key. Scalar and string arguments are supported, are two-element
@@ -295,6 +296,11 @@ assigning the parsed quantifiers to C<min_rep> and C<max_rep>.
 use Safe::Isa;
 sub init {
 	my $self = shift;
+	
+	# Set sensible default quantifiers
+	$self->{quantifiers} = [0, '100%'] if not exists $self->{quantifiers};
+	
+	# Call inherited method
 	$self->SUPER::init;
 	
 	# Validate the subpattern
@@ -304,7 +310,7 @@ sub init {
 		unless $self->{subpattern}->$_isa('Scrooge');
 	
 	# Validate and compute the repeat limits
-	($self->{min}, $self->{max}) = $self->parse_repeat($self->{repeat});
+	($self->{min_rep}, $self->{max_rep}) = $self->parse_repeat($self->{repeat});
 }
 
 =item Scrooge::Repeat::parse_repeat
@@ -425,10 +431,174 @@ sub prep {
 	my ($self, $match_info) = @_;
 	return 0 unless $self->SUPER::prep($match_info);
 	
-	# Copy our match info for the child match into
-	my $child_match_info = { %$match_info };
+	# Create the subpattern's match_info template
+	my $subpattern = $self->{subpattern};
+	my $subpattern_info = { %$match_info };
+	$match_info->{subpattern_info_template} = $subpattern_info;
 	
-	# call child prep; figure out min_size and max_size...
+	# Return immediately if the subpattern fails to prep
+	return 0 unless $subpattern->prep($subpattern_info);
+	
+	# calculate the minimum and maximum size based on the subpattern's sizes
+	# and the repetition counts. Note a max_rep value of undefined means
+	# unlimited, which requires a little bit of care.
+	my $minimum_size = $subpattern_info->{min_size} * $self->{min_rep};
+	my $maximum_size;
+	if (defined $self->{max_rep}) {
+		$maximum_size = $subpattern_info->{max_size} * $self->{max_rep};
+	}
+	elsif ($subpattern_info->{max_size} == 0) {
+		# if subpattern's max is zero, this max will also be a zero
+		$maximum_size = 0
+	}
+	else {
+		# unlimited matches on nonzero subpattern match size:
+		$maximum_size = $match_info->{max_size};
+	}
+	
+	# Return immediately if the repetitions won't fit
+	return 0 if $minimum_size > $match_info->{max_size};
+	return 0 if $maximum_size < $match_info->{min_size};
+	
+	# tighten our min and max size bounds based on our calculations
+	$match_info->{min_size} = $minimum_size
+		if $minimum_size > $match_info->{min_size};
+	$match_info->{max_size} = $maximum_size
+		if $maximum_size < $match_info->{max_size};
+	
+	# Make sure we have somewhere to store our positive matches
+	$match_info->{positive_matches} = [];
+	
+	return 1;
+}
+
+=item apply
+
+Attempts to sequentially apply the subpattern for the specified number of
+repetitions.
+
+=cut
+
+sub apply {
+	my ($self, $match_info) = @_;
+	my $left = $match_info->{left};
+	my $amount_remaining = $match_info->{length};
+	my $subpattern = $self->{subpattern};
+	
+	# Figure out a max rep that'll work for the for loop
+	my $max_rep = $self->{max_rep};
+	$max_rep = 'inf' + 0 unless defined $max_rep;
+	
+	# Try to repeat the match until we hit our maximum number of repetitions.
+	# We'll make sure we've surpassed the minimum after we've exited the
+	# loop.
+	REPETITION: for (my $rep = 0; $rep < $max_rep; $rep++) {
+		
+		# Make a copy of the subpattern's info
+		my $info = { %{$match_info->{subpattern_info_template}} };
+		
+		# Figure out how much this subpattern will try
+		my $curr_max_len = $amount_remaining;
+		$curr_max_len = $info->{max_size} if $info->{max_size} < $curr_max_len;
+		my $consumed;
+		
+		RIGHT_BOUND: {
+			# Set the left, right, and length
+			$info->{left} = $left;
+			$info->{right} = $left + $curr_max_len - 1;
+			$info->{length} = $curr_max_len;
+			
+			# Done if the subpattern wants more than we have remaining
+			last REPETITION if $info->{min_size} > $curr_max_len;
+			
+			# Apply the pattern:
+			$consumed = eval{ $subpattern->apply($info) } || 0;
+			
+			# Check for exceptions:
+			if ($@ ne '') {
+				my $name = $self->get_bracketed_name_string;
+				my $subname = $subpattern->get_bracketed_name_string;
+				die "In re_or pattern$name, subpattern$subname failed:\n$@"; 
+			}
+			
+			# Make sure that the pattern didn't consume more than it was supposed
+			# to consume:
+			if ($consumed > $info->{length}) {
+				my $name = $self->get_bracketed_name_string;
+				my $subname = $subpattern->get_bracketed_name_string;
+				die "In Scrooge::Repeat pattern$name, subpattern$subname consumed $consumed\n"
+					. "but it was only allowed to consume $info->{length}\n"; 
+			}
+			
+			# Check for a negative return value, which means 'try again at a
+			# shorter length'
+			if ($consumed < 0) {
+				$curr_max_len += $consumed;
+				redo RIGHT_BOUND;
+			}
+		}
+		
+		# Quit the repetition loop if we didn't match
+		last REPETITION unless $consumed;
+		
+		# Final bookkeeping for a successful match
+		push @{$match_info->{positive_matches}}, $info;
+		$info->{length} = $consumed + 0;
+		$info->{right} = $left + $consumed - 1;
+		$amount_remaining -= $consumed;
+		$left += $consumed;
+	}
+	
+	# If we failed to consume the minimum number of repetitions, then
+	# return zero.
+	return 0 if @{$match_info->{positive_matches}} < $self->{min_rep};
+	
+	# If we have zero repetitions, return true (presumably if we've reached
+	# here, then $self->{min_rep} is zero, so this is OK).
+	return '0 but true' if @{$match_info->{positive_matches}} == 0;
+	
+	# Calculate and return the total amount consumed
+	my $consumed = $match_info->{positive_matches}[-1]{right}
+		- $match_info->{left} + 1;
+	return $consumed || '0 but true';
+}
+
+=item cleanup
+
+=cut
+
+sub cleanup {
+	my ($self, $top_match_info, $match_info) = @_;
+	
+	# Call our superclass's cleanup
+	$self->SUPER::cleanup($top_match_info, $match_info);
+	my $subpattern = $self->{subpattern};
+	
+	# Call the cleanup method on the template, then for *each* successful
+	# repetition, holding off on dying until the very end.
+	my @errors;
+	my $top_match = undef;
+	for my $info ($match_info->{subpattern_info_template},
+		@{$match_info->{positive_matches}}
+	) {
+		eval { $subpattern->cleanup($top_match, $info) };
+		# top_match is undefined on the first (template) round, which is
+		# useful for resource cleanup. Thereafter, all cleanups are for
+		# successful matches, so we need to have a meaningful top_match_info
+		$top_match = $top_match_info;
+		push @errors, $@ if $@ ne '';
+	}
+	
+	# Remove the subpattern info template
+	delete $match_info->{subpattern_info_template};
+	
+	# Rethrow if we caught any exceptions:
+	if (@errors == 1) {
+		die(@errors);
+	}
+	elsif (@errors > 1) {
+		die(join(('='x20) . "\n", 'Multiple Errors', @errors));
+	}
 	
 }
 

@@ -11,9 +11,9 @@ use Scrooge::ZWA;
 
 our @ISA = qw(Exporter);
 
-our @EXPORT = qw(re_or re_and re_seq re_sub re_any
+our @EXPORT = qw(re_or re_and re_seq re_rep re_sub re_any
 		 re_zwa_sub re_zwa_position
-		 re_anchor_begin re_anchor_end 
+		 re_anchor_begin re_anchor_end
 		 re_named_seq re_named_and re_named_or);
 
 our $VERSION = 0.01;
@@ -435,6 +435,17 @@ sub re_seq {
 	# Otherwise assume that the first argument is a name:
 	my $name = shift;
 	return Scrooge::Sequence->new(name => $name, patterns => \@_)
+}
+
+sub re_rep {
+	# Build up the key/value argument list based on what we expect for
+	# repetitions.
+	my @args;
+	push @args, subpattern => pop(@_);
+	push @args, repeat => pop(@_) if @_;
+	push @args, quantifiers => pop(@_) if @_;
+	push @args, name => pop(@_) if @_;
+	return Scrooge::Repeat->new(@args);
 }
 
 sub _build_named_data_group_pattern {
