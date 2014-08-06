@@ -1,12 +1,15 @@
 use strict;
 use warnings;
-use Test::More tests => 45;
+use Test::More tests => 46;
 use PDL;
 use Scrooge::PDL;
 
 ##########################
 # Range string tests: 10 #
 ##########################
+
+my $piddle = sequence(10);
+is(Scrooge::data_length($piddle), 10, 'Scrooge::data_length knows how to measure piddle lengths');
 
 my $data = sequence(21) + 5;
 sub do_check {
