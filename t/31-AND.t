@@ -129,7 +129,7 @@ subtest "I may be even, but you're odd" => sub {
 		or diag explain \%match_info;
 	
 	$exact_pat->{N} = 5;
-	my %match_info = re_and($exact_pat, $even_pat)->match($data);
+	%match_info = re_and($exact_pat, $even_pat)->match($data);
 	is_deeply(\%match_info, {}, 'Incommensurate subpattern lengths leads to failure')
 		or diag explain \%match_info;
 };

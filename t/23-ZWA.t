@@ -107,7 +107,7 @@ subtest 're_anchor tests' => sub {
 	note('re_anchor_end');
 	my $end = re_anchor_end;
 	isa_ok($end, 'Scrooge::ZWA');
-	my %match_info = $end->match($data);
+	%match_info = $end->match($data);
 	is($match_info{length}, 0, 'length (0)');
 	is($match_info{left}, $arr_len, 'offset');
 };
