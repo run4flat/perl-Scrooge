@@ -1,6 +1,6 @@
 use strict;
 use warnings;
-use Test::More tests => 1;
+use Test::More tests => 3;
 use Scrooge;
 
 # Load the basics module:
@@ -31,7 +31,7 @@ my $zwa_pat = Scrooge::Test::OffsetZWA->new(name => 'zwa');
 # Constructor tests #
 #####################
 
-subtest 'Basic constructors' => sub {
+subtest 'Basic constructor and simple sequence' => sub {
 	my $pattern = re_seq('test pattern', $all_pat, $even_pat);
 	isa_ok($pattern, 'Scrooge::Sequence');
 	is($pattern->{name}, 'test pattern', 're_seq correctly sets up name');
@@ -51,38 +51,50 @@ subtest 'Basic constructors' => sub {
 	is($match_info{even}[0]{length}, 2, "`even' match length");
 };
 
+####################
+# Croaking pattern #
+####################
+
+subtest 'Croaking patterns' => sub {
+	my $pattern = eval{re_seq($should_croak_pat)};
+	is($@, '', 'Constructor without name does not croak');
+	isa_ok($pattern, 'Scrooge::Sequence');
+	
+	eval{$pattern->match($data)};
+	isnt($@, '', 're_seq croaks when the last pattern consumes too much');
+	
+	eval{re_seq($should_croak_pat, $all_pat)->match($data)};
+	isnt($@, '', 're_seq croaks when one of the not-last patterns consumes too much');
+	
+	eval{re_seq($croak_pat, $fail_pat)->match($data)};
+	isnt($@, '', 're_seq croaks when one of its constituents croaks');
+	
+	eval{re_seq($fail_pat, $croak_pat, $all_pat)->match($data)};
+	is($@, '', 're_seq short-circuits at the first failed constituent');
+	
+	eval{re_seq($all_pat, $croak_pat)->match($data)};
+	isnt($@, '', 're_seq only short-circuits on failure');
+};
+
+####################
+# Wrapping pattern #
+####################
+
+subtest 'Wrapping re_and around a single pattern' => sub {
+	my @keys_to_compare = qw(left right length);
+	for my $pattern ($fail_pat, $all_pat, $even_pat, $exact_pat, $range_pat,
+		$offset_pat, $zwa_pat
+	) {
+		my %got = re_seq($pattern)->match($data);
+		%got = map {$_ => $got{$_}} @keys_to_compare;
+		my %expected = $pattern->match($data);
+		%expected = map {$_ => $expected{$_}} @keys_to_compare;
+		is_deeply(\%got, \%expected,
+			'does not alter behavior of ' . $pattern->{name} . ' pattern');
+	}
+};
+
 __END__
-
-#####################
-# Croaking pattern: 7 #
-#####################
-
-$pattern = eval{re_seq($should_croak_pat)};
-is($@, '', 'Constructor without name does not croak');
-isa_ok($pattern, 'Scrooge::Sequence');
-eval{$pattern->match($data)};
-isnt($@, '', 're_seq croaks when the last pattern consumes too much');
-eval{re_seq($should_croak_pat, $all_pat)->match($data)};
-isnt($@, '', 're_seq croaks when one of the not-last patterns consumes too much');
-eval{re_seq($croak_pat, $fail_pat)->match($data)};
-isnt($@, '', 're_seq croaks when one of its constituents croaks');
-eval{re_seq($all_pat, $croak_pat)->match($data)};
-isnt($@, '', 're_seq only short-circuits on failure');
-eval{re_seq($fail_pat, $croak_pat, $all_pat)->match($data)};
-is($@, '', 're_seq short-circuits at the first failed constituent');
-
-
-#####################
-# Wrapping pattern: 6 #
-#####################
-
-for $pattern ($fail_pat, $all_pat, $even_pat, $exact_pat, $range_pat, $offset_pat) {
-	my (@results) = re_seq($pattern)->match($data);
-	my (@expected) = $pattern->match($data);
-	is_deeply(\@results, \@expected, 'Wrapping re_seq does not alter behavior of ' . $pattern->{name} . ' pattern');
-}
-
-
 ######################
 # Complex patterns: 9 #
 ######################
