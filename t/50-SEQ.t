@@ -1,6 +1,6 @@
 use strict;
 use warnings;
-use Test::More tests => 3;
+use Test::More tests => 5;
 use Scrooge;
 
 # Load the basics module:
@@ -94,36 +94,47 @@ subtest 'Wrapping re_and around a single pattern' => sub {
 	}
 };
 
-__END__
-######################
-# Complex patterns: 9 #
-######################
+####################
+# Complex patterns #
+####################
 
-# Create two zero-width assertion patterns:
-$offset_pat->set_N('0 but true');
-$offset_pat->set_offset(4);
-# XXX cannot set N => '0 but true'. Why?
-my $at_ten = Scrooge::Test::Exactly::Offset->new(N => 1, offset => 10);
-($length, $offset) = re_seq($offset_pat, $all_pat, $at_ten)->match($data);
-ok($length, 'First complex pattern matches');
-is($length, 7, '    Length was correctly determined to be 6');
-is($offset, 4, '    Offset was correctly determined to be 4');
-my $expected = {left => 4, right => 9};
-is_deeply($all_pat->get_details, $expected, '    All has correct offset information');
-$expected = {left => 4, right => 3};
-is_deeply($offset_pat->get_details, $expected, '    Offset has correct offset information');
+subtest 'Assertion sandwich: two position anchors surrounding match-anything' => sub {
+	# Create two zero-width assertion patterns:
+	$zwa_pat->{offset} = 4;
+	my $at_ten = Scrooge::Test::OffsetZWA->new(name => 'at_ten', offset => 10);
+	if(my %match_info = re_seq($zwa_pat, $all_pat, $at_ten)->match($data)) {
+		is($match_info{length}, 6, 'length');
+		is($match_info{left}, 4, 'offset');
+		is($match_info{zwa}[0]{left}, 4, 'left zwa offset');
+		is($match_info{all}[0]{left}, 4, "`all' offset");
+		is($match_info{all}[0]{length}, 6, "`all' length");
+		is($match_info{at_ten}[0]{left}, 10, 'at_ten offset');
+	}
+	else {
+		fail('pattern did not match!');
+	}
+};
 
 # Perform a match at three different segments with the same pattern and make
 # sure it stores all three:
-($length, $offset) = re_seq($all_pat, $offset_pat, $all_pat, $at_ten, $all_pat)->match($data);
-ok($length, 'Second complex pattern matches');
-is($length, 20, '    Length was correctly determined to be 20');
-is($offset, 0, '    Offset was correctly determined to be 0');
-$expected = [
-	{left => 0, right => 3},
-	{left => 4, right => 9},
-	{left => 11, right => 19},
-];
-my @results = $all_pat->get_details;
-is_deeply(\@results, $expected, '    Single pattern stores multiple matches correctly');
+subtest 'Reusing patterns' => sub {
+	my $at_ten = Scrooge::Test::OffsetZWA->new(name => 'at_ten', offset => 10);
+	if(my %match_info
+		= re_seq($all_pat, $zwa_pat, $all_pat, $at_ten, $all_pat)->match($data)
+	) {
+		is($match_info{length}, 20, 'full match length');
+		is($match_info{left}, 0, 'full match offset');
+		
+		is($match_info{all}[0]{left}, 0, 'first all offset');
+		is($match_info{all}[1]{left}, 4, 'second all offset');
+		is($match_info{all}[2]{left}, 10, 'third all offset');
+		
+		is($match_info{all}[0]{length}, 4, 'first all length');
+		is($match_info{all}[1]{length}, 6, 'second all length');
+		is($match_info{all}[2]{length}, 10, 'third all length');
+	}
+	else {
+		fail('sequence did not match');
+	}
+};
 
