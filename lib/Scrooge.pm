@@ -257,22 +257,22 @@ sub get_bracketed_name_string {
 	return '';
 }
 
+# See also the special cases in data_length
 our %length_method_table = (
-#	''			=> sub { return length $_[0] },
-	(ref [])	=> sub { return scalar(@{$_[0]}) },
-	PDL			=> sub { return $_[0]->dim(0) },
-	(ref {})	=> sub {
-			my $hashref = shift;
-			return $hashref->{length} if exists $hashref->{length};
-			# Didn't supply a length key? I hope the length of the first
-			# "value" in the hashref makes sense!
-			my @values = values %$hashref;
-			return Scrooge::data_length($values[0]);
-		},
+	(ref [])    => sub { return scalar(@{$_[0]}) },
+	PDL         => sub { return $_[0]->dim(0) },
+	(ref {})    => sub { 0 },
+	(ref sub{}) => sub { 0 },
 );
 
 sub data_length {
 	my $data = shift;
+	
+	# Special case undefined data and string data up-front
+	croak('undefined data has undefined length') if not defined $data;
+	return length($data) if ref($data) eq ref('scalar');
+	
+	# For all else, refer to the method table
 	return $length_method_table{ref $data}->($data)
 		if exists $length_method_table{ref $data};
 	croak('Scrooge was unable to determine the length of your data, which is of class '
