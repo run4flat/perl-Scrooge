@@ -1,10 +1,11 @@
 # Make sure that re_zwa works as advertised.
 use strict;
 use warnings;
-use Test::More tests => 4;
+use Test::More tests => 5;
 use Scrooge;
 
 my $data = [-10 .. 20];
+my $arr_len = scalar(@$data);
 
 ##################################
 # Basic subroutines for matching #
@@ -46,6 +47,53 @@ subtest 're_zwa_position, scalar position' => sub {
 	%match_info = re_zwa_position('[4 - 30%] + 5')->match($data);
 	is($match_info{length}, 0, 'length (0)');
 	is($match_info{left}, 5, 'offset');
+};
+
+subtest 're_zwa corner cases' => sub {
+	my $pattern = re_zwa_position(-1);
+	my %match_info = $pattern->match($data);
+	is($match_info{left}, undef, 'position of -1 is inadmissable')
+		or diag explain \%match_info;
+	
+	$pattern = re_zwa_position(0);
+	%match_info = $pattern->match($data);
+	is($match_info{left}, 0, 'position of 0 matches')
+		or diag explain \%match_info;
+	
+	$pattern = re_zwa_position(1);
+	%match_info = $pattern->match($data);
+	is($match_info{left}, 1, 'position of 1 matches')
+		or diag explain \%match_info;
+	
+	$pattern = re_zwa_position($arr_len - 1);
+	%match_info = $pattern->match($data);
+	is($match_info{left}, $arr_len - 1, 'position of data length less one matches')
+		or diag explain \%match_info;
+	
+	$pattern = re_zwa_position('100% - 1');
+	%match_info = $pattern->match($data);
+	is($match_info{left}, $arr_len - 1, "position of `100% - 1' matches")
+		or diag explain \%match_info;
+	
+	$pattern = re_zwa_position($arr_len);
+	%match_info = $pattern->match($data);
+	is($match_info{left}, $arr_len, 'position of full data length matches')
+		or diag explain \%match_info;
+	
+	$pattern = re_zwa_position('100%');
+	%match_info = $pattern->match($data);
+	is($match_info{left}, $arr_len, "position of `100%' matches")
+		or diag explain \%match_info;
+	
+	$pattern = re_zwa_position($arr_len + 1);
+	%match_info = $pattern->match($data);
+	is($match_info{left}, undef, 'position of data length plus one fails')
+		or diag explain \%match_info;
+	
+	$pattern = re_zwa_position('100% + 1');
+	%match_info = $pattern->match($data);
+	is($match_info{left}, undef, "position `100% + 1' fails")
+		or diag explain \%match_info;
 };
 
 subtest 're_zwa_sub, nontrivial match function' => sub {

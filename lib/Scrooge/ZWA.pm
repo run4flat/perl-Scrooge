@@ -51,16 +51,18 @@ sub init {
 	return if not exists $self->{position};
 	
 	# Scalar position is ok
-	return unless ref($self->{position});
+	if (ref($self->{position}) eq ref('scalar')) {
+		# Make sure it parses
+		Scrooge::parse_position(1, $self->{position});
+		return;
+	}
 	
 	# Two-element position is ok
 	croak('Scrooge::ZWA optional position key must be associated with a scalar or two-element array')
 		unless ref($self->{position}) eq ref([]) and @{$self->{position}} == 2;
 	
 	# Be sure that the position(s) parse
-	my @pos = ref($self->{position}) eq ref([]) ? @{$self->{position}}
-		: ($self->{position});
-	Scrooge::parse_position(1, $_) foreach (@pos);
+	Scrooge::parse_position(1, $_) foreach (@{$self->{position}});
 }
 
 =item prep
@@ -98,7 +100,7 @@ sub prep {
 	}
 	
 	my $position = $self->{position};
-	my $data_length = $match_info->{data};
+	my $data_length = $match_info->{data_length};
 	
 	# Check if they specified an exact position
 	if (ref($position) eq ref('scalar')) {
