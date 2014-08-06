@@ -1,7 +1,7 @@
 # Make sure that re_zwa works as advertised.
 use strict;
 use warnings;
-use Test::More tests => 5;
+use Test::More tests => 6;
 use Scrooge;
 
 my $data = [-10 .. 20];
@@ -94,6 +94,22 @@ subtest 're_zwa corner cases' => sub {
 	%match_info = $pattern->match($data);
 	is($match_info{left}, undef, "position `100% + 1' fails")
 		or diag explain \%match_info;
+};
+
+subtest 're_anchor tests' => sub {
+	note('re_anchor_begin');
+	my $begin = re_anchor_begin;
+	isa_ok($begin, 'Scrooge::ZWA');
+	my %match_info = $begin->match($data);
+	is($match_info{length}, 0, 'length (0)');
+	is($match_info{left}, 0, 'offset');
+	
+	note('re_anchor_end');
+	my $end = re_anchor_end;
+	isa_ok($end, 'Scrooge::ZWA');
+	my %match_info = $end->match($data);
+	is($match_info{length}, 0, 'length (0)');
+	is($match_info{left}, $arr_len, 'offset');
 };
 
 subtest 're_zwa_sub, nontrivial match function' => sub {
