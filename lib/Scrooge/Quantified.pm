@@ -599,7 +599,7 @@ sub cleanup {
 		die(@errors);
 	}
 	elsif (@errors > 1) {
-		die(join(('='x20) . "\n", 'Multiple Errors', @errors));
+		die(join(('='x20) . "\n", "Multiple Errors\n", @errors));
 	}
 	
 }
