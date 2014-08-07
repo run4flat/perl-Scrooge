@@ -1,7 +1,7 @@
 # Tests Scrooge::Repeat
 use strict;
 use warnings;
-use Test::More tests => 6;
+use Test::More tests => 7;
 use Scrooge;
 
 # Load the basics module:
@@ -190,4 +190,36 @@ subtest 'Pattern that matches on different lengths' => sub {
 	is($match_info{positive_matches}[2]{length}, 1, 'third match length');
 	is($match_info{positive_matches}[3]{length}, 2, 'fourth match length');
 	is($match_info{positive_matches}[4]{length}, 3, 'fifth match length');
+};
+
+##########################################
+# Repeat on a sequence including repeats #
+##########################################
+
+subtest 'Repetition of a complicated pattern' => sub {
+	my $is_even = re_sub([1 => 1], sub {
+		my $match_info = shift;
+		my $i = $match_info->{left};
+		return 1 if $match_info->{data}[$i] % 2 == 0;
+		return 0;
+	});
+	$range_pat->{min_size} = 1;
+	$range_pat->{max_size} = 7;
+	my $pattern = re_rep(3, re_seq($range_pat, $is_even));
+	
+	#                3   1         7      1         5      1
+	# matches     [     | ][             | ][             |  ]   
+	my $data = [qw(1 2 3 4  5 5 5 5 5 6 7 8  9 10 11 12 13 14 15)];
+	my %match_info = $pattern->match($data);
+	is($match_info{length}, 18, 'full match length');
+	is(scalar(@{$match_info{positive_matches}}), 3, 'three repetitions');
+	my @seq_results = @{$match_info{positive_matchs}[0]{positive_matches}};
+	is($seq_results[0]{length}, 3, 'first range length');
+	is($seq_results[1]{length}, 1, 'first even-value length');
+	@seq_results = @{$match_info{positive_matchs}[1]{positive_matches}};
+	is($seq_results[0]{length}, 7, 'second range length');
+	is($seq_results[1]{length}, 1, 'second even-value length');
+	@seq_results = @{$match_info{positive_matchs}[2]{positive_matches}};
+	is($seq_results[0]{length}, 5, 'third range length');
+	is($seq_results[1]{length}, 1, 'third even-value length');
 };
