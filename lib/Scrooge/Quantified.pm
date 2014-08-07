@@ -427,17 +427,39 @@ repetition limits.
 
 =cut
 
+# Ensures there is at least one subpattern info object on the available stack
+sub ensure_subpattern_info {
+	my ($self, $match_info) = @_;
+	
+	# Don't need to do anything if something's already there
+	return 1 if exists $match_info->{available_subpattern_info};
+	
+	# Get the subpattern and a pristine copy of the match_info starting point
+	my $subpattern = $self->{subpattern};
+	my $new_subpattern_info = { %{$match_info->{subpattern_info_template}} };
+	
+	# Run prep; store and return success if prep succeeds
+	if ($subpattern->prep($new_subpattern_info)) {
+		$match_info->{available_subpattern_info} = $new_subpattern_info;
+		return 1;
+	}
+	
+	# run cleanup if prep fails
+	$subpattern->cleanup($new_subpattern_info);
+	return 0;
+}
+
 sub prep {
 	my ($self, $match_info) = @_;
 	return 0 unless $self->SUPER::prep($match_info);
 	
-	# Create the subpattern's match_info template
-	my $subpattern = $self->{subpattern};
-	my $subpattern_info = { %$match_info };
-	$match_info->{subpattern_info_template} = $subpattern_info;
+	# Make a pristine copy of our match_info.
+	$match_info->{subpattern_info_template} = { %$match_info };
 	
-	# Return immediately if the subpattern fails to prep
-	return 0 unless $subpattern->prep($subpattern_info);
+	# Build a new subpattern info hash. Return failure if that fails
+	return 0 unless $self->ensure_subpattern_info($match_info);
+	
+	my $subpattern_info = $match_info->{available_subpattern_info};
 	
 	# calculate the minimum and maximum size based on the subpattern's sizes
 	# and the repetition counts. Note a max_rep value of undefined means
@@ -494,8 +516,9 @@ sub apply {
 	# loop.
 	REPETITION: for (my $rep = 0; $rep < $max_rep; $rep++) {
 		
-		# Make a copy of the subpattern's info
-		my $info = { %{$match_info->{subpattern_info_template}} };
+		# Get a fresh copy of the subpattern's info
+		last REPITITION unless $self->ensure_subpattern_info($match_info);
+		my $info = delete $match_info->{available_subpattern_info};
 		
 		# Figure out how much this subpattern will try
 		my $curr_max_len = $amount_remaining;
@@ -580,10 +603,10 @@ sub cleanup {
 	# repetition, holding off on dying until the very end.
 	my @errors;
 	my $top_match = undef;
-	for my $info ($match_info->{subpattern_info_template},
+	for my $info ($match_info->{available_subpattern_info},
 		@{$match_info->{positive_matches}}
 	) {
-		eval { $subpattern->cleanup($top_match, $info) };
+		eval { $subpattern->cleanup($top_match, $info) } if defined $info;
 		# top_match is undefined on the first (template) round, which is
 		# useful for resource cleanup. Thereafter, all cleanups are for
 		# successful matches, so we need to have a meaningful top_match_info

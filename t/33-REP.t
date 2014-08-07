@@ -213,13 +213,13 @@ subtest 'Repetition of a complicated pattern' => sub {
 	my %match_info = $pattern->match($data);
 	is($match_info{length}, 18, 'full match length');
 	is(scalar(@{$match_info{positive_matches}}), 3, 'three repetitions');
-	my @seq_results = @{$match_info{positive_matchs}[0]{positive_matches}};
+	my @seq_results = @{$match_info{positive_matches}[0]{positive_matches}};
 	is($seq_results[0]{length}, 3, 'first range length');
 	is($seq_results[1]{length}, 1, 'first even-value length');
-	@seq_results = @{$match_info{positive_matchs}[1]{positive_matches}};
+	@seq_results = @{$match_info{positive_matches}[1]{positive_matches}};
 	is($seq_results[0]{length}, 7, 'second range length');
 	is($seq_results[1]{length}, 1, 'second even-value length');
-	@seq_results = @{$match_info{positive_matchs}[2]{positive_matches}};
+	@seq_results = @{$match_info{positive_matches}[2]{positive_matches}};
 	is($seq_results[0]{length}, 5, 'third range length');
 	is($seq_results[1]{length}, 1, 'third even-value length');
 };
