@@ -12,9 +12,8 @@ use Scrooge::ZWA;
 our @ISA = qw(Exporter);
 
 our @EXPORT = qw(re_or re_and re_seq re_rep re_sub re_any
-		 re_zwa_sub re_zwa_position
-		 re_anchor_begin re_anchor_end
-		 re_named_seq re_named_and re_named_or);
+		re_zwa_sub re_zwa_position
+		re_anchor_begin re_anchor_end);
 
 our $VERSION = 0.01;
 
@@ -466,18 +465,6 @@ sub _build_named_data_group_pattern {
 	);
 }
 
-sub re_named_or {
-	return _build_named_data_group_pattern('Scrooge::Subdata::Or', @_);
-}
-
-sub re_named_and {
-	return _build_named_data_group_pattern('Scrooge::Subdata::And', @_);
-}
-
-sub re_named_seq {
-	return _build_named_data_group_pattern('Scrooge::Subdata::Sequence', @_);
-}
-
 # THE magic value that indicates this module compiled correctly:
 1;
 
@@ -641,8 +628,6 @@ or
  if (my %match_info = $pattern->match($data)) {
      print "Matched $match_info->{length} elements\n";
  }
-
-
 
 This method can croak for a few reasons. If any of the patterns croak
 during the preparation or matching stage, C<match> will do its best to
@@ -818,71 +803,50 @@ them until it finds one that succeeds. This does not take any quantifiers.
 
 =head2 re_and
 
-Takes a collection of pattern objects and evaluates all of
-them, returning true if all succeed. This does not take any quantifiers.
+Takes a collection of pattern objects and evaluates all of them, starting
+from the same location. This returns true if all succeed for the same length.
+This does not take any quantifiers.
 
 =head2 re_seq
 
-Applies a sequence of patterns in the order supplied.
+Applies a sequence of patterns in the order supplied. This is exactly what
+you get with normal Perl regular expressions: first match this, followed
+immediately by that, followed immediately by this third thing.
 
-This operates recursively thus:
+=head2 re_rep
 
- 1) If the (i-1)th pattern succeeded, attempt to apply the ith pattern at its
-    full quantifier range. If that fails, decrement the range until it it
-    succeeds. If that fails, consider it a failure of the (i-1th) pattern at
-    its current range. If it succeeds, move to the next pattern.
- 2) If the ith pattern fails, the match fails.
- 3) If the Nth pattern succeeds, return success.
+Takes a single pattern and attempts to apply it, repeatedly, in sequence.
+The analogous Perl regular expression mechanism is a quantifier following a
+capture group, although the behavior is slighly different. For example,
+suppose I have a pattern that matches on runs of identical numbers in an
+array, called C<$identical_run_pat>. Then in this situation:
+
+ my $data = [1, 1, 1, 2, 2, 3, 4, 4, 5, 5, 5];
+ my $length = re_rep($identical_run_pat)->match($data);
+
+will match the full length. The first repetition will identify three 1s,
+the second two 2s, the third one 3, and so on.
+
+This I<does> accept quantifiers. This means you can indicate that some
+pattern should repeat between three and eight times (repeat spec) and the
+agglomeration of those repeats should span between 40% and 80% of the data's
+length (qantifier).
 
 =head2 SIMULTANEOUSLY MATCHING ON MULTIPLE DATASETS
 
-You may very well have multiple sequences of data against which you want to
-write a pattern. For example, if you have both position and velocity data
-for a trajectory, you may want to find the first velocity maximum that
-occurs B<after> a maximum in position. The three grouping regexes that follow
-are similar to the grouping regexes that came before, except that they let
-you specify the name of the dataset against which to match.
+You may very well want to match on two (or more) sets of data simultaneously.
+With Scrooge, this is possible using either the C<to_key> key in your
+pattern, or by wrapping your pattern in an C<re_to_key> pattern.
 
-Name of the dataset? What name? To match against multiple datasets, C<apply>
-a pattern on a list of key/value pairs (or an anonymous hash) in which the keys
-are the names of the different data sets and the values are the actual data sets,
-the things you'd normally send to C<apply>.
-
-=head2 re_named_or
-
-Applies a collections of patterns just like re_or, except that the data
-applied to each pattern is based on the given name. The sequence can take an
-optional first name, so the calling convention is:
-
- re_named_or( [name],
-     set_name_1 => data_1,
-     set_name_2 => data_2,
-     ...
- );
-
-=head2 re_named_and
-
-Applies a collections of patterns just like re_and, except that the data
-applied to each pattern is based on the given name. The sequence can take an
-optional first name, so the calling convention is:
-
- re_named_and( [name],
-     set_name_1 => data_1,
-     set_name_2 => data_2,
-     ...
- );
-
-=head2 re_named_seq
-
-Applies a sequence of patterns on the associated data sets in the order
-supplied. The sequence can take an optional first name, so the calling 
-convention is:
-
- re_named_seq( [name],
-     set_name_1 => data_1,
-     set_name_2 => data_2,
-     ...
- );
+For example, if you have both position and velocity data for a trajectory,
+you may want to find the first velocity maximum that occurs B<after> a
+maximum in position. To achieve this, you would chain a sequence of two
+C<re_and> patterns. The first C<re_and> would assert a local maximum applied
+C<to_key> "position" along with matching anything applied C<to_key> "velocity".
+The second C<re_and> would assert a local maximum applied C<to_key> "velocity"
+along with matching anything applied C<to_key> "position". You would then
+apply this pattern to a I<hashref> with keys "position" and "velocity", both
+of which are associated with the actual position and velocity time series.
 
 =head1 SUBCLASSING
 
@@ -920,9 +884,8 @@ either 1 or 0 indicating that it either has or does not have a chance of
 matching the data.
 
 This method will be called once for each set of data that is being matched
-against your pattern. That is, if you use something like L</re_named_seq> and
-associate two different tags with your pattern, for example, this method will
-be called twice.
+against your pattern. That is, if you use pattern at two points in something
+like L</re_seq>, this method will be called twice.
 
 The C<$match_info> hashref comes pre-populated with the following keys:
 
@@ -1186,9 +1149,19 @@ These are items that I want to do before putting this library on CPAN.
 
 =over
 
-=item Tutorial
+=item Write re_to_key and re_not patterns
 
-I've started Scrooge::Tutorial but not finished it.
+These are both concepts that need to be implemented.
+
+=item Change re_* to pat_*
+
+The notion of these as regular expressions was deprecated a while ago but
+the prefix remains. That should be fixed.
+
+=item Tutorials
+
+I need to write one tutorial each for recursive descent parsing, complex
+data structure validation, and heuristic time series analysis.
 
 =item Clean up cross-references
 
@@ -1196,46 +1169,13 @@ I have many broken links and cross-references that need to be fixed. These
 include references to methods without providing a link to the method's
 documentation.
 
-=item Change re_named_or to re_tagged_or, re_* to pat_*
+=item move advanced PDL stuff to its own distribution
 
-Referring to tagging instead of naming provides a distinguishing term rather
-than overloading the already overused term "name". Also, the notion of these
-as regular expressions was deprecated a while ago but the prefix remains.
-That should be fixed.
+I want Scrooge to be pure-Perl. It can include a basic PDL module that
+operates on piddles using methods, but no PDL::PP code.
 
-=item Repeated patterns
-
-I need to make a pattern that takes a single child pattern and lets you 
-repeat it a specified number of times, probably called re_repeat
-
-=item Explore recursive patterns
-
-Recursion can be achieved by having an re_sub call itself. This should
-work as-is thanks to all the stash management. I need to explore this in a
-tutorial and test it.
-
-=item Proper prep, cleanup, and stash handling on croak
-
-I have added lots of code to handle untimely death at various stages of
-execution of the pattern engine. I have furthermore added lots
-of lines of explanation for nested and grouped patterns so that pin-pointing
-the exact pattern is clearer. At this point, I need to ensure that these are
-indeed tested.
-
-=item remove MSER for the moment
-
-I'll add this back, but it ought not be in the distribution for the first
-CPAN release.
-
-=back
-
-These are things I want to do after the first CPAN release:
-
-=over
-
-=item Add MSER back
-
-After the first CPAN release, I want to add the MSER analysis back.
+The MSER code and other more complicated PDL-based methods should be moved
+to a separate distribution.
 
 =back
 
