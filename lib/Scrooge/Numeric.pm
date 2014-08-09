@@ -5,10 +5,14 @@ package Scrooge::Numeric;
 use Carp;
 
 sub parse_range_string_pair {
-	my ($class, $range_string) = shift;
+	my ($class, $range_string) = @_;
+	
+	croak("No range string") if not $range_string;
 	
 	# Make sure we have the delimiters, separated by a comma
 	my @items = split /([()\[\],])/, $range_string;
+	# First thing (before the opening bracket) is empty, so shift it off
+	shift @items;
 	croak("Invalid bracketed range `$range_string'")
 		unless @items == 5;
 	croak("Bracketed range `$range_string' does not begin with [ or (")

@@ -1,7 +1,7 @@
 # Make sure that parse_range_string works as advertized.
 use strict;
 use warnings;
-use Test::More tests => 4;
+use Test::More tests => 6;
 use Scrooge::Numeric;
 
 #####################
@@ -9,7 +9,7 @@ use Scrooge::Numeric;
 #####################
 sub is_parse_range {
 	my ($rep, $expected_spec) = @_;
-	my $got_spec = eval { Scrooge::Numeric->parse_range_string($rep) };
+	my $got_spec = Scrooge::Numeric->parse_range_string($rep);
 	is_deeply($got_spec, $expected_spec, $rep);
 }
 sub is_parse_range_error {
@@ -19,13 +19,19 @@ sub is_parse_range_error {
 }
 sub is_parse_pair {
 	my ($rep, $expected_spec) = @_;
-	my $got_spec = eval { Scrooge::Numeric->parse_range_string_pair($rep) };
+	my $got_spec = Scrooge::Numeric->parse_range_string_pair($rep);
 	is_deeply($got_spec, $expected_spec, $rep);
 }
 sub is_parse_pair_error {
 	my ($rep, $expected_error) = @_;
 	eval { Scrooge::Numeric->parse_range_string_pair($rep) };
-	like($@, $expected_error, "parse_range_string('$rep') croaks");
+	if (defined $rep) {
+		$rep = "'$rep'";
+	}
+	else {
+		$rep = 'undef';
+	}
+	like($@, $expected_error, "parse_range_string($rep) croaks");
 }
 
 #########
@@ -62,5 +68,24 @@ subtest 'parse_range croaking behavior' => sub {
 	is_parse_range_error('3-%' => qr/Unable to parse/);
 	is_parse_range_error('3@' => qr/In range string/);
 	is_parse_range_error('e4 + 7' => qr/Unable to parse/);
+};
+
+subtest 'parse_pair croaking' => sub {
+	is_parse_pair_error(undef, qr/No range string/);
+};
+
+subtest 'parse_pair behavior' => sub {
+	is_parse_pair('(3,5)' => {
+		left_delim  => '(',
+		right_delim => ')',
+		left_spec   => { raw => 3 },
+		right_spec  => { raw => 5 },
+	});
+	is_parse_pair('[1e-5,inf-1)' => {
+		left_delim  => '[',
+		right_delim => ')',
+		left_spec   => { raw => 1e-5 },
+		right_spec  => { raw => -1, inf => 1 },
+	});
 };
 
