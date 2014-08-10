@@ -1,7 +1,7 @@
 # Make sure that parse_range_string works as advertized.
 use strict;
 use warnings;
-use Test::More tests => 6;
+use Test::More tests => 5;
 use Scrooge::Numeric;
 
 #####################
@@ -55,18 +55,15 @@ subtest 'parse_range multiple terms' => sub {
 	is_parse_range('M-1' => {M => 1, raw => -1});
 };
 
-subtest 'parse_range maybe should fail, but do not' => sub {
-	is_parse_range('3.54e -5' => { raw => 3.54e-5});
-};
-
 subtest 'parse_range croaking behavior' => sub {
-	is_parse_range_error('2m' => qr/In range string/);
-	is_parse_range_error('5 + 4 +' => qr/Unable to parse/);
-	is_parse_range_error('3inf' => qr/In range string/);
+	is_parse_range_error('3.54e -5' => qr/Unable to parse/);
+	is_parse_range_error('2m' => qr/Cannot use `m' as a suffix/);
+	is_parse_range_error('5 + 4 +' => qr/Found trailing `\+'/);
+	is_parse_range_error('3inf' => qr/Cannot use `inf' as a suffix/);
 	is_parse_range_error('foo' => qr/Unable to parse/);
-	is_parse_range_error('10%foo' => qr/In range string/);
+	is_parse_range_error('10%foo' => qr/Operator expected/);
 	is_parse_range_error('3-%' => qr/Unable to parse/);
-	is_parse_range_error('3@' => qr/In range string/);
+	is_parse_range_error('3@' => qr/Cannot use `\@' as a suffix/);
 	is_parse_range_error('e4 + 7' => qr/Unable to parse/);
 };
 

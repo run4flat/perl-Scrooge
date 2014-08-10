@@ -31,52 +31,81 @@ sub parse_range_string_pair {
 	};
 }
 
-my $looks_like_float = qr/[-+]?[0-9]*\.?[0-9]+([eE][-+]?[0-9]+)?/;
+my $matches_unsigned_float = qr/[0-9]*\.?[0-9]+(?:[eE][-+]?[0-9]+)?/;
 sub parse_range_string {
 	my $original = my $string = $_[1];
-	
-	# Strip out all spaces
-	$string =~ s/\s+//g;
-	# Add a positive sign for the first term, if necessary
-	$string = '+' . $string if $string =~ /^[\dmMxX\@i\$]/;
-	
 	my $spec = {};
 	
-	# Strip off pieces one at a time
-	my $found;
-	while($string) {
-		# average, min, max
-		if ($string =~ s/^(([+-])([\@mMxX]))//) {
-			$spec->{$3}++ if $2 eq '+';
-			$spec->{$3}-- if $2 eq '-';
+	# Handle initial whitespace and/or sign
+	my $sign;
+	my $extract_sign = sub {
+		undef($sign);
+		# Strip initial whitespace
+		$string =~ s/^\s+//;
+		if ($string =~ s/^\+\s*//) {
+			# positive sign
+			$sign = +1;
 		}
-		# infinite
-		elsif ($string =~ s/(([+-])inf)//) {
-			$spec->{inf}++ if $2 eq '+';
-			$spec->{inf}-- if $2 eq '-';
+		elsif ($string =~ s/^-\s*//) {
+			# negative sign
+			$sign = -1;
+		}
+	};
+	$extract_sign->();
+	$sign ||= +1;
+	
+	# Strip off pieces one at a time
+	while($string) {
+		# Looks like it starts with a float?
+		if ($string =~ s/^($matches_unsigned_float)//) {
+			my $float = $sign * $1;
+			
+			# Check for bad suffixes
+			if ($string =~ /^([\@mMxX])/) {
+				croak("Cannot use `$1' as a suffix in range string");
+			}
+			elsif ($string =~ /^inf/) {
+				croak("Cannot use `inf' as a suffix in range string");
+			}
+			
+			# Check for allowed suffixes
+			if ($string =~ s/^\$//) {
+				$spec->{stdev} += $float;
+			}
+			# percentage range
+			elsif ($string =~ s/^%//) {
+				$spec->{pct} += $float
+			}
+			# normal number (no suffix)
+			elsif ($string =~ s/^(?=\s*[+-]|$)//) {
+				$spec->{raw} += $float;
+			}
+			else {
+				croak("Unable to parse range string starting at `$string'");
+			}
+		}
+		# average, min, max, inf
+		elsif ($string =~ s/^([\@mMxX]|inf)//) {
+			$spec->{$1} += $sign;
 		}
 		# standard deviation
-		elsif ($string =~ s/^(([+-])\$)//) {
-			$spec->{stdev}++ if $2 eq '+';
-			$spec->{stdev}-- if $2 eq '-';
-		}
-		elsif ($string =~ s/^(($looks_like_float)\$)//) {
-			$spec->{stdev} += $2;
-		}
-		# percentage range
-		elsif ($string =~ s/^(($looks_like_float)%)//) {
-			$spec->{pct} += $2;
-		}
-		# normal number
-		elsif ($string =~ s/^($looks_like_float)//) {
-			$spec->{raw} += $1;
+		elsif ($string =~ s/^\$//) {
+			$spec->{stdev} += $sign;
 		}
 		else {
-			croak("Unable to parse range string `$original' ending with `$string'");
+			croak("Unable to parse range string starting at `$string'");
 		}
-		my $most_recent = $1;
-		croak("In range string, `$most_recent' must be followed by '+' or '-' but is followed by `$string'")
-			unless $string =~ /^([+-]|$)/;
+		
+		# Look for next operator
+		$extract_sign->();
+		
+		# Croak on trailing operators
+		croak("Found trailing `" . ($sign > 0 ? '+' : '-')
+			. "' in range string") if $sign and not $string;
+		
+		# Croak on no operators but more material
+		croak("Operator expected in range string starting at `$string'")
+			if $string and not $sign;
 	}
 	return $spec;
 }
