@@ -1,0 +1,41 @@
+=head1 NAME
+
+Scrooge - a greedy pattern engine for more than just strings
+
+=head1 DESCRIPTION
+
+This is a greedy pattern matching engine originally conceived as "regexes for 
+PDL". The concept has been broadened to work for any sequential pattern matching 
+on any Perl data structure. Tools for analyzing different data structures are
+still being developed.
+
+=head1 STATUS
+
+Scrooge is still undergoing a fair amount of churn and should be considered to 
+be in beta. The test suite contains vestiges of tests for an old implementation, 
+but a great deal of the functionality is thoroughly tested and ready to go. At 
+the time of writing, all tests less than 60 are meaningful (and on my machine, 
+they all pass). I plan on writing some basic numeric patterns for standard Parl 
+array data structures, and then converting the 60-series tests to work with 
+arrays instead of piddles.
+
+=head1 COPYRIGHT AND LICENCE
+
+Unless otherwise stated, all contributions in code and documentation are
+copyright (c) their respective authors, all rights reserved.
+
+Portions of this distribution's code are copyright (c) 2011-2012 Northwestern
+University.
+
+Portions of this distribution's code are copyright (c) 2013-2014 Dickinson
+College.
+
+Portions of this distribution's documentation are copyright (c) 2011-2014 David 
+Mertens.
+
+Portions of this distribution's documentation are copyright (c) 2012 Jeff 
+Giegold.
+
+This distribution is free software; you can redistribute it and/or
+modify it under the same terms as Perl itself.
+
