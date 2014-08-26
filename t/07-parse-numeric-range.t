@@ -10,7 +10,7 @@ use Scrooge::Numeric;
 sub is_parse_range {
 	my ($rep, $expected_spec) = @_;
 	my $got_spec = Scrooge::Numeric->parse_range_string($rep);
-	is_deeply($got_spec, $expected_spec, $rep);
+	is_deeply($got_spec, $expected_spec, "parse_range_string('$rep')");
 }
 sub is_parse_range_error {
 	my ($rep, $expected_error) = @_;
@@ -20,7 +20,7 @@ sub is_parse_range_error {
 sub is_parse_pair {
 	my ($rep, $expected_spec) = @_;
 	my $got_spec = Scrooge::Numeric->parse_range_string_pair($rep);
-	is_deeply($got_spec, $expected_spec, $rep);
+	is_deeply($got_spec, $expected_spec, "parse_range_string_pair('$rep')");
 }
 sub is_parse_pair_error {
 	my ($rep, $expected_error) = @_;
