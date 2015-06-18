@@ -488,10 +488,12 @@ This documentation is for version 0.01 of Scrooge.
  # matches positive values and assumes it is
  # working with piddles.
  my $positive_pattern = re_sub(sub {
-     # Supplied args (for re_sub, specifically) are the
-     # object (in this case assumed to be a piddle), the
-     # left slice offset, and the right slice offset:
-     my ($piddle, $left, $right) = @_;
+     # Supplied arg (for re_sub, specifically) is the
+     # match info hash
+     my ($match_info) = @_;
+     my $piddle = $match_info->{data};
+     my $left = $match_info->{left};
+     my $right = $match_info->{right};
      
      # A simple check for positivity. Notice that
      # I return the difference of the offsets PLUS 1,
@@ -503,23 +505,23 @@ This documentation is for version 0.01 of Scrooge.
  
  # Find the number of (contiguous) elements that match that pattern:
  my $data = sequence(20);
- my ($matched, $offset) = $re->apply($data);
- print "Matched $matched elements, starting from $offset\n";
+ my %match_info = $re->apply($data);
+ print "Matched $match_info{length} elements, starting from $match_info{left}\n";
  
  # ... after you've built a few patterns ...
  
  # Matches pattern a, b, or c:
- my ($matched, $offset)
-     = re_or( $re_a, $re_b, $re_c )->apply($data);
+ my %match_info
+     = re_or( $re_a, $re_b, $re_c )->match($data);
  
  # Matches pattern a, b, and c:
- my ($matched, $offset)
-     = re_and ( $re_a, $re_b, $re_c )->apply($data);
+ my %match_info
+     = re_and ( $re_a, $re_b, $re_c )->match($data);
  
  # Matches first, then second, then anything, then third
- my ($matched, $offset)
+ my %match_info
      = re_seq ( $re_first, $re_second, re_any, $re_third )
-               ->apply($data);
+               ->match($data);
 
 =head1 GETTING STARTED
 
@@ -682,9 +684,17 @@ taking a capture name and a set of quantifiers. If no quantifiers are
 specified, they default to C<[1, 1]>, that is, it matches one and only one
 value.
 
-The three arguments supplied to the function are (1) original data container
-under consideration, (2) the left index offset under consideration, and (3)
-the right index offset.
+The subref is called with a single argument, the C<match_info> hash, which
+contains lots of information about the current state of the match. Keys
+with useful information include
+
+ data         data being analyzed
+ data_length  reported length of the data
+ left         left offset being considered
+ right        right offset being considered
+ length       length being considered, right - left + 1
+ min_size     minimum match length, based on quantifiers and data_length
+ max_size     maximum match length, based on quanitfiers and data_length
 
 If the match succeeds, your subroutine should return the number of matched
 values. If the match succeeds but it consumed zero values (i.e. a zero-width
@@ -695,21 +705,36 @@ to a numeric value (even when you've activated warnings). If the match will
 always fail for the given left offset, you should return 0. Otherwise, if it
 fails for the given value of the right offset but might succeed for a smaller
 right offset, return -1. Return values are discussed in detail under the
-documentation for L<_apply|/_apply ($left, $right)>.
+documentation for L<apply>.
+
+The C<match_info> hash is deliberately chosen to be a hashref so that you
+can add to it, if you like. The contents of this hashref is eventually
+returned to the user at the end of a successful match, so if you want to
+report something interesting that you calculated over the course of your
+work, you can set it in a key of the C<match_info> hash.
 
  # Create a match sub to use (you can also supply an anonymous sub
  # directly to re_sub, if you wish)
  sub my_match_sub {
-     my ($data, $l_off, $r_off) = @_;
+     my ($match_info) = @_;
+     my $data = $match_info->{data};
+     my $left_offset = $match_info->{left};
      
-     # Fail if can't match at $l_off
-     return 0 if $data->can_never_match_at($l_off);
+     # Fail if can't match at $left_offset
+     return 0 if $data->can_never_match_at($left_offset);
      
      # Return the matched length if it succeeds:
-     return ($r_off - $l_off + 1)
-         if $data->matches(from => $l_off, to => $r_off);
+     my $right_offset = $data->{right};
+     if ($data->matches(from => $left_offset, to => $right_offset) {
+         # Store the average for easy lookup later
+         $match_info->{average} = $data->average(
+             from => $left_offset, to => $right_offset
+         );
+         return $match_info->{length};
+     }
      
-     # Not sure, return -1 to try a different value of $r_off
+     # Does not match for this value of $right_offset, but might
+     # for a smaller value? return -1
      return -1;
  }
  
