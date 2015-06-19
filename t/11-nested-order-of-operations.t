@@ -34,10 +34,10 @@ Tracker::track(
 	{
 		apply    => q{ our $apply_returns->() },
 		cleanup  => q{ our $cleanup_returns -> () },
-		prep     => q{ our $prep_returns->($self, @_) },
+		prep     => q{ our $_prep_returns->($self, @_) },
 	}, qw(match)
 );
-our $prep_returns = sub {
+our $_prep_returns = sub {
 	my ($self, $match_info) = @_;
 	return 0 unless $self->Scrooge::prep($match_info);
 	return our $prep_returns->()
