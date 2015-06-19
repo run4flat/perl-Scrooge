@@ -784,23 +784,24 @@ You can say quite a bit when specifying a position. To give you an idea,
 here's a table describing different specifications and their resulting positions
 for a 20-element array:
 
- string       offset     notes
- 0            0
- 1            1
- 1 + 1        2
- -1           19
- 5 - 10       -5         This will never match
- 10%          10
- 10% + 20%    6
- 50% + 3      13
- 100% + 5     25         This will never match
- 10% - 5      -3         This will not match this array
- [10% - 5]    0          -3 => 0
- [6 - 10]     -4         This will never match
- -25          -5         This will not match this array
- [-25]        0          -25 => -5 => 0
- 12% + 3.4    6          Rounded from 5.8
- 14% + 3.4    6          Rounded from 6.2
+ string          offset     notes
+ 0               0
+ 1               1
+ 1 + 1           2
+ -1              19
+ 5 - 10          -5         This will never match
+ 10%             10
+ 10% + 20%       6
+ 50% + 3         13
+ 100% + 5        25         This will never match
+ 10% - 5         -3         This will not match this array
+ [10% - 5]       0          -3 => 0
+ [6 - 10]        0          -4 => 0
+ -25             -5         This will not match this array
+ [-25]           0          -25 => -5 => 0
+ 12% + 3.4       6          Rounded from 5.8
+ 14% + 3.4       6          Rounded from 6.2
+ [30% - 5] + 5   6          30%, or 5, which ever is greater
 
 Notice in particular that non-integers are rounded to the nearest integer and
 strings wrapped in square brackets are truncated to the minimum or maximum offset
