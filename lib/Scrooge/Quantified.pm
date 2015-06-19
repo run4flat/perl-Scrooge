@@ -59,7 +59,7 @@ error:
  Non-percentage quantifiers must be integers; I got [$quantifier]
 
 If you need to perform your own initialization in a derived class, you should
-call this class's C<_init> method to handle the quantifier parsing for you.
+call this class's C<init> method to handle the quantifier parsing for you.
 
 =cut
 

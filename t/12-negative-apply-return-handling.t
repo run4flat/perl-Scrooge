@@ -1,4 +1,4 @@
-# A collection of tests to ensure that return values from _apply are
+# A collection of tests to ensure that return values from apply are
 # correctly handled by apply. Note that similar tests should also be run for
 # all the grouping patterns: re_or, re_and, re_seq, etc, although their 
 # short-circuiting should also be taken into account.

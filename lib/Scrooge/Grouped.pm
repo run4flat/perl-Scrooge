@@ -22,11 +22,11 @@ stashing and unstashing values, and other things. This base class exists so
 that you can (mostly) ignore these details.
 
 Scrooge::Grouped is derived directly from Scrooge and provides methods for
-the basic methods of C<_init>, C<_prep>, and
-some of the lower-level methods. It also utilizes many new group-specific
-methods that only make sense in the context of gouped patterns, and which
-can be overridden in derived classes. It is an abstract base class, however,
-and derived classes must supply their own C<_apply> method.
+the basic methods of C<init>, C<prep>, and some of the lower-level methods.
+It also utilizes many new group-specific methods that only make sense in the
+context of gouped patterns, and which can be overridden in derived classes.
+It is an abstract base class, however, and derived classes must supply their
+own C<apply> method.
 
 Scrooge::Grouped checks that all of its patterns are derived from Scrooge at
 construction time, so you canot create recursive patterns with code like this:
@@ -246,7 +246,7 @@ largest maximum reported by all the children.
 
 =cut
 
-# Called by the _prep method; sets the internal minimum and maximum match
+# Called by the prep method; sets the internal minimum and maximum match
 # sizes.
 sub minmax {
 	my ($self, $match_info) = @_;

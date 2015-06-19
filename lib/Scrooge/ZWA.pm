@@ -136,7 +136,7 @@ sub prep {
 		return 1;
 	}
 	
-	# should never get here if _init does its job
+	# should never get here if init does its job
 	croak('Scrooge::ZWA internal error - managed to get to end of prep()');
 }
 
