@@ -375,7 +375,7 @@ Valid symbols and the dataset property they refer to include
  m    minimum, excluding -inf
  M    maximum, excluding inf
  @    average
- inf  infinite
+ inf  infinite (need not be specified)
 
 Valid suffixes include
 

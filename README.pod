@@ -9,15 +9,57 @@ PDL". The concept has been broadened to work for any sequential pattern matching
 on any Perl data structure. Tools for analyzing different data structures are
 still being developed.
 
-=head1 STATUS
+=head1 STATUS AND TODO
 
-Scrooge is still undergoing a fair amount of churn and should be considered to 
-be in beta. The test suite contains vestiges of tests for an old implementation, 
-but a great deal of the functionality is thoroughly tested and ready to go. At 
-the time of writing, all tests less than 60 are meaningful (and on my machine, 
-they all pass). I plan on writing some basic numeric patterns for standard Parl 
-array data structures, and then converting the 60-series tests to work with 
-arrays instead of piddles.
+Scrooge is still undergoing sporadic yet active development and may experience
+non-backwards-compatible changes. Here is a list of things that I intend to
+implement, in order of importance:
+
+=over
+
+=item Array test suite
+
+I have a partial implementation of Array data containers. I need to finish a
+first draft of the test suite so that I can add to it as I create new
+functionality.
+
+=item Numeric Array Pattern Generators
+
+Scrooge::Numeric provides a fairly complete suite of tools for parsing
+numeric intervals and building subroutines to test values against those
+intervals. I now need to write useful array patterns that make use of
+these tools.
+
+=item String Array Pattern Generators
+
+I need to figure out what sorts of patterns could be useful for analyzing
+string data, and I need to write pattern generators for them for arrays.
+
+=item Switch to Sub::Exporter for short-form constructors
+
+There are too many pattern generators that might arise, and too many ways for
+short-named pattern generators to collide in light of useful Huffman encoding. I
+need to allow the user to choose context-appropriate names for the generators.
+
+=item Scrooge::Hash
+
+Scrooge has been sequence-focused since its inception, but the machinery could
+be extended to matching against hashes by assuming hashes have zero length and
+by applying patters that are zero-width assertions. I need to implement pattern
+generators that work with Hash data containers.
+
+=item Scrooge::Parse
+
+Treating strings as sequences of characters would let me write a parser using
+Scrooge. Not that it would be a performant one, but it might prove useful in a
+pinch.
+
+=item Scrooge::Grammar
+
+I have sketched out some basic ideas for creating overridable grammars based
+on Scrooge. This needs to be fleshed out and implemented.
+
+=back
 
 =head1 COPYRIGHT AND LICENCE
 
@@ -27,10 +69,10 @@ copyright (c) their respective authors, all rights reserved.
 Portions of this distribution's code are copyright (c) 2011-2012 Northwestern
 University.
 
-Portions of this distribution's code are copyright (c) 2013-2014 Dickinson
+Portions of this distribution's code are copyright (c) 2013-2015 Dickinson
 College.
 
-Portions of this distribution's documentation are copyright (c) 2011-2014 David 
+Portions of this distribution's documentation are copyright (c) 2011-2015 David 
 Mertens.
 
 Portions of this distribution's documentation are copyright (c) 2012 Jeff 
