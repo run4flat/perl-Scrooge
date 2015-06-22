@@ -8,6 +8,7 @@ my $build = Module::Build->new(
 	requires => {
 		perl        => '5.6.1',
 		'Safe::Isa' => 1,
+		'Sub::Install' => 0.9,
 	},
 	build_requires => {
 		'Test::More'  => 0.88,
