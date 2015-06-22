@@ -716,7 +716,7 @@ sub seq_apply {
 			$size += $left_consumed;
 			return 0 if $size < $min_size;
 			# Try again at the new size:
-			redo SIZE;
+			redo LEFT_SIZE;
 		}
 		
 		# Positive return values can be less than $size, but we should

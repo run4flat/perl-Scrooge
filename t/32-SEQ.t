@@ -1,6 +1,6 @@
 use strict;
 use warnings;
-use Test::More tests => 5;
+use Test::More tests => 6;
 use Scrooge;
 
 # Load the basics module:
@@ -138,3 +138,23 @@ subtest 'Reusing patterns' => sub {
 	}
 };
 
+################################
+# Proper left-pattern matching #
+################################
+subtest 'Negative return values' => sub {
+	# Set the exact to match five
+	$exact_pat->{N} = 5;
+	if (my %match_info = re_seq($even_pat, $exact_pat)->match($data)) {
+		# Should match 0-13, then 14-18
+		is($match_info{length}, 19, 'nearly full match length');
+		is($match_info{left}, 0, 'match offset');
+		
+		is($match_info{even}[0]{left}, 0, 'even offset');
+		is($match_info{exact}[0]{left}, 14, 'exact offset');
+		is($match_info{even}[0]{length}, 14, 'even length');
+		is($match_info{exact}[0]{length}, 5, 'exact length');
+	}
+	else {
+		fail('sequence failed to match');
+	}
+};
