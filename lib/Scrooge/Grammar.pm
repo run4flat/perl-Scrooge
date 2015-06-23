@@ -26,23 +26,67 @@ Scrooge::Grammar - providing an interface for inheritable Scrooge grammars
 
 =head1 DESCRIPTION
 
+Scrooge patterns can be powerful, but they become unweildy for complex
+appterns. If you find yourself running into any of the problems listed
+below, you should consider using C<Scrooge::Grammar> to build your
+complex grammars. C<Scrooge::Grammar> uses Perl packages to create named
+patterns and subpatterns. C<Scrooge::Grammar> uses package inheritance
+to allow you to create a new grammar from an existing grammar, and then
+to override named subpatterns. C<Scrooge::Grammar> even lets you specify
+separate packages with actions that get invoked when named patterns are
+matched. This lets you destructure complex data in different ways using
+the same grammar, but distinct action sets.
+
+Why not just use a complex Scrooge pattern? Writing a test suite for a
+complex pattern is difficult since you need to provide a way for your
+test suite to get an exact copy of your pattern. Testing subpatterns in
+isolation is even more difficult. If you want to have two similar
+complex patterns that differ only in a subpattern definition, you need
+to build an entirely new pattern, and testing this is also difficult and
+repetitive. If you want to have two similar patterns that match
+identical data structures but destructures the data differently, you
+need to create whole new patterns. And finally, the naive way of
+building patterns of increasing complexity is to try to "scale-up" the
+simple way: deeply nested function calls and data structures, or forward
+declarations. C<Scrooge::Grammar> provides and architecture to easily
+solve all of these problems.
+
 When you say C<use Scrooge::Grammar>, your package gets a handful keywords
 that make it easy to declare named patterns that can be overridden in
 derived grammars, and which can invoke actions with an associated
-action class.
+action class. The main keywords are C<SEQ>, C<AND>, and C<OR>. Each of
+these take a pattern name followed by a collection of pattern names and/or
+Scrooge pattern objects.
 
-More description will go in here after I've fleshed things out a bit.
+=head1 ISSUES AND IDEAS
 
-IDEA: allow a string SUPER which refers to the parent pattern by the
-same name, or a pattern scr::grm::super, which would actually be a simple
-placeholder for the grammar's argument list since the grammar would have
-to do some machinery behind the scenes.
+=over
 
+=item IDEA
+
+Allow a string SUPER, or similar, which refers to the parent pattern by
+the same name.
+
+=item IDEA
+
+Provide keywords such as C<extends> to indicate inheritance. Provide
+pattern modifiers akin to Moose's C<around>, etc.
+
+=item IDEA
+
+Use Class::MOP to implement all of this in a cleaner way?
+
+=item ISSUE
+
+Even after a switch to Sub::Exporter, Scrooge pattern generators are
+going to import methods into the current package. These need to be
+cleaned out of the grammar during some sort of package finalization
+step, akin to namespace::clean.
 
 =cut
 
 package Scrooge::Grammar;
-use Scrooge;
+use Scrooge ();
 use strict;
 use warnings;
 use Sub::Install;
