@@ -35,5 +35,9 @@ SEQ letters => re_sub [0 => '100%'], sub {
 package main;
 my @data = qw(1 2 3 a b c 4 5 6);
 if (Test::Grammar->match(\@data)) {
-	print "matched!\n";
+	print "matched grammar!\n";
+}
+
+if (Test::Grammar->numbers->match(\@data)){
+	print "matched numbers!\n";
 }

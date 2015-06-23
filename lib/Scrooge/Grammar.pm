@@ -80,6 +80,8 @@ sub SEQ {
 	Sub::Install::install_sub({
 		code => sub {
 			my ($grammar, $action_set) = @_;
+			croak($package . '::' . "$name must be invoked as a package method")
+				if not defined $grammar;
 			my @patterns = $grammar->_assemble_patterns($action_set, @patterns);
 			# If the action set knows how to $name, then create a Grammar sequence
 			return Scrooge::Grammar::Sequence->new(patterns => \@patterns,
@@ -100,6 +102,8 @@ sub AND {
 	Sub::Install::install_sub({
 		code => sub {
 			my ($grammar, $action_set) = @_;
+			croak($package . '::' . "$name must be invoked as a package method")
+				if not defined $grammar;
 			my @patterns = $grammar->_assemble_patterns($action_set, @patterns);
 			# If the action set knows how to $name, then create a Grammar And
 			return Scrooge::Grammar::And->new(patterns => \@patterns,
@@ -120,6 +124,8 @@ sub OR {
 	Sub::Install::install_sub({
 		code => sub {
 			my ($grammar, $action_set) = @_;
+			croak($package . '::' . "$name must be invoked as a package method")
+				if not defined $grammar;
 			my @patterns = $grammar->_assemble_patterns($action_set, @patterns);
 			# If the action set knows how to $name, then create a Grammar Or
 			return Scrooge::Grammar::Or->new(patterns => \@patterns,
