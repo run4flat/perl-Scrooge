@@ -83,10 +83,10 @@ sub SEQ {
 			my @patterns = $grammar->_assemble_patterns($action_set, @patterns);
 			# If the action set knows how to $name, then create a Grammar sequence
 			return Scrooge::Grammar::Sequence->new(patterns => \@patterns,
-				action_set => $action_set, action => $name)
+				action_set => $action_set, name => $name)
 					if $action_set and $action_set->can($name);
 			# Othewise use a usual sequence
-			return Scrooge::Sequence->new(patterns => \@patterns);
+			return Scrooge::Sequence->new(name => $name, patterns => \@patterns);
 		},
 		into => $package,
 		as   => $name,
@@ -103,10 +103,10 @@ sub AND {
 			my @patterns = $grammar->_assemble_patterns($action_set, @patterns);
 			# If the action set knows how to $name, then create a Grammar And
 			return Scrooge::Grammar::And->new(patterns => \@patterns,
-				action_set => $action_set, action => $name)
+				action_set => $action_set, name => $name)
 					if $action_set and $action_set->can($name);
 			# Othewise use a usual sequence
-			return Scrooge::And->new(patterns => \@patterns);
+			return Scrooge::And->new(name => $name, patterns => \@patterns);
 		},
 		into => $package,
 		as   => $name,
@@ -123,10 +123,10 @@ sub OR {
 			my @patterns = $grammar->_assemble_patterns($action_set, @patterns);
 			# If the action set knows how to $name, then create a Grammar Or
 			return Scrooge::Grammar::Or->new(patterns => \@patterns,
-				action_set => $action_set, action => $name)
+				action_set => $action_set, name => $name)
 					if $action_set and $action_set->can($name);
 			# Othewise use a usual sequence
-			return Scrooge::Or->new(patterns => \@patterns);
+			return Scrooge::Or->new(name => $name, patterns => \@patterns);
 		},
 		into => $package,
 		as   => $name,
@@ -183,9 +183,9 @@ sub apply {
 	my $consumed = $self->SUPER::apply($match_info);
 	if ($consumed) {
 		my $action_set = $self->{action_set};
-		my $action_name = $self->{action};
-		$action_set->$action_name($match_info, $consumed)
-			if $action_set->can($action_name);
+		my $name = $self->{name};
+		$action_set->$name($match_info, $consumed)
+			if $action_set->can($name);
 	}
 	return $consumed;
 }
@@ -197,9 +197,9 @@ sub apply {
 	my $consumed = $self->SUPER::apply($match_info);
 	if ($consumed) {
 		my $action_set = $self->{action_set};
-		my $action_name = $self->{action};
-		$action_set->$action_name($match_info, $consumed)
-			if $action_set->can($action_name);
+		my $name = $self->{name};
+		$action_set->$name($match_info, $consumed)
+			if $action_set->can($name);
 	}
 	return $consumed;
 }
@@ -211,9 +211,9 @@ sub apply {
 	my $consumed = $self->SUPER::apply($match_info);
 	if ($consumed) {
 		my $action_set = $self->{action_set};
-		my $action_name = $self->{action};
-		$action_set->$action_name($match_info, $consumed)
-			if $action_set->can($action_name);
+		my $name = $self->{name};
+		$action_set->$name($match_info, $consumed)
+			if $action_set->can($name);
 	}
 	return $consumed;
 }
