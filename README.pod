@@ -30,6 +30,12 @@ numeric intervals and building subroutines to test values against those
 intervals. I now need to write useful array patterns that make use of
 these tools.
 
+=item Scrooge::Grammar
+
+I have a working implementation for declaring grammars, and which supports
+action sets and which can be overridden using inheritance. The design needs
+to be vetted, fleshed-out, tested, and documented.
+
 =item String Array Pattern Generators
 
 I need to figure out what sorts of patterns could be useful for analyzing
@@ -53,11 +59,6 @@ generators that work with Hash data containers.
 Treating strings as sequences of characters would let me write a parser using
 Scrooge. Not that it would be a performant one, but it might prove useful in a
 pinch.
-
-=item Scrooge::Grammar
-
-I have sketched out some basic ideas for creating overridable grammars based
-on Scrooge. This needs to be fleshed out and implemented.
 
 =back
 
