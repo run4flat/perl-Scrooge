@@ -83,8 +83,6 @@ sub init {
 	# Put the quantifiers in self:
 	$self->{min_quant} = $ref->[0];
 	$self->{max_quant} = $ref->[1];
-	
-	return $self;
 }
 
 =item prep
