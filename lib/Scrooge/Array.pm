@@ -68,6 +68,92 @@ Scrooge::Array provides patterns to match sequences of array data.
 
 =head1 PATTERNS
 
+=head2 scr::arr::sub
+
+Creates a L<Scrooge::Array::Sub> pattern, which is identical to a
+L<Scrooge::Sub> pattern except that it also ensures that the data
+container currently under scrutiny is an array reference. The interface
+is identical to L<Scrooge/re_sub>:
+
+ scr::arr::sub([[name], quantifiers], subref)
+
+=cut
+
+sub scr::arr::sub {
+	croak("scr::arr::sub takes one, two, or three arguments: scr::arr::sub([[name], quantifiers], subref)")
+		if @_ == 0 or @_ > 3;
+	
+	# Get the arguments:
+	my $name = shift if @_ == 3;
+	my $quantifiers = shift if @_ == 2;
+	my $subref = shift;
+	
+	$quantifiers = [1,1] unless defined $quantifiers;
+	
+	# Create the subroutine pattern:
+	return Scrooge::Array::Sub->new(quantifiers => $quantifiers,
+		subref => $subref, defined $name ? (name => $name) : ());
+}
+
+=head2 scr::arr::this
+
+Creates a L<Scrooge::Array::This> pattern. While it is possible to write
+patterns that identify intervals with certain I<interval> properties,
+many array patterns focus on element-wise facts. For example, is I<each>
+element in this interval defined? Or, does I<each> element in this
+interval match a certain regex? C<scr::arr::this> lets you specify a
+subref to perform such elementwise checks, placing the current element
+in the "this" variable, C<$_>, and uses the supplied subref to check all
+elements in a given range. The calling interface is identical to
+C<scr::arr::sub>:
+
+ scr::arr::this([[name], quantifiers], subref)
+
+For example, to find consecutive elements of an array that are 
+
+=cut
+
+sub scr::arr::this {
+	croak("scr::arr::this takes one, two, or three arguments: scr::arr::this([[name], quantifiers], subref)")
+		if @_ == 0 or @_ > 3;
+	
+	# Get the arguments:
+	my $name = shift if @_ == 3;
+	my $quantifiers = shift if @_ == 2;
+	my $subref = shift;
+	
+	$quantifiers = [1,1] unless defined $quantifiers;
+	
+	# Create the subroutine pattern:
+	return Scrooge::Array::This->new(quantifiers => $quantifiers,
+		this_subref => $subref, defined $name ? (name => $name) : ());
+}
+
+=head2 scr::arr::cachethis
+
+Creates a L<Scrooge::Array::This> pattern with caching enabled.
+
+ scr::arr::cachethis([[name], quantifiers], subref)
+
+=cut
+
+sub scr::arr::cachethis {
+	croak("scr::arr::this takes one, two, or three arguments: scr::arr::this([[name], quantifiers], subref)")
+		if @_ == 0 or @_ > 3;
+	
+	# Get the arguments:
+	my $name = shift if @_ == 3;
+	my $quantifiers = shift if @_ == 2;
+	my $subref = shift;
+	
+	$quantifiers = [1,1] unless defined $quantifiers;
+	
+	# Create the subroutine pattern:
+	return Scrooge::Array::This->new(quantifiers => $quantifiers,
+		this_subref => $subref, defined $name ? (name => $name) : (),
+		this_cached => 1);
+}
+
 =head2 scr::arr::interval
 
 This creates a L<Scrooge::Array::Interval> pattern, which matches sequential

@@ -1,7 +1,7 @@
 # Tests the functionality of Scrooge::Array::This
 use strict;
 use warnings;
-use Test::More tests => 6;
+use Test::More tests => 8;
 use Scrooge::Array;
 
 ###################
@@ -129,4 +129,34 @@ subtest 'Can use $_ implicitly' => sub {
 	else {
 		fail('Correctly identifies a successful match');
 	}
+};
+
+subtest 'Caching short-form constructor' => sub {
+	my $pattern = scr::arr::cachethis sub { defined and $_ == 5 };
+	my %info = $pattern->match([1, 3, 5, 5, undef]);
+	if (exists $info{left}) {
+		is_deeply($info{this_cache}, [0, 0, -1], 'Correctly caches')
+			or diag explain $info{this_cache};
+		is($info{left}, 2, 'Correct offset');
+		is($info{length}, 1, 'Correct length');
+		is($info{right}, 2, 'Correct end offset');
+	}
+	else {
+		fail('Correctly matches');
+	}
+	
+};
+
+subtest 'Non-caching short-form constructor' => sub {
+	my $pattern = scr::arr::this sub { $_ == 5 };
+	my %info = $pattern->match([1, 3, 5, 7, 9]);
+	if (exists $info{left}) {
+		is($info{left}, 2, 'Correct offset');
+		is($info{length}, 1, 'Correct length');
+		is($info{right}, 2, 'Correct end offset');
+	}
+	else {
+		fail('Correctly matches');
+	}
+	
 };
