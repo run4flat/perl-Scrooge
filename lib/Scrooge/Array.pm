@@ -4,7 +4,6 @@ use warnings;
 package Scrooge::Array;
 our @ISA = qw(Scrooge::Quantified);
 use Scrooge ();
-use Scrooge::Numeric;
 use Carp;
 our $VERSION = 0.01;
 
@@ -16,7 +15,7 @@ sub prep {
 	
 	# Fail prep if the data is ...
 	return 0 if
-		if not defined $match_info->{data}      # not defined
+		   not defined $match_info->{data}      # not defined
 		or not ref($match_info->{data})         # a scalar
 		or ref($match_info->{data}) ne ref([]); # not an array ref
 	return 1;
@@ -148,11 +147,182 @@ should be sufficient.
 =cut
 
 ############################################################################
+                     package Scrooge::Array::Sub;
+############################################################################
+our @ISA = qw(Scrooge::Array Scrooge::Sub);
+
+=head2 Scrooge::Array::Sub
+
+The class underlying scr::arr:sub, which is identical to
+L<Scrooge::Quantified/Scrooge::Sub> except that it also ensures that the
+data container under consideration is an array reference.
+
+=cut
+
+############################################################################
+                     package Scrooge::Array::This;
+############################################################################
+our @ISA = qw(Scrooge::Array);
+use Carp;
+
+=head2 Scrooge::Array::This
+
+Often the success or failure of a match depends only at the given value
+at the location in question. Whether a pattern matches against ten
+consecutive values simply boils down to checking the condition with all
+ten values. If this is the case for your pattern, then you can use an
+instance of C<Scrooge::Array::This>.
+
+In such circumstances, it can be annoying to write a rule
+that unpacks the data, the left offset, and the right offset, and then
+loops over all values between the left and right offsets.
+
+=cut
+
+sub init {
+	my $self = shift;
+	$self->SUPER::init;
+	
+	# Create a default subref
+	$self->{this_subref} = sub {0} unless exists $self->{this_subref};
+}
+
+# Default check simply invokes the subref
+sub check_this { shift->{this_subref}->() }
+
+sub prep {
+	my ($self, $match_info) = @_;
+	
+	# Bail out if inherited method fails
+	return 0 unless $self->SUPER::prep($match_info);
+	
+	# Set up the match cache, if needed
+	$match_info->{this_cache} = [] if $self->{this_cached};
+	
+	# Set up a small subref that makes sure that a zero-width match
+	# returns '0 but true' if that's what it's supposed to do
+	if ($match_info->{min_size} == 0) {
+		$match_info->{this_return_handler} = sub {
+			$_[0] == 0 ? '0 but true' : $_[0];
+		};
+	}
+	else {
+		$match_info->{this_return_handler} = sub { $_[0] };
+	}
+	
+	return 1;
+}
+
+# Cached values:
+#  - An undefined length means this location has never been tested
+#  - A zero length means it certainly does not match here
+#  - A positive length means everything up to the known length matches,
+#    and the position after that fails. This is called "full"
+#  - A negative length means everything up to the known length matches,
+#    but it is not known if the position after that will succeed or
+#    fail. This is called "partial"
+sub apply {
+	my ($self, $match_info) = @_;
+	my $data = $match_info->{data};
+	my $left = $match_info->{left};
+	my $right = $match_info->{right};
+	my $return_handler = $match_info->{this_return_handler};
+	my $requested_length = $match_info->{length};
+	
+	# If not using a cache, then just plow through the list of left
+	# and right values.
+	if (not $self->{this_cached}) {
+		# How much of the range do we match?
+		for (my $i = $left; $i <= $right; $i++) {
+			local $_ = $data->[$i];
+			next if $self->check_this;
+			# If that didn't go to the next $i, then we failed. That means we
+			# match everything leading up to $i, but not $i itself. Thus
+			# the matched length is $i - $left.
+			return $return_handler->($i - $left);
+		}
+		# Looks like we match the full length!
+		return $return_handler->($requested_length);
+	}
+	
+	# Get the cache from the match info, or check for a match
+	my $known_length = $match_info->{this_cache}->[$left];
+	if (not defined $known_length) {
+		# never checked here before so try this location
+		local $_ = $data->[$left];
+		$known_length = $match_info->{this_cache}->[$left]
+			= $self->check_this ? -1 : 0;
+	}
+	elsif ($known_length > 0 and $requested_length > $known_length) {
+		# cache hit on a full match length that is less than the
+		# requested length. Return the known full match length.
+		return $known_length;
+	}
+	
+	return $return_handler->(0) if $known_length == 0;
+	
+	# Partial or full match of (at least) the requested length
+	return $return_handler->($requested_length)
+		if $requested_length <= abs($known_length);
+	
+	# By this point we are only dealing with partial lengths, and the
+	# current partial length is not as long as the requested length. We
+	# could step forward and test every offset up toe the requested
+	# length, but it's faster to use cached match info to lunge as far
+	# forward with each step as possible. When I'm done, I'll update
+	# all cache entries between here and the last lunge, so I need to
+	# keep track of that:
+	my $curr_i;
+	LUNGE: while(abs($known_length) < $requested_length) {
+		$curr_i = $left - $known_length; # remember known_length < 0
+		
+		# Get the cached match info just beyond our current knowledge.
+		my $known_length_curr_i = $match_info->{this_cache}->[$curr_i];
+		
+		# If it's never been tried at this location, then try
+		if (not defined $known_length_curr_i) {
+			local $_ = $data->[$curr_i];
+			$known_length_curr_i = $self->check_this ? -1 : 0;
+			
+			# Special case: cache the failure if found
+			$match_info->{this_cache}->[$curr_i] = 0
+				if $known_length_curr_i == 0;
+		}
+		
+		# if the number is non-negative ...
+		if ($known_length_curr_i >= 0) {
+			# ... then we can revise $known_length to be a full length
+			$known_length = $known_length_curr_i - $known_length;
+			last LUNGE;
+		}
+		else {
+			# otherwise, we can revise $known_length to be a longer
+			# partial length
+			$known_length += $known_length_curr_i;
+		}
+	}
+	
+	# We've gone as far as we can go. Update all intermediate cache
+	# locations to reflect our new knowledge.
+	my $sign = $known_length < 0 ? 1 : -1; # neg if $known_length > 0
+	for my $i ($left .. $curr_i - 1) {
+		my $new_cached_length = $known_length + $sign * ($i - $left);
+		$match_info->{this_cache}->[$i] = $new_cached_length;
+	}
+	
+	# All set.
+	return $return_handler->($requested_length)
+		if $requested_length <= abs($known_length);
+	return $return_handler->(abs($known_length));
+}
+
+############################################################################
                      package Scrooge::Array::Interval;
 ############################################################################
 our @ISA = qw(Scrooge::Array);
 use Scalar::Util qw(looks_like_number);
 use Carp;
+use Scrooge::Numeric;
 
 =head2 Scrooge::Array::Interval
 
@@ -199,7 +369,7 @@ sub prep {
 	
 	# Run through the list, keeping track of a number of values
 	my $data = $match_info->{data};
-	my ($min, $max, $MIN, $MAX, $sum, $sq_sum, $N);
+	my ($min, $max, $MIN, $MAX, $sum, $sum_sq, $N);
 	for my $val (@$data) {
 		# Only work with numeric data
 		next unless looks_like_number($val);
@@ -231,7 +401,7 @@ sub prep {
 		m => $min, M => $max, x => $MIN, X => $MAX,
 	);
 	# Only calculate standard deviation if we have two or more points
-	$data_properties{stdev} => sqrt(($sum_sq - $sum*$sum / $N) / ($N - 1))
+	$data_properties{stdev} = sqrt(($sum_sq - $sum*$sum / $N) / ($N - 1))
 		if $N > 1;
 	
 	$match_info->{interval_check_subref}
@@ -251,6 +421,7 @@ sub prep {
 sub apply {
 	my ($self, $match_info) = @_;
 	my $left = $match_info->{left};
+	my $right = $match_info->{right};
 	my $data = $match_info->{data};
 	my $check_subref = $match_info->{interval_check_subref};
 	
