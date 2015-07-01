@@ -1,7 +1,7 @@
 # Tests the functionality of Scrooge::Array::This
 use strict;
 use warnings;
-use Test::More tests => 5;
+use Test::More tests => 6;
 use Scrooge::Array;
 
 ###################
@@ -109,6 +109,22 @@ subtest 'Supports zero-width matches' => sub {
 		is($match_info{left}, 0, 'Correct offset');
 		is($match_info{length}, 0, 'Correct length');
 		is($match_info{right}, -1, 'Correct end offset');
+	}
+	else {
+		fail('Correctly identifies a successful match');
+	}
+};
+
+subtest 'Can use $_ implicitly' => sub {
+	my $pattern = Scrooge::Array::This->new(
+		this_subref => sub { not (defined) or /foo/ },
+		quantifiers => [1, '100%'],
+	);
+	my %match_info = $pattern->match([undef, qw(foo bar baz)]);
+	if (exists $match_info{left}) {
+		is($match_info{left}, 0, 'Correct offset');
+		is($match_info{length}, 2, 'Correct length');
+		is($match_info{right}, 1, 'Correct end offset');
 	}
 	else {
 		fail('Correctly identifies a successful match');
