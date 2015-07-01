@@ -156,9 +156,8 @@ sub scr::arr::cachethis {
 
 =head2 scr::arr::interval
 
-This creates a L<Scrooge::Array::Interval> pattern, which matches sequential
-elements of an array that are numeric scalars and which fall within the
-specified numeric interval. The first argument is the interval string
+Creates a L<Scrooge::Array::Interval> pattern, which matches numbers that
+fall within the specified numeric interval. The first argument is the interval string
 (which is described in detail under L<Scrooge::Numeric>), followed by key/value
 pairs. Scrooge::Array::Interval inherits functionality from Scrooge::Quantified,
 so any keys for Scrooge::Quantified can be supplied.
