@@ -154,6 +154,181 @@ sub scr::arr::cachethis {
 		this_cached => 1);
 }
 
+=head2 scr::arr::undef
+
+Creates a L<Scrooge::Array::This> pattern that matches undefined values.
+
+=cut
+
+sub scr::arr::undef {
+	croak("scr::arr::undef takes zero, one, or two arguments: scr::arr::undef([[name], quantifiers])")
+		if @_ == 0 or @_ > 2;
+	
+	my $name = shift if @_ == 2;
+	my $quantifiers = shift || [1, 1];
+	
+	# Create the subroutine pattern:
+	return Scrooge::Array::This->new(quantifiers => $quantifiers,
+		this_subref => sub { not defined },
+		defined $name ? (name => $name) : ()
+	);
+}
+
+=head2 scr::arr::defined
+
+Creates a L<Scrooge::Array::This> pattern that matches defined values.
+
+=cut
+
+sub scr::arr::defined {
+	croak("scr::arr::defined takes zero, one, or two arguments: scr::arr::defined([[name], quantifiers])")
+		if @_ == 0 or @_ > 2;
+	
+	my $name = shift if @_ == 2;
+	my $quantifiers = shift || [1, 1];
+	
+	# Create the subroutine pattern:
+	return Scrooge::Array::This->new(quantifiers => $quantifiers,
+		this_subref => sub { defined },
+		defined $name ? (name => $name) : ()
+	);
+}
+
+=head2 scr::arr::scalar
+
+Creates a L<Scrooge::Array::This> pattern that matches defined values
+that are scalars.
+
+=cut
+
+sub scr::arr::scalar {
+	croak("scr::arr::scalar takes zero, one, or two arguments: scr::arr::scalar([[name], quantifiers])")
+		if @_ == 0 or @_ > 2;
+	
+	my $name = shift if @_ == 2;
+	my $quantifiers = shift || [1, 1];
+	
+	# Create the subroutine pattern:
+	return Scrooge::Array::This->new(quantifiers => $quantifiers,
+		this_subref => sub { defined and ref($_) eq ref('') },
+		defined $name ? (name => $name) : ()
+	);
+}
+
+=head2 scr::arr::ref
+
+Creates a L<Scrooge::Array::This> pattern that matches references.
+
+=cut
+
+sub scr::arr::ref {
+	croak("scr::arr::scalar takes zero, one, or two arguments: scr::arr::ref([[name], quantifiers])")
+		if @_ == 0 or @_ > 2;
+	
+	my $name = shift if @_ == 2;
+	my $quantifiers = shift || [1, 1];
+	
+	# Create the subroutine pattern:
+	return Scrooge::Array::This->new(quantifiers => $quantifiers,
+		this_subref => sub { defined and ref($_) },
+		defined $name ? (name => $name) : ()
+	);
+}
+
+use Scalar::Util ();
+
+=head2 scr::arr::blessed
+
+Creates a L<Scrooge::Array::This> pattern that matches blessed
+references.
+
+=cut
+
+sub scr::arr::blessed {
+	croak("scr::arr::blessed takes zero, one, or two arguments: scr::arr::blessed([[name], quantifiers])")
+		if @_ == 0 or @_ > 2;
+	
+	my $name = shift if @_ == 2;
+	my $quantifiers = shift || [1, 1];
+	
+	# Create the subroutine pattern:
+	return Scrooge::Array::This->new(quantifiers => $quantifiers,
+		this_subref => sub { Scalar::Util::blessed($_) },
+		defined $name ? (name => $name) : ()
+	);
+}
+
+=head2 scr::arr::is_array
+
+Creates a L<Scrooge::Array::This> pattern that matches array references.
+
+=cut
+
+sub scr::arr::is_array {
+	croak("scr::arr::is_array takes zero, one, or two arguments: scr::arr::is_array([[name], quantifiers])")
+		if @_ == 0 or @_ > 2;
+	
+	my $name = shift if @_ == 2;
+	my $quantifiers = shift || [1, 1];
+	
+	# Create the subroutine pattern:
+	return Scrooge::Array::This->new(quantifiers => $quantifiers,
+		this_subref => sub { defined and ref($_) and ref($_) eq ref([]) },
+		defined $name ? (name => $name) : ()
+	);
+}
+
+=head2 scr::arr::isa_hash
+
+Creates a L<Scrooge::Array::This> pattern that matches hash references.
+
+=cut
+
+sub scr::arr::is_hash {
+	croak("scr::arr::is_hash takes zero, one, or two arguments: scr::arr::is_hash([[name], quantifiers])")
+		if @_ == 0 or @_ > 2;
+	
+	my $name = shift if @_ == 2;
+	my $quantifiers = shift || [1, 1];
+	
+	# Create the subroutine pattern:
+	return Scrooge::Array::This->new(quantifiers => $quantifiers,
+		this_subref => sub { defined and ref($_) and ref($_) eq ref({}) },
+		defined $name ? (name => $name) : ()
+	);
+}
+
+=head2 scr::arr::isa
+
+Creates a L<Scrooge::Array::This> pattern that matches instances of the
+given class. You can also give an object instead of a class name, in
+which case it uses the class of the given object.
+
+=cut
+
+sub scr::arr::isa {
+	croak("scr::arr::isa takes one, two, or three arguments: scr::arr::this([[name], quantifiers], class|object)")
+		if @_ == 0 or @_ > 3;
+	
+	# Get the arguments:
+	my $name = shift if @_ == 3;
+	my $quantifiers = shift if @_ == 2;
+	my $class = shift;
+	
+	# If they supplied an object, get its class name
+	$class = ref($class) if Scalar::Util::blessed($class);
+	
+	croak("scr::arr::isa expects a class name or an object")
+		if ref($class);
+	
+	$quantifiers = [1,1] unless defined $quantifiers;
+	
+	# Create the subroutine pattern:
+	return Scrooge::Array::This->new(quantifiers => $quantifiers,
+		this_subref => sub { Scalar::Util::blessed($_) and $_->isa($class) },
+		defined $name ? (name => $name) : ());
+}
+
 =head2 scr::arr::interval
 
 Creates a L<Scrooge::Array::Interval> pattern, which matches numbers that
