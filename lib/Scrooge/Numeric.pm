@@ -194,10 +194,11 @@ sub build_interval_check_subref {
 	
 	# Create the subref using a strinig evaluation.
 	my $subref = eval qq{
+#line @{[__LINE__+1, __FILE__]}
 		sub {
 			my \$value = shift;
 			return 0 if not Scalar::Util::looks_like_number(\$value);
-			return ('$left' $l_eq \$value and \$value $r_eq '$right');
+			return (\$left $l_eq \$value and \$value $r_eq \$right);
 		}
 	};
 	
