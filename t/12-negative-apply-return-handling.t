@@ -7,7 +7,6 @@ use strict;
 use warnings;
 use Test::More tests => 2;
 use Scrooge;
-use PDL;
 
 ##############################
     package Scrooge::Test;
