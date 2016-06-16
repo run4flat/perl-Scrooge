@@ -27,7 +27,7 @@ Scrooge::Grammar - providing an interface for inheritable Scrooge grammars
 =head1 DESCRIPTION
 
 Scrooge patterns can be powerful, but they become unweildy for complex
-appterns. If you find yourself running into any of the problems listed
+patterns. If you find yourself running into any of the problems listed
 below, you should consider using C<Scrooge::Grammar> to build your
 complex grammars. C<Scrooge::Grammar> uses Perl packages to create named
 patterns and subpatterns. C<Scrooge::Grammar> uses package inheritance
@@ -48,7 +48,7 @@ identical data structures but destructures the data differently, you
 need to create whole new patterns. And finally, the naive way of
 building patterns of increasing complexity is to try to "scale-up" the
 simple way: deeply nested function calls and data structures, or forward
-declarations. C<Scrooge::Grammar> provides and architecture to easily
+declarations. C<Scrooge::Grammar> provides an architecture to easily
 solve all of these problems.
 
 When you say C<use Scrooge::Grammar>, your package gets a handful keywords
