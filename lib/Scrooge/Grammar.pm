@@ -97,19 +97,29 @@ sub import {
 	
 	# Install the DSL for creating Scrooge grammars
 	Sub::Install::install_sub({
-		code => \&SEQ,
+		code => \&SEQ_builder,
 		into => $package,
 		as   => 'SEQ',
 	});
 	Sub::Install::install_sub({
-		code => \&AND,
+		code => \&AND_builder,
 		into => $package,
 		as   => 'AND',
 	});
 	Sub::Install::install_sub({
-		code => \&OR,
+		code => \&OR_builder,
 		into => $package,
 		as   => 'OR',
+	});
+	Sub::Install::install_sub({
+		code => \&PAT_builder,
+		into => $package,
+		as   => 'PAT',
+	});
+	Sub::Install::install_sub({
+		code => \&REV_builder,
+		into => $package,
+		as   => 'REV',
 	});
 	{
 		no strict 'refs';
@@ -129,7 +139,7 @@ sub install_pattern_list {
 }
 
 # Create a new sequence rule under the given name
-sub SEQ {
+sub SEQ_builder {
 	my ($name, @patterns) = @_;
 	my ($package) = caller;
 	# Install a sub that returns the list of patterns
@@ -155,7 +165,7 @@ sub SEQ {
 }
 
 # Create a new "and" rule under the given name
-sub AND {
+sub AND_builder {
 	my ($name, @patterns) = @_;
 	my ($package) = caller;
 	# Install a sub that returns the list of patterns
@@ -172,7 +182,7 @@ sub AND {
 			return Scrooge::Grammar::And->new(patterns => \@patterns,
 				action_set => $action_set, name => $name)
 					if $action_set and $action_set->can($name);
-			# Othewise use a usual sequence
+			# Othewise use a usual And
 			return Scrooge::And->new(name => $name, patterns => \@patterns);
 		},
 		into => $package,
@@ -181,7 +191,7 @@ sub AND {
 }
 
 # Create a new "or" rule under the given name
-sub OR {
+sub OR_builder {
 	my ($name, @patterns) = @_;
 	my ($package) = caller;
 	# Install a sub that returns the list of patterns
@@ -198,12 +208,44 @@ sub OR {
 			return Scrooge::Grammar::Or->new(patterns => \@patterns,
 				action_set => $action_set, name => $name)
 					if $action_set and $action_set->can($name);
-			# Othewise use a usual sequence
+			# Othewise use a usual Or
 			return Scrooge::Or->new(name => $name, patterns => \@patterns);
 		},
 		into => $package,
 		as   => $name,
 	});
+}
+
+sub PAT_builder {
+	my ($name, $pattern) = @_;
+	my ($package) = caller;
+	# install a sub that returns this pattern
+	Sub::Install::install_sub({
+		code => sub {
+			my ($grammar, $action_set) = @_;
+			croak($package . '::' . "$name must be invoked as a package method")
+				if not defined $grammar;
+			# If the action set knows how to $name, then create a Grammar Pattern
+			return Scrooge::Grammar::Or->new(patterns => [$pattern],
+				action_set => $action_set, name => $name)
+					if $action_set and $action_set->can($name);
+			# Othewise return exactly what was given
+			return $pattern;
+		},
+		into => $package,
+		as   => $name,
+	});
+}
+
+sub REV_builder {
+	my ($name, $sub) = @_;
+	my ($package) = caller;
+	
+	# Apply the given subref to the results of the inherited method
+	my $list_name = $name . '_pattern_list';
+	my @patterns = $sub->($package->$list_name);
+	# Install a new method with the new results
+	install_pattern_list($name, $package, @patterns);
 }
 
 # The base class for all grammars (not grammar patterns; those are below)
