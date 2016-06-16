@@ -11,7 +11,9 @@ my $build = Module::Build->new(
 		'Sub::Install' => 0.9,
 	},
 	build_requires => {
-		'Test::More'  => 0.88,
+		# need 0.94 for subtests
+		# need 0.95 for implicit done_testing within subtests
+		'Test::More'  => 0.95,
 	},
 	
 );
