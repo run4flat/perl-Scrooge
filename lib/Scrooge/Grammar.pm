@@ -117,16 +117,31 @@ sub import {
 	}
 }
 
+sub install_pattern_list {
+	my ($pattern_name, $package, @patterns) = @_;
+	my $pattern_list_name = $pattern_name . '_pattern_list';
+	Sub::Install::install_sub({
+		code => sub { @patterns },
+		into => $package,
+		as   => $pattern_list_name,
+	});
+	return $pattern_list_name;
+}
+
 # Create a new sequence rule under the given name
 sub SEQ {
 	my ($name, @patterns) = @_;
 	my ($package) = caller;
+	# Install a sub that returns the list of patterns
+	my $list_method_name = install_pattern_list($name, $package, @patterns);
+	# install a sub that returns the sequence on that list
 	Sub::Install::install_sub({
 		code => sub {
 			my ($grammar, $action_set) = @_;
 			croak($package . '::' . "$name must be invoked as a package method")
 				if not defined $grammar;
-			my @patterns = $grammar->_assemble_patterns($action_set, @patterns);
+			my @patterns = $grammar->_assemble_patterns($action_set,
+				$grammar->$list_method_name);
 			# If the action set knows how to $name, then create a Grammar sequence
 			return Scrooge::Grammar::Sequence->new(patterns => \@patterns,
 				action_set => $action_set, name => $name)
@@ -143,12 +158,16 @@ sub SEQ {
 sub AND {
 	my ($name, @patterns) = @_;
 	my ($package) = caller;
+	# Install a sub that returns the list of patterns
+	my $list_method_name = install_pattern_list($name, $package, @patterns);
+	# install a sub that returns the AND on that list
 	Sub::Install::install_sub({
 		code => sub {
 			my ($grammar, $action_set) = @_;
 			croak($package . '::' . "$name must be invoked as a package method")
 				if not defined $grammar;
-			my @patterns = $grammar->_assemble_patterns($action_set, @patterns);
+			my @patterns = $grammar->_assemble_patterns($action_set,
+				$grammar->$list_method_name);
 			# If the action set knows how to $name, then create a Grammar And
 			return Scrooge::Grammar::And->new(patterns => \@patterns,
 				action_set => $action_set, name => $name)
@@ -165,12 +184,16 @@ sub AND {
 sub OR {
 	my ($name, @patterns) = @_;
 	my ($package) = caller;
+	# Install a sub that returns the list of patterns
+	my $list_method_name = install_pattern_list($name, $package, @patterns);
+	# install a sub that returns the OR on that list
 	Sub::Install::install_sub({
 		code => sub {
 			my ($grammar, $action_set) = @_;
 			croak($package . '::' . "$name must be invoked as a package method")
 				if not defined $grammar;
-			my @patterns = $grammar->_assemble_patterns($action_set, @patterns);
+			my @patterns = $grammar->_assemble_patterns($action_set,
+				$grammar->$list_method_name);
 			# If the action set knows how to $name, then create a Grammar Or
 			return Scrooge::Grammar::Or->new(patterns => \@patterns,
 				action_set => $action_set, name => $name)
