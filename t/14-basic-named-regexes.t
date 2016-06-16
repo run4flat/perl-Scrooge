@@ -54,7 +54,6 @@ my $match_info;
 		my ($self, $info) = @_;
 		$self->Scrooge::Test::Exactly::prep($info);
 		$match_info = $info;
-		weaken($match_info);
 	};
 }
 
@@ -66,5 +65,10 @@ if ($pattern->match($data)) {
 	fail('pattern was not supposed to match here');
 }
 else {
-	is($match_info, undef, 'no memory leaks');
+	subtest 'References and failed named patterns' => sub {
+		isnt($match_info, undef, 'Able to hold on to match info with lexical reference');
+		# Weaken the reference, make sure it goes away
+		weaken($match_info);
+		is($match_info, undef, 'After weakening no memory leaks');
+	}
 }

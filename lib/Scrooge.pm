@@ -79,7 +79,7 @@ sub match {
 		1;
 	} or push @croak_messages, $@;
 	unless ($prep_results) {
-		eval { $self->cleanup(\%match_info) };
+		eval { $self->cleanup(undef, \%match_info) };
 		push @croak_messages, $@ if $@ ne '';
 		
 		# Croak if there was an exception during prep or cleanup:
@@ -145,8 +145,17 @@ sub match {
 	# Back-up $@:
 	push @croak_messages, $@ if $@ ne '';
 	
-	# Run cleanup, backing up any error messages:
-	eval { $self->cleanup(\%match_info, \%match_info) };
+	# Run cleanup. We signal a failed match (and thus no saving of
+	# named results) with an undefined "top match". We need to do this
+	# to avoid memory leaks.
+	eval {
+		if (! $consumed) {
+			$self->cleanup(undef, \%match_info);
+		}
+		else {
+			$self->cleanup(\%match_info, \%match_info);
+		}
+	};
 	push @croak_messages, $@ if $@ ne '';
 	
 	# Croak if there was an exception during prep or cleanup:
