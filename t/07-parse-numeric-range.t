@@ -113,7 +113,7 @@ sub is_eval_endpoint_error {
 
 subtest 'evaluate_endpoint' => sub {
 	# Create a set of properties that are senseless, but easy to analyze
-	is_eval_endpoint({inf => 1, foobar => 1}, 'inf', 'inf overrides other properties');
+	is_eval_endpoint({inf => 1, foobar => 1}, 0+'inf', 'inf overrides other properties');
 	is_eval_endpoint('20', 20, 'raw numbers');
 	is_eval_endpoint('x+X+m+M+@+2$', 211111, 'basic arithmetic with systematic properties');
 	is_eval_endpoint('10%', 99, 'percentages');
